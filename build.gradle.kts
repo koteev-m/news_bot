@@ -1,19 +1,27 @@
 plugins {
-    id("java")
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.ktor) apply false
+    alias(libs.plugins.flyway) apply false
 }
 
-group = "org.example"
-version = "1.0-SNAPSHOT"
+subprojects {
+    repositories {
+        mavenCentral()
+    }
 
-repositories {
-    mavenCentral()
-}
+    apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
 
-dependencies {
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-}
+    extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
+        jvmToolchain(21)
+    }
 
-tasks.test {
-    useJUnitPlatform()
+    dependencies {
+        "testImplementation"(kotlin("test"))
+    }
+
+    tasks.withType<org.gradle.api.tasks.testing.Test> {
+        useJUnitPlatform()
+    }
 }
