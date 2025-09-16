@@ -45,6 +45,6 @@ configure<FlywayExtension> {
     user = System.getenv("DATABASE_USER") ?: "app"
     password = System.getenv("DATABASE_PASS") ?: "app_pass"
     schemas = arrayOf(System.getenv("DATABASE_SCHEMA") ?: "public")
-    locations = arrayOf("classpath:db/migration")
+    locations = arrayOf("filesystem:src/main/resources/db/migration")
     configurations = arrayOf("flyway")
 }
