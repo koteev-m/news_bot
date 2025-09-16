@@ -1,1 +1,3 @@
-// Core module build script placeholder
+dependencies {
+    implementation(libs.serialization.json)
+}
