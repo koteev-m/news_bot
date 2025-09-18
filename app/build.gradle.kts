@@ -8,6 +8,8 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.server.content.negotiation)
     implementation(project(":storage"))
+    implementation(project(":integrations"))
+    implementation("io.micrometer:micrometer-registry-prometheus:${libs.versions.micrometer.get()}")
 }
 
 application {
