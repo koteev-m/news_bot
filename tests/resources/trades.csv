@@ -1,0 +1,4 @@
+ext_id,datetime,ticker,exchange,board,alias_source,side,quantity,price,currency,fee,fee_currency,tax,tax_currency,broker,note
+T1,2024-03-18T10:00:00Z,SBER,MOEX,TQBR,,BUY,10,250,RUB,1,RUB,0,RUB,BrokerOne,First buy
+,2024-03-19T10:00:00Z,SBER,MOEX,TQBR,,SELL,5,260,RUB,0.5,RUB,0,RUB,BrokerOne,Partial sell
+CG-1,2024-03-20T12:00:00Z,BTCUSDT,,,COINGECKO,BUY,0.5,40000,USD,5,USD,0,USD,CryptoDesk,Crypto accumulation
