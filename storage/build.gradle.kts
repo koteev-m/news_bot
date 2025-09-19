@@ -22,6 +22,7 @@ configurations {
 }
 
 dependencies {
+    implementation(project(":core"))
     implementation(libs.exposed.core)
     implementation(libs.exposed.dao)
     implementation(libs.exposed.jdbc)
@@ -38,6 +39,8 @@ dependencies {
     add("flyway", libs.postgresql)
     add("flyway", libs.flyway.postgresql)
     add("flyway", libs.flyway.core)
+
+    testImplementation("com.h2database:h2:2.2.224")
 }
 
 configure<FlywayExtension> {

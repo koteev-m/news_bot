@@ -8,6 +8,7 @@ serialization = "1.6.3"
 micrometer = "1.12.5"
 hikari = "5.1.0"
 postgres = "42.7.4"
+kotest = "5.9.1"
 
 
 [libraries]
@@ -29,6 +30,9 @@ serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-jso
 typesafe-config = { module = "com.typesafe:config", version = "1.4.3" }
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-property = { module = "io.kotest:kotest-property", version.ref = "kotest" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
