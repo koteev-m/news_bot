@@ -18,4 +18,9 @@ data class TradeView(
     val fee: Money = Money.of(BigDecimal.ZERO, price.currency),
     val tax: Money? = null,
     val notional: Money = price * quantity.abs()
+    val instrumentId: Long,
+    @Contextual val tradeDate: LocalDate,
+    @Contextual val quantity: BigDecimal,
+    val price: Money,
+    val notional: Money
 )
