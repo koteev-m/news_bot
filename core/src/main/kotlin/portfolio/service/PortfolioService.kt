@@ -136,6 +136,20 @@ class PortfolioService(
                     note = trade.note,
                     externalId = trade.externalId,
                 ),
+            StoredTrade(
+                tradeId = trade.tradeId,
+                portfolioId = trade.portfolioId,
+                instrumentId = trade.instrumentId,
+                tradeDate = trade.tradeDate,
+                side = trade.side,
+                quantity = quantity,
+                price = trade.price,
+                fee = trade.fee,
+                tax = trade.tax,
+                notional = trade.notional,
+                valuationMethod = method,
+                realizedPnl = if (trade.side == TradeSide.SELL) outcome.realizedPnl else null,
+            ),
         )
         if (recordResult.isFailure) {
             return DomainResult.failure(recordResult.exceptionOrNull()!!)
