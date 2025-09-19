@@ -13,4 +13,5 @@ data class PositionView(
     val averageCost: Money?,
     val valuationMethod: ValuationMethod,
     val unrealizedPnl: Money,
+    val valuationMethod: ValuationMethod
 )
