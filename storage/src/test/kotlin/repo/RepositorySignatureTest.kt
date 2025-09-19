@@ -67,6 +67,7 @@ class RepositorySignatureTest {
                 listOf("upsert", "findOnOrBefore", "findLatest", "find", "list", "delete"),
             ),
         )
+        assertTrue(functions.containsAll(listOf("upsert", "findLatest", "find", "list", "delete")))
     }
 
     @Test
