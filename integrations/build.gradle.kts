@@ -18,15 +18,15 @@ val coroutinesVersion = libs.versions.coroutines.get()
 val micrometerVersion = libs.versions.micrometer.get()
 
 dependencies {
-    implementation("io.ktor:ktor-client-core-jvm:$ktorVersion")
+    api("io.ktor:ktor-client-core-jvm:$ktorVersion")
     implementation("io.ktor:ktor-client-cio-jvm:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-client-logging:$ktorVersion")
     implementation("io.ktor:ktor-client-encoding:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation(libs.serialization.json)
-    implementation(libs.micrometer.core)
-    implementation("io.micrometer:micrometer-registry-prometheus:$micrometerVersion")
+    api(libs.micrometer.core)
+    api("io.micrometer:micrometer-registry-prometheus:$micrometerVersion")
 
     testImplementation("io.ktor:ktor-client-mock:$ktorVersion")
     testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
