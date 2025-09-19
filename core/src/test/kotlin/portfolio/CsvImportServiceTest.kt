@@ -181,6 +181,10 @@ class CsvImportServiceTest {
 
             return tx.block()
         }
+
+        override suspend fun listPositions(portfolioId: UUID): DomainResult<List<PortfolioService.PositionSummary>> {
+            return DomainResult.success(emptyList())
+        }
     }
 
     private class FakeInstrumentResolver : CsvImportService.InstrumentResolver {

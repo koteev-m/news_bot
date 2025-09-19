@@ -11,5 +11,7 @@ data class PositionView(
     @Contextual val quantity: BigDecimal,
     val valuation: Money,
     val averageCost: Money?,
+    val valuationMethod: ValuationMethod,
+    val unrealizedPnl: Money,
     val valuationMethod: ValuationMethod
 )

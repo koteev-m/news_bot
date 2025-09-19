@@ -4,6 +4,9 @@ import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZoneId
 import java.util.UUID
 import kotlin.test.Test
@@ -11,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import model.FxRate
 import portfolio.errors.DomainResult
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
@@ -18,6 +22,11 @@ import portfolio.model.Money
 import portfolio.model.TradeSide
 import portfolio.model.TradeView
 import portfolio.model.ValuationMethod
+import portfolio.service.CoingeckoPriceProvider
+import portfolio.service.FxRateRepository
+import portfolio.service.FxRateService
+import portfolio.service.MoexPriceProvider
+import portfolio.service.PricingService
 import portfolio.service.PortfolioService
 import portfolio.service.PositionCalc
 
@@ -177,14 +186,62 @@ class PortfolioServiceTest {
         assertTrue(storage.recordedTrades.isEmpty())
     }
 
+    @Test
+    fun `lists open positions with unrealized pnl`() = runBlocking {
+        val storage = FakeStorage(
+            positions = listOf(
+                PortfolioService.PositionSummary(
+                    portfolioId = portfolioId,
+                    instrumentId = instrumentId,
+                    instrumentName = "ACME",
+                    quantity = BigDecimal("5"),
+                    averagePrice = Money.of(BigDecimal("100"), "USD"),
+                    valuationMethod = ValuationMethod.AVERAGE,
+                ),
+            ),
+        )
+        val fxService = FxRateService(
+            FakeFxRateRepository(
+                mapOf(
+                    "USD" to listOf(rate("USD", tradeDate, BigDecimal("90"))),
+                ),
+            ),
+        )
+        val pricing = PricingService(
+            StaticMoexProvider(
+                mapOf(
+                    (instrumentId to tradeDate) to Money.of(BigDecimal("150"), "USD"),
+                ),
+            ),
+            StaticCoingeckoProvider(),
+            fxService,
+        )
+        val service = PortfolioService(storage, clock)
+
+        val result = service.listPositions(portfolioId, tradeDate, pricing, fxService)
+
+        assertTrue(result.isSuccess)
+        val views = result.getOrThrow()
+        assertEquals(1, views.size)
+        val view = views.single()
+        assertEquals("ACME", view.instrumentName)
+        assertEquals(BigDecimal("5"), view.quantity)
+        assertEquals(Money.of(BigDecimal("67500"), "RUB"), view.valuation)
+        assertEquals(Money.of(BigDecimal("9000"), "RUB"), view.averageCost)
+        assertEquals(Money.of(BigDecimal("22500"), "RUB"), view.unrealizedPnl)
+        assertEquals(ValuationMethod.AVERAGE, view.valuationMethod)
+    }
+
     private fun usd(amount: String): Money = Money.of(BigDecimal(amount), "USD")
 
     private class FakeStorage(
         existing: PortfolioService.StoredPosition? = null,
+        positions: List<PortfolioService.PositionSummary> = emptyList(),
     ) : PortfolioService.Storage {
         private var current: PortfolioService.StoredPosition? = existing
         val savedPositions = mutableListOf<PortfolioService.StoredPosition>()
         val recordedTrades = mutableListOf<PortfolioService.StoredTrade>()
+        private val positionSummaries = positions.toMutableList()
 
         override suspend fun <T> transaction(
             block: suspend PortfolioService.Storage.Transaction.() -> DomainResult<T>,
@@ -223,5 +280,43 @@ class PortfolioServiceTest {
 
             return tx.block()
         }
+
+        override suspend fun listPositions(portfolioId: UUID): DomainResult<List<PortfolioService.PositionSummary>> {
+            return DomainResult.success(positionSummaries.filter { it.portfolioId == portfolioId })
+        }
+    }
+
+    private class FakeFxRateRepository(
+        private val rates: Map<String, List<FxRate>>,
+    ) : FxRateRepository {
+        override suspend fun findOnOrBefore(ccy: String, timestamp: Instant): FxRate? {
+            val entries = rates[ccy] ?: return null
+            return entries
+                .filter { !it.ts.isAfter(timestamp) }
+                .maxByOrNull { it.ts }
+        }
+    }
+
+    private class StaticMoexProvider(
+        private val closePrices: Map<Pair<Long, LocalDate>, Money?>,
+    ) : MoexPriceProvider {
+        override suspend fun closePrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
+            DomainResult.success(closePrices[instrumentId to on])
+
+        override suspend fun lastPrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
+            DomainResult.success(null)
+    }
+
+    private class StaticCoingeckoProvider : CoingeckoPriceProvider {
+        override suspend fun closePrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
+            DomainResult.success(null)
+
+        override suspend fun lastPrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
+            DomainResult.success(null)
+    }
+
+    private fun rate(ccy: String, date: LocalDate, value: BigDecimal): FxRate {
+        val ts = date.atTime(LocalTime.NOON).atZone(ZoneOffset.UTC).toInstant()
+        return FxRate(ccy = ccy, ts = ts, rateRub = value, source = "TEST")
     }
 }

@@ -2,6 +2,9 @@ package portfolio.service
 
 import java.math.BigDecimal
 import java.time.Clock
+import java.math.MathContext
+import java.time.Instant
+import java.time.LocalDate
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -11,6 +14,7 @@ import portfolio.errors.DomainResult
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
 import portfolio.model.Money
+import portfolio.model.PositionView
 import portfolio.model.TradeSide
 import portfolio.model.TradeView
 import portfolio.model.ValuationMethod
@@ -36,6 +40,71 @@ class PortfolioService(
         }
 
         return result.map { Unit }
+    }
+
+    suspend fun listPositions(
+        portfolioId: UUID,
+        on: LocalDate,
+        pricingService: PricingService,
+        fxRateService: FxRateService,
+    ): DomainResult<List<PositionView>> {
+        val storedResult = storage.listPositions(portfolioId)
+        if (storedResult.isFailure) {
+            return DomainResult.failure(storedResult.exceptionOrNull()!!)
+        }
+
+        val storedPositions = storedResult
+            .getOrDefault(emptyList())
+            .filter { it.portfolioId == portfolioId }
+        if (storedPositions.isEmpty()) {
+            return DomainResult.success(emptyList())
+        }
+
+        val views = mutableListOf<PositionView>()
+        for (position in storedPositions) {
+            if (position.quantity <= BigDecimal.ZERO) {
+                continue
+            }
+
+            val priceResult = pricingService.closeOrLast(position.instrumentId, on)
+            if (priceResult.isFailure) {
+                return DomainResult.failure(priceResult.exceptionOrNull()!!)
+            }
+            val price = priceResult.getOrThrow()
+            val valuation = price * position.quantity
+
+            val averageCost = position.averagePrice?.let { average ->
+                val converted = convertToCurrency(
+                    average,
+                    on,
+                    valuation.currency,
+                    fxRateService,
+                )
+                if (converted.isFailure) {
+                    return DomainResult.failure(converted.exceptionOrNull()!!)
+                }
+                converted.getOrThrow()
+            }
+
+            val unrealized = if (averageCost != null) {
+                val costBasis = averageCost * position.quantity
+                valuation - costBasis
+            } else {
+                zero(valuation.currency)
+            }
+
+            views += PositionView(
+                instrumentId = position.instrumentId,
+                instrumentName = position.instrumentName,
+                quantity = position.quantity,
+                valuation = valuation,
+                averageCost = averageCost,
+                valuationMethod = position.valuationMethod,
+                unrealizedPnl = unrealized,
+            )
+        }
+
+        return DomainResult.success(views)
     }
 
     private fun validateTrade(trade: TradeView): PortfolioError? {
@@ -161,6 +230,31 @@ class PortfolioService(
     private fun failure(error: PortfolioError): DomainResult<Nothing> =
         DomainResult.failure(PortfolioException(error))
 
+    private suspend fun convertToCurrency(
+        money: Money,
+        on: LocalDate,
+        targetCurrency: String,
+        fxRateService: FxRateService,
+    ): DomainResult<Money> {
+        if (money.currency == targetCurrency) {
+            return DomainResult.success(money)
+        }
+
+        val rateResult = fxRateService.rateOn(on, money.currency, targetCurrency)
+        if (rateResult.isFailure) {
+            return DomainResult.failure(rateResult.exceptionOrNull()!!)
+        }
+
+        val rate = rateResult.getOrThrow()
+        val convertedAmount = money.amount.multiply(rate, MathContext.DECIMAL128)
+        return DomainResult.success(Money.of(convertedAmount, targetCurrency))
+    }
+
+    interface Storage {
+        suspend fun <T> transaction(block: suspend Transaction.() -> DomainResult<T>): DomainResult<T>
+
+        suspend fun listPositions(portfolioId: UUID): DomainResult<List<PositionSummary>>
+
     interface Storage {
         suspend fun <T> transaction(block: suspend Transaction.() -> DomainResult<T>): DomainResult<T>
 
@@ -202,6 +296,15 @@ class PortfolioService(
         val broker: String?,
         val note: String?,
         val externalId: String?,
+    )
+
+    data class PositionSummary(
+        val portfolioId: UUID,
+        val instrumentId: Long,
+        val instrumentName: String,
+        val quantity: BigDecimal,
+        val averagePrice: Money?,
+        val valuationMethod: ValuationMethod,
     )
 
     private fun zero(currency: String): Money = Money.of(BigDecimal.ZERO, currency)
