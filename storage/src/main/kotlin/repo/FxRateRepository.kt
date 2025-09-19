@@ -10,11 +10,15 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import repo.mapper.setValues
 import repo.mapper.toColumnValues
 import repo.mapper.toDbTimestamp
 import repo.mapper.toFxRate
 import repo.tables.FxRatesTable
+import portfolio.service.FxRateRepository as FxRateRepositoryContract
+
+class FxRateRepository : FxRateRepositoryContract {
 
 class FxRateRepository {
     suspend fun upsert(rate: FxRate): FxRate = dbQuery {
@@ -28,6 +32,15 @@ class FxRateRepository {
             }
         }
         FxRatesTable.select { predicate }.single().toFxRate()
+    }
+
+    override suspend fun findOnOrBefore(ccy: String, timestamp: Instant): FxRate? = dbQuery {
+        FxRatesTable.select {
+            (FxRatesTable.ccy eq ccy) and (FxRatesTable.ts lessEq timestamp.toDbTimestamp())
+        }
+            .orderBy(FxRatesTable.ts, SortOrder.DESC)
+            .limit(1)
+            .singleOrNull()?.toFxRate()
     }
 
     suspend fun findLatest(ccy: String): FxRate? = dbQuery {

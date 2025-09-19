@@ -12,3 +12,5 @@ sealed interface PortfolioError {
 }
 
 typealias DomainResult<T> = Result<T>
+
+class PortfolioException(val error: PortfolioError) : RuntimeException(error.message)

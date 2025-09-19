@@ -62,6 +62,11 @@ class RepositorySignatureTest {
     @Test
     fun `fx rate repository exposes expected API`() {
         val functions = FxRateRepository::class.declaredMemberFunctions.map { it.name }.toSet()
+        assertTrue(
+            functions.containsAll(
+                listOf("upsert", "findOnOrBefore", "findLatest", "find", "list", "delete"),
+            ),
+        )
         assertTrue(functions.containsAll(listOf("upsert", "findLatest", "find", "list", "delete")))
     }
 
