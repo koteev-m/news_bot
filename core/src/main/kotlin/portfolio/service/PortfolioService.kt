@@ -118,6 +118,24 @@ class PortfolioService(
         }
 
         val recordResult = transaction.recordTrade(
+                StoredTrade(
+                    tradeId = trade.tradeId,
+                    portfolioId = trade.portfolioId,
+                    instrumentId = trade.instrumentId,
+                    tradeDate = trade.tradeDate,
+                    executedAt = trade.executedAt,
+                    side = trade.side,
+                    quantity = quantity,
+                    price = trade.price,
+                    fee = trade.fee,
+                    tax = trade.tax,
+                    notional = trade.notional,
+                    valuationMethod = method,
+                    realizedPnl = if (trade.side == TradeSide.SELL) outcome.realizedPnl else null,
+                    broker = trade.broker,
+                    note = trade.note,
+                    externalId = trade.externalId,
+                ),
             StoredTrade(
                 tradeId = trade.tradeId,
                 portfolioId = trade.portfolioId,
@@ -172,6 +190,7 @@ class PortfolioService(
         val portfolioId: UUID,
         val instrumentId: Long,
         val tradeDate: java.time.LocalDate,
+        val executedAt: Instant,
         val side: TradeSide,
         val quantity: BigDecimal,
         val price: Money,
@@ -180,6 +199,9 @@ class PortfolioService(
         val notional: Money,
         val valuationMethod: ValuationMethod,
         val realizedPnl: Money?,
+        val broker: String?,
+        val note: String?,
+        val externalId: String?,
     )
 
     private fun zero(currency: String): Money = Money.of(BigDecimal.ZERO, currency)
