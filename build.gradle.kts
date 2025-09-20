@@ -24,3 +24,17 @@ subprojects {
         useJUnitPlatform()
     }
 }
+
+tasks.register("installGitHooks") {
+    description = "Install pre-commit hook to block merge conflict markers."
+    group = "git"
+    doLast {
+        val hookSrc = file("tools/git-hooks/pre-commit")
+        val hookDst = file(".git/hooks/pre-commit")
+        if (!hookSrc.exists()) error("Missing tools/git-hooks/pre-commit")
+        hookDst.parentFile.mkdirs()
+        hookSrc.copyTo(hookDst, overwrite = true)
+        hookDst.setExecutable(true)
+        println("Installed .git/hooks/pre-commit")
+    }
+}

@@ -11,8 +11,8 @@ class MoneyTest {
     fun `creates money with normalized scale and uppercase currency`() {
         val money = Money.of(BigDecimal("10.00"), "usd")
 
-        assertEquals(BigDecimal("10"), money.amount)
-        assertEquals(0, money.amount.scale())
+        assertEquals(BigDecimal("10.00000000"), money.amount)
+        assertEquals(8, money.amount.scale())
         assertEquals("USD", money.currency)
     }
 
@@ -23,7 +23,7 @@ class MoneyTest {
 
         val result = first + second
 
-        assertEquals(BigDecimal("15.3"), result.amount)
+        assertEquals(BigDecimal("15.30000000"), result.amount)
         assertEquals("USD", result.currency)
     }
 
@@ -34,7 +34,7 @@ class MoneyTest {
 
         val result = first - second
 
-        assertEquals(BigDecimal("59.5"), result.amount)
+        assertEquals(BigDecimal("59.50000000"), result.amount)
     }
 
     @Test
@@ -43,7 +43,7 @@ class MoneyTest {
 
         val result = money * BigDecimal("2.50")
 
-        assertEquals(BigDecimal("25"), result.amount)
+        assertEquals(BigDecimal("25.00000000"), result.amount)
     }
 
     @Test
@@ -52,7 +52,7 @@ class MoneyTest {
 
         val result = money * 3
 
-        assertEquals(BigDecimal("22.5"), result.amount)
+        assertEquals(BigDecimal("22.50000000"), result.amount)
     }
 
     @Test
@@ -76,6 +76,6 @@ class MoneyTest {
 
         val result = -money
 
-        assertEquals(BigDecimal("-12.34"), result.amount)
+        assertEquals(BigDecimal("-12.34000000"), result.amount)
     }
 }

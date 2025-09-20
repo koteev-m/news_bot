@@ -19,8 +19,6 @@ import repo.tables.FxRatesTable
 import portfolio.service.FxRateRepository as FxRateRepositoryContract
 
 class FxRateRepository : FxRateRepositoryContract {
-
-class FxRateRepository {
     suspend fun upsert(rate: FxRate): FxRate = dbQuery {
         val predicate = (FxRatesTable.ccy eq rate.ccy) and (FxRatesTable.ts eq rate.ts.toDbTimestamp())
         val updated = FxRatesTable.update({ predicate }) {

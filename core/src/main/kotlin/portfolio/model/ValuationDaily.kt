@@ -12,7 +12,4 @@ data class ValuationDaily(
     val pnlDay: Money,
     val pnlTotal: Money,
     @Contextual val drawdown: BigDecimal,
-    val totalValue: Money,
-    val unrealizedPnl: Money?,
-    val realizedPnl: Money?
 )

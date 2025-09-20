@@ -1,59 +1,63 @@
 package portfolio.model
 
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.Locale
-import kotlin.ConsistentCopyVisibility
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 
-@ConsistentCopyVisibility
+private const val SCALE = 8
+
+private fun BigDecimal.norm(): BigDecimal = this.setScale(SCALE, RoundingMode.HALF_UP)
+
 @Serializable
-data class Money internal constructor(
+data class Money(
     @Contextual val amount: BigDecimal,
+    val ccy: String
+) : Comparable<Money> {
+
     val currency: String
-) {
+        get() = ccy
+
     init {
-        require(isNormalized(amount)) { "Amount scale must be normalized" }
-        require(CURRENCY_REGEX.matches(currency)) { "Currency must be a valid ISO 4217 code" }
+        require(ccy.matches(Regex("^[A-Z]{3}$"))) { "Currency must be ISO-4217 3 letters, got '$ccy'" }
+    }
+
+    private fun requireSame(other: Money) {
+        require(ccy == other.ccy) { "Currency mismatch: $ccy vs ${other.ccy}" }
     }
 
     operator fun plus(other: Money): Money {
-        ensureSameCurrency(other)
-        return of(amount + other.amount, currency)
+        requireSame(other)
+        return Money(amount.add(other.amount).norm(), ccy)
     }
 
     operator fun minus(other: Money): Money {
-        ensureSameCurrency(other)
-        return of(amount - other.amount, currency)
+        requireSame(other)
+        return Money(amount.subtract(other.amount).norm(), ccy)
     }
 
-    operator fun times(multiplier: BigDecimal): Money = of(amount.multiply(multiplier), currency)
+    operator fun times(multiplier: BigDecimal): Money =
+        Money(amount.multiply(multiplier).norm(), ccy)
 
     operator fun times(multiplier: Long): Money = times(BigDecimal.valueOf(multiplier))
 
     operator fun times(multiplier: Int): Money = times(multiplier.toLong())
 
-    operator fun unaryMinus(): Money = of(amount.negate(), currency)
+    operator fun unaryMinus(): Money = Money(amount.negate().norm(), ccy)
 
-    private fun ensureSameCurrency(other: Money) {
-        require(currency == other.currency) { "Currency mismatch: $currency != ${other.currency}" }
+    override operator fun compareTo(other: Money): Int {
+        requireSame(other)
+        return amount.compareTo(other.amount)
     }
 
     companion object {
-        private val CURRENCY_REGEX = Regex("^[A-Z]{3}$")
+        fun zero(ccy: String): Money = Money(
+            BigDecimal.ZERO.setScale(SCALE, RoundingMode.HALF_UP),
+            ccy.trim().uppercase(Locale.ROOT)
+        )
 
-        fun of(amount: BigDecimal, currency: String): Money {
-            val normalizedCurrency = currency.trim().uppercase(Locale.ROOT)
-            require(CURRENCY_REGEX.matches(normalizedCurrency)) { "Currency must be a valid ISO 4217 code" }
-            val normalizedAmount = normalize(amount)
-            return Money(normalizedAmount, normalizedCurrency)
-        }
-
-        private fun normalize(amount: BigDecimal): BigDecimal {
-            val stripped = amount.stripTrailingZeros()
-            return if (stripped.scale() < 0) stripped.setScale(0) else stripped
-        }
-
-        internal fun isNormalized(amount: BigDecimal): Boolean = amount == normalize(amount)
+        fun of(amount: BigDecimal, ccy: String): Money =
+            Money(amount.norm(), ccy.trim().uppercase(Locale.ROOT))
     }
 }

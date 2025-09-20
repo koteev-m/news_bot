@@ -2,7 +2,15 @@ package portfolio.service
 
 import java.math.BigDecimal
 import java.math.MathContext
+import java.math.RoundingMode
 import portfolio.model.Money
+
+private const val SCALE = 8
+
+private fun BigDecimal.normalized(): BigDecimal = setScale(SCALE, RoundingMode.HALF_UP)
+
+private fun money(amount: BigDecimal, ccy: String): Money =
+    Money.zero(ccy).copy(amount = amount.normalized())
 
 interface PositionCalc {
     data class Lot(
@@ -17,7 +25,7 @@ interface PositionCalc {
             get() = if (quantity.compareTo(BigDecimal.ZERO) == 0) {
                 null
             } else {
-                Money.of(costBasis.amount.divide(quantity, MATH_CONTEXT), costBasis.currency)
+                money(costBasis.amount.divide(quantity, MATH_CONTEXT), costBasis.ccy)
             }
     }
 
@@ -28,24 +36,24 @@ interface PositionCalc {
     ) {
         init {
             require(quantity >= BigDecimal.ZERO) { "Position quantity cannot be negative" }
-            require(lots.all { it.costBasis.currency == costBasis.currency }) {
+            require(lots.all { it.costBasis.ccy == costBasis.ccy }) {
                 "Lot currency must match position currency"
             }
         }
 
-        val currency: String = costBasis.currency
+        val currency: String = costBasis.ccy
 
         val averagePrice: Money?
             get() = if (quantity.compareTo(BigDecimal.ZERO) == 0) {
                 null
             } else {
-                Money.of(costBasis.amount.divide(quantity, MATH_CONTEXT), currency)
+                money(costBasis.amount.divide(quantity, MATH_CONTEXT), currency)
             }
 
         companion object {
             fun empty(currency: String): Position = Position(
                 BigDecimal.ZERO,
-                Money.of(BigDecimal.ZERO, currency),
+                Money.zero(currency),
                 emptyList()
             )
         }
@@ -60,14 +68,14 @@ interface PositionCalc {
         position: Position,
         quantity: BigDecimal,
         price: Money,
-        fees: Money = Money.of(BigDecimal.ZERO, price.currency)
+        fees: Money = Money.zero(price.ccy)
     ): Result
 
     fun applySell(
         position: Position,
         quantity: BigDecimal,
         price: Money,
-        fees: Money = Money.of(BigDecimal.ZERO, price.currency)
+        fees: Money = Money.zero(price.ccy)
     ): Result
 
     class AverageCostCalc : PositionCalc {
@@ -80,11 +88,11 @@ interface PositionCalc {
             validateInputs(position, quantity, price, fees)
             require(quantity > BigDecimal.ZERO) { "Buy quantity must be positive" }
 
-            val totalCost = price * quantity + fees
+            val totalCost = price.times(quantity) + fees
             val newQuantity = position.quantity + quantity
             val newCostBasis = position.costBasis + totalCost
             val updatedPosition = Position(newQuantity, newCostBasis)
-            return Result(updatedPosition, zero(price.currency))
+            return Result(updatedPosition, Money.zero(price.ccy))
         }
 
         override fun applySell(
@@ -97,12 +105,12 @@ interface PositionCalc {
             require(quantity > BigDecimal.ZERO) { "Sell quantity must be positive" }
             require(position.quantity >= quantity) { "Cannot sell more than current quantity" }
 
-            val proceeds = price * quantity
+            val proceeds = price.times(quantity)
             val costSoldAmount = position.costBasis.amount.multiply(quantity).divide(position.quantity, MATH_CONTEXT)
-            val costSold = Money.of(costSoldAmount, price.currency)
+            val costSold = money(costSoldAmount, price.ccy)
             val newQuantity = position.quantity - quantity
             val newCostBasis = if (newQuantity.compareTo(BigDecimal.ZERO) == 0) {
-                zero(price.currency)
+                Money.zero(price.ccy)
             } else {
                 position.costBasis - costSold
             }
@@ -122,13 +130,13 @@ interface PositionCalc {
             validateInputs(position, quantity, price, fees)
             require(quantity > BigDecimal.ZERO) { "Buy quantity must be positive" }
 
-            val totalCost = price * quantity + fees
+            val totalCost = price.times(quantity) + fees
             val newLot = Lot(quantity, totalCost)
             val newQuantity = position.quantity + quantity
             val newCostBasis = position.costBasis + totalCost
-            val updatedLots = position.lots + newLot
-            val updatedPosition = Position(newQuantity, newCostBasis, updatedLots)
-            return Result(updatedPosition, zero(price.currency))
+            val newLots = position.lots + newLot
+            val updatedPosition = Position(newQuantity, newCostBasis, newLots)
+            return Result(updatedPosition, Money.zero(price.ccy))
         }
 
         override fun applySell(
@@ -162,7 +170,7 @@ interface PositionCalc {
                     val remainingCost = lot.costBasis.amount - lotShare
                     val updatedLot = Lot(
                         remainingQuantityInLot,
-                        Money.of(remainingCost, lot.costBasis.currency)
+                        money(remainingCost, lot.costBasis.ccy)
                     )
                     updatedLots += updatedLot
                 }
@@ -171,14 +179,14 @@ interface PositionCalc {
 
             require(remaining.compareTo(BigDecimal.ZERO) == 0) { "Insufficient lots to close quantity" }
 
-            val costSold = Money.of(costSoldAmount, price.currency)
-            val proceeds = price * quantity
+            val costSold = money(costSoldAmount, price.ccy)
+            val proceeds = price.times(quantity)
             val realized = proceeds - costSold - fees
             val newQuantity = position.quantity - quantity
             val newCostBasis = if (newQuantity.compareTo(BigDecimal.ZERO) == 0) {
-                zero(price.currency)
+                Money.zero(price.ccy)
             } else {
-                Money.of(position.costBasis.amount - costSoldAmount, price.currency)
+                money(position.costBasis.amount - costSoldAmount, price.ccy)
             }
             val lotsAfterSale = if (newQuantity.compareTo(BigDecimal.ZERO) == 0) emptyList() else updatedLots
             val updatedPosition = Position(newQuantity, newCostBasis, lotsAfterSale)
@@ -191,12 +199,10 @@ interface PositionCalc {
 
         private fun validateInputs(position: Position, quantity: BigDecimal, price: Money, fees: Money) {
             require(quantity >= BigDecimal.ZERO) { "Quantity cannot be negative" }
-            require(fees.currency == price.currency) { "Fee currency must match price currency" }
+            require(fees.ccy == price.ccy) { "Fee currency must match price currency" }
             require(fees.amount >= BigDecimal.ZERO) { "Fees cannot be negative" }
-            require(price.currency == position.costBasis.currency) { "Currency mismatch with position" }
-            require(fees.currency == position.costBasis.currency) { "Currency mismatch with position fees" }
+            require(price.ccy == position.costBasis.ccy) { "Currency mismatch with position" }
+            require(fees.ccy == position.costBasis.ccy) { "Currency mismatch with position fees" }
         }
-
-        private fun zero(currency: String): Money = Money.of(BigDecimal.ZERO, currency)
     }
 }

@@ -45,9 +45,10 @@ class ValuationServiceTest {
         assertEquals(BigDecimal.ZERO, valuation.drawdown)
         assertEquals(1, storage.upserts.size)
         val record = storage.upserts.single()
-        assertEquals(BigDecimal.ZERO, record.valueRub)
-        assertEquals(BigDecimal.ZERO, record.pnlDay)
-        assertEquals(BigDecimal.ZERO, record.pnlTotal)
+        val zero = BigDecimal.ZERO.setScale(8)
+        assertEquals(zero, record.valueRub)
+        assertEquals(zero, record.pnlDay)
+        assertEquals(zero, record.pnlTotal)
         assertEquals(BigDecimal.ZERO, record.drawdown)
     }
 
