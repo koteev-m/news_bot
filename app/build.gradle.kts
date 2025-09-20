@@ -5,8 +5,11 @@ plugins {
 dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
-    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.server.auth)
+    implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.java.jwt)
     implementation(project(":core"))
     implementation(project(":storage"))
     implementation(project(":integrations"))
@@ -15,6 +18,7 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.exposed.java.time)
     implementation("io.micrometer:micrometer-registry-prometheus:${libs.versions.micrometer.get()}")
+    testImplementation(libs.kotlin.test)
 }
 
 application {
