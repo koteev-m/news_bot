@@ -7,7 +7,6 @@ import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -30,13 +29,17 @@ class PortfolioRepository {
     }
 
     suspend fun findById(portfolioId: UUID): PortfolioEntity? = dbQuery {
-        PortfoliosTable.select { PortfoliosTable.portfolioId eq portfolioId }
+        PortfoliosTable
+            .selectAll()
+            .where { PortfoliosTable.portfolioId eq portfolioId }
             .singleOrNull()?.toPortfolioEntity()
     }
 
     suspend fun findByUser(userId: Long, limit: Int, offset: Long = 0): List<PortfolioEntity> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        PortfoliosTable.select { PortfoliosTable.userId eq userId }
+        PortfoliosTable
+            .selectAll()
+            .where { PortfoliosTable.userId eq userId }
             .orderBy(PortfoliosTable.createdAt, SortOrder.DESC)
             .limit(limit, offset)
             .map { it.toPortfolioEntity() }
@@ -53,9 +56,11 @@ class PortfolioRepository {
     suspend fun searchByName(userId: Long, query: String, limit: Int, offset: Long = 0): List<PortfolioEntity> = dbQuery {
         require(limit > 0) { "limit must be positive" }
         val pattern = "%${query.lowercase()}%"
-        PortfoliosTable.select {
-            (PortfoliosTable.userId eq userId) and (LowerCase(PortfoliosTable.name) like pattern)
-        }
+        PortfoliosTable
+            .selectAll()
+            .where {
+                (PortfoliosTable.userId eq userId) and (LowerCase(PortfoliosTable.name) like pattern)
+            }
             .orderBy(PortfoliosTable.name, SortOrder.ASC)
             .limit(limit, offset)
             .map { it.toPortfolioEntity() }
@@ -70,7 +75,9 @@ class PortfolioRepository {
             it.setValues(values)
         }
         if (updated > 0) {
-            PortfoliosTable.select { PortfoliosTable.portfolioId eq portfolioId }
+            PortfoliosTable
+                .selectAll()
+                .where { PortfoliosTable.portfolioId eq portfolioId }
                 .singleOrNull()?.toPortfolioEntity()
         } else {
             null

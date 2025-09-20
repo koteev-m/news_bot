@@ -40,7 +40,16 @@ dependencies {
     add("flyway", libs.flyway.postgresql)
     add("flyway", libs.flyway.core)
 
-    testImplementation("com.h2database:h2:2.2.224")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.core)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit)
+    testImplementation(libs.flyway.postgresql)
+    testImplementation(libs.coroutines.core)
+    testRuntimeOnly(libs.logback.classic)
 }
 
 configure<FlywayExtension> {
@@ -50,4 +59,8 @@ configure<FlywayExtension> {
     schemas = arrayOf(System.getenv("DATABASE_SCHEMA") ?: "public")
     locations = arrayOf("filesystem:src/main/resources/db/migration")
     configurations = arrayOf("flyway")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

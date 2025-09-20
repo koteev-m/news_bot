@@ -6,7 +6,6 @@ import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.or
-import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -42,7 +41,9 @@ class InstrumentRepository {
             it.setValues(values)
         }
         if (updated > 0) {
-            InstrumentsTable.select { InstrumentsTable.instrumentId eq instrumentId }
+            InstrumentsTable
+                .selectAll()
+                .where { InstrumentsTable.instrumentId eq instrumentId }
                 .singleOrNull()?.toInstrumentEntity()
         } else {
             null
@@ -54,35 +55,46 @@ class InstrumentRepository {
     }
 
     suspend fun findById(instrumentId: Long): InstrumentEntity? = dbQuery {
-        InstrumentsTable.select { InstrumentsTable.instrumentId eq instrumentId }
+        InstrumentsTable
+            .selectAll()
+            .where { InstrumentsTable.instrumentId eq instrumentId }
             .singleOrNull()?.toInstrumentEntity()
     }
 
     suspend fun findByIsin(isin: String): InstrumentEntity? = dbQuery {
-        InstrumentsTable.select { InstrumentsTable.isin eq isin }
+        InstrumentsTable
+            .selectAll()
+            .where { InstrumentsTable.isin eq isin }
             .singleOrNull()?.toInstrumentEntity()
     }
 
     suspend fun findBySymbol(exchange: String, board: String?, symbol: String): InstrumentEntity? = dbQuery {
-        InstrumentsTable.select {
-            val boardCondition = board?.let { InstrumentsTable.board eq it } ?: InstrumentsTable.board.isNull()
-            (InstrumentsTable.exchange eq exchange) and boardCondition and (InstrumentsTable.symbol eq symbol)
-        }.singleOrNull()?.toInstrumentEntity()
+        InstrumentsTable
+            .selectAll()
+            .where {
+                val boardCondition = board?.let { InstrumentsTable.board eq it } ?: InstrumentsTable.board.isNull()
+                (InstrumentsTable.exchange eq exchange) and boardCondition and (InstrumentsTable.symbol eq symbol)
+            }
+            .singleOrNull()?.toInstrumentEntity()
     }
 
     suspend fun search(query: String, limit: Int, offset: Long = 0): List<InstrumentEntity> = dbQuery {
         require(limit > 0) { "limit must be positive" }
         val pattern = "%${query}%"
-        InstrumentsTable.select {
-            (InstrumentsTable.symbol like pattern) or (InstrumentsTable.exchange like pattern)
-        }
+        InstrumentsTable
+            .selectAll()
+            .where {
+                (InstrumentsTable.symbol like pattern) or (InstrumentsTable.exchange like pattern)
+            }
             .orderBy(InstrumentsTable.symbol, SortOrder.ASC)
             .limit(limit, offset)
             .map { it.toInstrumentEntity() }
     }
 
     suspend fun listAliases(instrumentId: Long): List<InstrumentAliasEntity> = dbQuery {
-        InstrumentAliasesTable.select { InstrumentAliasesTable.instrumentId eq instrumentId }
+        InstrumentAliasesTable
+            .selectAll()
+            .where { InstrumentAliasesTable.instrumentId eq instrumentId }
             .orderBy(InstrumentAliasesTable.alias, SortOrder.ASC)
             .map { it.toInstrumentAliasEntity() }
     }
@@ -100,9 +112,12 @@ class InstrumentRepository {
     }
 
     suspend fun findAlias(alias: String, source: String): InstrumentAliasEntity? = dbQuery {
-        InstrumentAliasesTable.select {
-            (InstrumentAliasesTable.alias eq alias) and (InstrumentAliasesTable.sourceCol eq source)
-        }.singleOrNull()?.toInstrumentAliasEntity()
+        InstrumentAliasesTable
+            .selectAll()
+            .where {
+                (InstrumentAliasesTable.alias eq alias) and (InstrumentAliasesTable.sourceCol eq source)
+            }
+            .singleOrNull()?.toInstrumentAliasEntity()
     }
 
     suspend fun listAll(limit: Int, offset: Long = 0): List<InstrumentEntity> = dbQuery {

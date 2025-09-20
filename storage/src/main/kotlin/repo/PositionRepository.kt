@@ -7,7 +7,7 @@ import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import repo.mapper.setValues
@@ -28,17 +28,27 @@ class PositionRepository {
                 it.setValues(position.toInsertValues())
             }
         }
-        PositionsTable.select { predicate }.single().toPositionDto()
+        PositionsTable
+            .selectAll()
+            .where { predicate }
+            .single()
+            .toPositionDto()
     }
 
     suspend fun find(portfolioId: UUID, instrumentId: Long): PositionDto? = dbQuery {
         val predicate = (PositionsTable.portfolioId eq portfolioId) and (PositionsTable.instrumentId eq instrumentId)
-        PositionsTable.select { predicate }.singleOrNull()?.toPositionDto()
+        PositionsTable
+            .selectAll()
+            .where { predicate }
+            .singleOrNull()
+            ?.toPositionDto()
     }
 
     suspend fun list(portfolioId: UUID, limit: Int, offset: Long = 0): List<PositionDto> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        PositionsTable.select { PositionsTable.portfolioId eq portfolioId }
+        PositionsTable
+            .selectAll()
+            .where { PositionsTable.portfolioId eq portfolioId }
             .orderBy(PositionsTable.instrumentId, SortOrder.ASC)
             .limit(limit, offset)
             .map { it.toPositionDto() }

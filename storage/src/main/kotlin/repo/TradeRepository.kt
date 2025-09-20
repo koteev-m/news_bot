@@ -8,7 +8,7 @@ import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.between
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -40,7 +40,9 @@ class TradeRepository {
             it.setValues(values)
         }
         if (updated > 0) {
-            TradesTable.select { TradesTable.tradeId eq tradeId }
+            TradesTable
+                .selectAll()
+                .where { TradesTable.tradeId eq tradeId }
                 .singleOrNull()?.toTradeDto()
         } else {
             null
@@ -52,18 +54,24 @@ class TradeRepository {
     }
 
     suspend fun findById(tradeId: Long): TradeDto? = dbQuery {
-        TradesTable.select { TradesTable.tradeId eq tradeId }
+        TradesTable
+            .selectAll()
+            .where { TradesTable.tradeId eq tradeId }
             .singleOrNull()?.toTradeDto()
     }
 
     suspend fun findByExternalId(extId: String): TradeDto? = dbQuery {
-        TradesTable.select { TradesTable.extId eq extId }
+        TradesTable
+            .selectAll()
+            .where { TradesTable.extId eq extId }
             .singleOrNull()?.toTradeDto()
     }
 
     suspend fun listByPortfolio(portfolioId: UUID, limit: Int, offset: Long = 0): List<TradeDto> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        TradesTable.select { TradesTable.portfolioId eq portfolioId }
+        TradesTable
+            .selectAll()
+            .where { TradesTable.portfolioId eq portfolioId }
             .orderBy(TradesTable.datetime, SortOrder.DESC)
             .limit(limit, offset)
             .map { it.toTradeDto() }
@@ -71,7 +79,9 @@ class TradeRepository {
 
     suspend fun listByInstrument(instrumentId: Long, limit: Int, offset: Long = 0): List<TradeDto> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        TradesTable.select { TradesTable.instrumentId eq instrumentId }
+        TradesTable
+            .selectAll()
+            .where { TradesTable.instrumentId eq instrumentId }
             .orderBy(TradesTable.datetime, SortOrder.DESC)
             .limit(limit, offset)
             .map { it.toTradeDto() }
@@ -92,7 +102,9 @@ class TradeRepository {
             else -> null
         }
         val op = condition?.let { (TradesTable.portfolioId eq portfolioId) and it } ?: (TradesTable.portfolioId eq portfolioId)
-        TradesTable.select { op }
+        TradesTable
+            .selectAll()
+            .where { op }
             .orderBy(TradesTable.datetime, SortOrder.DESC)
             .limit(limit, offset)
             .map { it.toTradeDto() }

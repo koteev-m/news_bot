@@ -7,7 +7,7 @@ import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
@@ -29,34 +29,48 @@ class FxRateRepository : FxRateRepositoryContract {
                 it.setValues(rate.toColumnValues())
             }
         }
-        FxRatesTable.select { predicate }.single().toFxRate()
+        FxRatesTable
+            .selectAll()
+            .where { predicate }
+            .single()
+            .toFxRate()
     }
 
     override suspend fun findOnOrBefore(ccy: String, timestamp: Instant): FxRate? = dbQuery {
-        FxRatesTable.select {
-            (FxRatesTable.ccy eq ccy) and (FxRatesTable.ts lessEq timestamp.toDbTimestamp())
-        }
+        FxRatesTable
+            .selectAll()
+            .where {
+                (FxRatesTable.ccy eq ccy) and (FxRatesTable.ts lessEq timestamp.toDbTimestamp())
+            }
             .orderBy(FxRatesTable.ts, SortOrder.DESC)
             .limit(1)
             .singleOrNull()?.toFxRate()
     }
 
     suspend fun findLatest(ccy: String): FxRate? = dbQuery {
-        FxRatesTable.select { FxRatesTable.ccy eq ccy }
+        FxRatesTable
+            .selectAll()
+            .where { FxRatesTable.ccy eq ccy }
             .orderBy(FxRatesTable.ts, SortOrder.DESC)
             .limit(1)
             .singleOrNull()?.toFxRate()
     }
 
     suspend fun find(ccy: String, timestamp: Instant): FxRate? = dbQuery {
-        FxRatesTable.select {
-            (FxRatesTable.ccy eq ccy) and (FxRatesTable.ts eq timestamp.toDbTimestamp())
-        }.singleOrNull()?.toFxRate()
+        FxRatesTable
+            .selectAll()
+            .where {
+                (FxRatesTable.ccy eq ccy) and (FxRatesTable.ts eq timestamp.toDbTimestamp())
+            }
+            .singleOrNull()
+            ?.toFxRate()
     }
 
     suspend fun list(ccy: String, limit: Int, offset: Long = 0): List<FxRate> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        FxRatesTable.select { FxRatesTable.ccy eq ccy }
+        FxRatesTable
+            .selectAll()
+            .where { FxRatesTable.ccy eq ccy }
             .orderBy(FxRatesTable.ts, SortOrder.DESC)
             .limit(limit, offset)
             .map { it.toFxRate() }

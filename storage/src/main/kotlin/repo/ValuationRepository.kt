@@ -7,7 +7,7 @@ import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
@@ -32,18 +32,28 @@ class ValuationRepository {
                 it.setValues(record.toColumnValues())
             }
         }
-        ValuationsDailyTable.select { predicate }.single().toValuationDailyRecord()
+        ValuationsDailyTable
+            .selectAll()
+            .where { predicate }
+            .single()
+            .toValuationDailyRecord()
     }
 
     suspend fun find(portfolioId: UUID, date: LocalDate): ValuationDailyRecord? = dbQuery {
-        ValuationsDailyTable.select {
-            (ValuationsDailyTable.portfolioId eq portfolioId) and (ValuationsDailyTable.date eq date)
-        }.singleOrNull()?.toValuationDailyRecord()
+        ValuationsDailyTable
+            .selectAll()
+            .where {
+                (ValuationsDailyTable.portfolioId eq portfolioId) and (ValuationsDailyTable.date eq date)
+            }
+            .singleOrNull()
+            ?.toValuationDailyRecord()
     }
 
     suspend fun list(portfolioId: UUID, limit: Int, offset: Long = 0): List<ValuationDailyRecord> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        ValuationsDailyTable.select { ValuationsDailyTable.portfolioId eq portfolioId }
+        ValuationsDailyTable
+            .selectAll()
+            .where { ValuationsDailyTable.portfolioId eq portfolioId }
             .orderBy(ValuationsDailyTable.date, SortOrder.DESC)
             .limit(limit, offset)
             .map { it.toValuationDailyRecord() }
@@ -56,11 +66,13 @@ class ValuationRepository {
         offset: Long = 0,
     ): List<ValuationDailyRecord> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        ValuationsDailyTable.select {
-            (ValuationsDailyTable.portfolioId eq portfolioId) and
-                (ValuationsDailyTable.date greaterEq range.from) and
-                (ValuationsDailyTable.date lessEq range.to)
-        }
+        ValuationsDailyTable
+            .selectAll()
+            .where {
+                (ValuationsDailyTable.portfolioId eq portfolioId) and
+                    (ValuationsDailyTable.date greaterEq range.from) and
+                    (ValuationsDailyTable.date lessEq range.to)
+            }
             .orderBy(ValuationsDailyTable.date, SortOrder.DESC)
             .limit(limit, offset)
             .map { it.toValuationDailyRecord() }
