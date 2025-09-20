@@ -5,7 +5,6 @@ import java.time.Clock
 import java.math.MathContext
 import java.time.Instant
 import java.time.LocalDate
-import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
@@ -205,20 +204,6 @@ class PortfolioService(
                     note = trade.note,
                     externalId = trade.externalId,
                 ),
-            StoredTrade(
-                tradeId = trade.tradeId,
-                portfolioId = trade.portfolioId,
-                instrumentId = trade.instrumentId,
-                tradeDate = trade.tradeDate,
-                side = trade.side,
-                quantity = quantity,
-                price = trade.price,
-                fee = trade.fee,
-                tax = trade.tax,
-                notional = trade.notional,
-                valuationMethod = method,
-                realizedPnl = if (trade.side == TradeSide.SELL) outcome.realizedPnl else null,
-            ),
         )
         if (recordResult.isFailure) {
             return DomainResult.failure(recordResult.exceptionOrNull()!!)
@@ -254,9 +239,6 @@ class PortfolioService(
         suspend fun <T> transaction(block: suspend Transaction.() -> DomainResult<T>): DomainResult<T>
 
         suspend fun listPositions(portfolioId: UUID): DomainResult<List<PositionSummary>>
-
-    interface Storage {
-        suspend fun <T> transaction(block: suspend Transaction.() -> DomainResult<T>): DomainResult<T>
 
         interface Transaction {
             suspend fun loadPosition(
@@ -307,7 +289,7 @@ class PortfolioService(
         val valuationMethod: ValuationMethod,
     )
 
-    private fun zero(currency: String): Money = Money.of(BigDecimal.ZERO, currency)
+    private fun zero(currency: String): Money = Money.zero(currency)
 
     private val calculators: Map<ValuationMethod, PositionCalc> = mapOf(
         ValuationMethod.AVERAGE to PositionCalc.AverageCostCalc(),

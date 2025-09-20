@@ -68,11 +68,11 @@ class PricingService(
 
     private suspend fun convertToBase(price: Money, on: LocalDate): DomainResult<Money> {
         val baseCurrency = config.baseCurrency
-        if (price.currency == baseCurrency) {
+        if (price.ccy == baseCurrency) {
             return DomainResult.success(price)
         }
 
-        val rateResult = fxRateService.rateOn(on, price.currency, baseCurrency)
+        val rateResult = fxRateService.rateOn(on, price.ccy, baseCurrency)
         return rateResult.fold(
             onSuccess = { rate ->
                 val amountInBase = price.amount.multiply(rate)

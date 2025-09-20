@@ -3,7 +3,6 @@ package portfolio.model
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
-import java.time.Instant
 import java.util.UUID
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
@@ -57,8 +56,4 @@ data class RealizedPnlEntry(
     val amount: Money,
     val assetClass: String?,
     val sector: String?,
-    val positions: List<PositionView>,
-    val trades: List<TradeView>,
-    val valuations: List<ValuationDaily>,
-    @Contextual val generatedAt: Instant
 )

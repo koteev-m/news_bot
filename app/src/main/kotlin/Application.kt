@@ -1,6 +1,7 @@
 package app
 
 import db.DatabaseFactory
+import di.installPortfolioModule
 import health.healthRoutes
 import integrations.integrationsModule
 import io.ktor.serialization.kotlinx.json.*
@@ -14,8 +15,8 @@ fun main() {
     embeddedServer(Netty, port = 8080) {
         install(ContentNegotiation) { json() }
         DatabaseFactory.init()
-        @Suppress("UNUSED_VARIABLE")
-        val integrations = integrationsModule()
+        integrationsModule()
+        installPortfolioModule()
         routing { healthRoutes() }
     }.start(wait = true)
 }
