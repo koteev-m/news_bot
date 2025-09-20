@@ -15,7 +15,7 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
@@ -195,7 +195,8 @@ private class PriceRepository(
             val start = date.atStartOfDay(zoneId).toInstant().toUtcTimestamp()
             val endExclusive = date.plusDays(1).atStartOfDay(zoneId).toInstant().toUtcTimestamp()
             PricesTable
-                .select {
+                .selectAll()
+                .where {
                     (PricesTable.instrumentId eq instrumentId) and
                         (PricesTable.sourceCol eq source) and
                         (PricesTable.ts greaterEq start) and
@@ -211,7 +212,8 @@ private class PriceRepository(
         DatabaseFactory.dbQuery {
             val endExclusive = date.plusDays(1).atStartOfDay(zoneId).toInstant().toUtcTimestamp()
             PricesTable
-                .select {
+                .selectAll()
+                .where {
                     (PricesTable.instrumentId eq instrumentId) and
                         (PricesTable.sourceCol eq source) and
                         (PricesTable.ts less endExclusive)
@@ -274,7 +276,8 @@ private class DatabaseValuationStorage(
         runCatching {
             DatabaseFactory.dbQuery {
                 ValuationsDailyTable
-                    .select {
+                    .selectAll()
+                    .where {
                         (ValuationsDailyTable.portfolioId eq portfolioId) and
                             (ValuationsDailyTable.date less date)
                     }
@@ -373,7 +376,8 @@ private class DatabasePortfolioStorage(
         ): DomainResult<PortfolioService.StoredPosition?> =
             runCatching {
                 PositionsTable
-                    .select {
+                    .selectAll()
+                    .where {
                         (PositionsTable.portfolioId eq portfolioId) and (PositionsTable.instrumentId eq instrumentId)
                     }
                     .limit(1)
@@ -453,8 +457,8 @@ private class DatabasePortfolioStorage(
 
         private fun instrumentCurrency(instrumentId: Long): String? =
             InstrumentsTable
-                .slice(InstrumentsTable.currency)
-                .select { InstrumentsTable.instrumentId eq instrumentId }
+                .selectAll()
+                .where { InstrumentsTable.instrumentId eq instrumentId }
                 .limit(1)
                 .singleOrNull()
                 ?.get(InstrumentsTable.currency)

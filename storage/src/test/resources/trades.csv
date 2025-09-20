@@ -1,0 +1,6 @@
+ext_id,datetime,ticker,exchange,board,alias_source,side,quantity,price,currency,fee,fee_currency,tax,tax_currency,broker,note
+ext-1,2024-03-01T10:00:00Z,SBER,MOEX,TQBR,,BUY,10,250,RUB,0,RUB,,,TestBroker,Initial buy
+ext-2,2024-03-01T11:00:00Z,SBER,MOEX,TQBR,,BUY,5,255,RUB,0,RUB,,,TestBroker,Second buy
+ext-2,2024-03-01T11:00:00Z,SBER,MOEX,TQBR,,BUY,5,255,RUB,0,RUB,,,TestBroker,Duplicate ext id
+,2024-03-01T12:00:00Z,SBER,MOEX,TQBR,,SELL,4,260,RUB,0,RUB,,,TestBroker,Partial sell
+,2024-03-01T13:00:00Z,SBER,MOEX,TQBR,,SELL,20,260,RUB,0,RUB,,,TestBroker,Too big sell
