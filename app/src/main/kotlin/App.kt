@@ -8,6 +8,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.routing.routing
+import routes.authRoutes
 import security.installSecurity
 import security.installUploadGuard
 
@@ -24,5 +25,8 @@ fun Application.module() {
     DatabaseFactory.init()
     integrationsModule()
     installPortfolioModule()
-    routing { healthRoutes() }
+    routing {
+        healthRoutes()
+        authRoutes()
+    }
 }
