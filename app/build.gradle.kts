@@ -19,6 +19,7 @@ dependencies {
     implementation(libs.exposed.java.time)
     implementation("io.micrometer:micrometer-registry-prometheus:${libs.versions.micrometer.get()}")
     testImplementation(libs.kotlin.test)
+    testImplementation(kotlin("test-junit5"))
 }
 
 application {
