@@ -5,10 +5,12 @@ import di.installPortfolioModule
 import health.healthRoutes
 import integrations.integrationsModule
 import io.ktor.server.application.Application
+import io.ktor.server.auth.authenticate
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.routing.routing
 import routes.authRoutes
+import routes.portfolioRoutes
 import security.installSecurity
 import security.installUploadGuard
 
@@ -28,5 +30,8 @@ fun Application.module() {
     routing {
         healthRoutes()
         authRoutes()
+        authenticate("auth-jwt") {
+            portfolioRoutes()
+        }
     }
 }
