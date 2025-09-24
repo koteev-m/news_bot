@@ -1,0 +1,60 @@
+### Base
+@BASE = http://localhost:8080
+@JWT = {{JWT}}
+
+### Health
+GET {{BASE}}/health/db
+
+### Quotes (public)
+GET {{BASE}}/api/quotes/closeOrLast?instrumentId=1&date=2025-09-20
+
+### Auth verify (public)
+POST {{BASE}}/api/auth/telegram/verify
+content-type: application/json
+
+{
+  "initData": "<TELEGRAM_WEBAPP_INITDATA>"
+}
+
+### Portfolio (JWT)
+GET {{BASE}}/api/portfolio
+Authorization: Bearer {{JWT}}
+
+### Portfolio create (JWT)
+POST {{BASE}}/api/portfolio
+Authorization: Bearer {{JWT}}
+content-type: application/json
+
+{
+  "name": "My RUB PF",
+  "baseCurrency": "RUB",
+  "valuationMethod": "AVERAGE"
+}
+
+### Positions (JWT)
+GET {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/positions?sort=instrumentId&order=asc
+Authorization: Bearer {{JWT}}
+
+### Trades list (JWT)
+GET {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/trades?limit=50&offset=0
+Authorization: Bearer {{JWT}}
+
+### Import trades CSV (JWT)
+POST {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/trades/import/csv
+Authorization: Bearer {{JWT}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="trades.csv"
+Content-Type: text/csv
+
+< ./samples/trades.csv
+--WebAppBoundary--
+
+### Revalue (JWT)
+POST {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/revalue?date=2025-09-20
+Authorization: Bearer {{JWT}}
+
+### Report (JWT)
+GET {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/report?from=2025-09-01&to=2025-09-20
+Authorization: Bearer {{JWT}}

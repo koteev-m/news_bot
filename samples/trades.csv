@@ -1,0 +1,6 @@
+trade_id,datetime,exchange,board,symbol,side,quantity,price,price_currency,fee,fee_currency,tax,tax_currency,account_id,broker,note,ext_id
+t1,2025-09-05 10:05:00,MOEX,TQBR,SBER,BUY,100,290.50,RUB,5.00,RUB,,,acc1,MyBroker,Buy SBER,t1
+t2,2025-09-05 12:30:00,MOEX,TQBR,SBER,SELL,50,300.00,RUB,5.00,RUB,,,acc1,MyBroker,Partial sell,t2
+t3,2025-09-06 11:00:00,CRYPTO,,TONUSDT,BUY,100.0,7.250,USDT,0.4,USDT,,,acc1,Binance,Buy TON,t3
+t3_dup,2025-09-06 11:00:00,CRYPTO,,TONUSDT,BUY,100.0,7.250,USDT,0.4,USDT,,,acc1,Binance,Duplicate by ext_id,t3
+bad_sell,2025-09-07 09:00:00,MOEX,TQBR,SBER,SELL,1000,310.00,RUB,5.00,RUB,,,acc1,MyBroker,Exceeds qty,bad4
