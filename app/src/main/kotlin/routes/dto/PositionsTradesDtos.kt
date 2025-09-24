@@ -7,12 +7,6 @@ import java.time.format.DateTimeParseException
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class MoneyDto(
-    val amount: String,
-    val ccy: String,
-)
-
-@Serializable
 data class PositionItemResponse(
     val instrumentId: Long,
     val qty: String,
