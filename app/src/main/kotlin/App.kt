@@ -14,6 +14,7 @@ import routes.portfolioRoutes
 import routes.portfolioPositionsTradesRoutes
 import routes.portfolioValuationReportRoutes
 import routes.portfolioImportRoutes
+import routes.quotesRoutes
 import security.installSecurity
 import security.installUploadGuard
 
@@ -33,6 +34,7 @@ fun Application.module() {
     routing {
         healthRoutes()
         authRoutes()
+        quotesRoutes()
         authenticate("auth-jwt") {
             portfolioRoutes()
             portfolioPositionsTradesRoutes()
