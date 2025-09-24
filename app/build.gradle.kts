@@ -20,6 +20,7 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus:${libs.versions.micrometer.get()}")
     testImplementation(libs.kotlin.test)
     testImplementation(kotlin("test-junit5"))
+    testImplementation(libs.ktor.server.test.host)
 }
 
 application {
