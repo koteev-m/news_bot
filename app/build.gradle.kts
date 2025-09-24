@@ -21,6 +21,7 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(kotlin("test-junit5"))
     testImplementation(libs.ktor.server.test.host)
+    testImplementation("org.junit.platform:junit-platform-suite:1.11.3")
 }
 
 application {
