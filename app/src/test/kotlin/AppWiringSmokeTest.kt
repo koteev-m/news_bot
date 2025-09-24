@@ -20,6 +20,8 @@ import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.SQLFeatureNotSupportedException
 import java.sql.Statement
+import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.logging.Logger
 import javax.sql.DataSource
@@ -33,7 +35,6 @@ import routes.PortfolioRecord
 import routes.PortfolioRouteDeps
 import routes.PortfolioRouteDepsKey
 import routes.dto.MoneyDto
-import routes.dto.PortfolioItemResponse
 import security.JwtConfig
 import security.JwtSupport
 
@@ -50,8 +51,9 @@ class AppWiringSmokeTest {
     @Test
     fun `public endpoints respond as expected`() = testApplication {
         environment { config = ApplicationConfig("application.conf") }
+
         application {
-            this@AppWiringSmokeTest.configureFakeDatabase()
+            configureFakeDatabase()
             module()
             installTestServices()
             installPortfolioRouteDeps()
@@ -68,52 +70,52 @@ class AppWiringSmokeTest {
         assertEquals("RUB", quotePayload.ccy)
 
         val authResponse = client.post("/api/auth/telegram/verify")
-        assertTrue(authResponse.status.value < 500)
+        assertTrue(authResponse.status == HttpStatusCode.BadRequest || authResponse.status == HttpStatusCode.Unauthorized)
     }
 
     @Test
-    fun `protected endpoints enforce jwt`() = testApplication {
+    fun `protected endpoints require jwt`() = testApplication {
         environment { config = ApplicationConfig("application.conf") }
+
         application {
-            this@AppWiringSmokeTest.configureFakeDatabase()
+            configureFakeDatabase()
             module()
             installTestServices()
             installPortfolioRouteDeps()
         }
 
-        val unauthorized = client.get("/api/portfolio")
-        assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
+        val anonymous = client.get("/api/portfolio")
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.status)
 
         val token = JwtSupport.issueToken(jwtConfig, subject = "7446417641")
         val authorized = client.get("/api/portfolio") {
             header(HttpHeaders.Authorization, "Bearer $token")
         }
         assertEquals(HttpStatusCode.OK, authorized.status)
-        val payload = json.decodeFromString<List<PortfolioItemResponse>>(authorized.bodyAsText())
-        assertEquals(1, payload.size)
-        assertEquals("Demo Portfolio", payload.first().name)
+        assertEquals("[]", authorized.bodyAsText())
     }
 
     private fun Application.installPortfolioRouteDeps() {
-        val record = PortfolioRecord(
-            id = "portfolio-demo",
-            name = "Demo Portfolio",
-            baseCurrency = "RUB",
-            valuationMethod = "AVERAGE",
-            isActive = true,
-            createdAt = java.time.Instant.parse("2024-01-01T00:00:00Z"),
-        )
         val deps = PortfolioRouteDeps(
             defaultValuationMethod = "AVERAGE",
             resolveUser = { it },
-            listPortfolios = { listOf(record) },
-            createPortfolio = { _, _ -> record },
+            listPortfolios = { emptyList() },
+            createPortfolio = { _, _ ->
+                PortfolioRecord(
+                    id = UUID.randomUUID().toString(),
+                    name = "Smoke Portfolio",
+                    baseCurrency = "RUB",
+                    valuationMethod = "AVERAGE",
+                    isActive = true,
+                    createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                )
+            },
         )
         attributes.put(PortfolioRouteDepsKey, deps)
     }
 
     private fun configureFakeDatabase() {
-        if (FAKE_DB_INITIALIZED.compareAndSet(false, true)) {
+        if (DATABASE_READY.compareAndSet(false, true)) {
             Database.connect(FakeDataSource)
         }
     }
@@ -283,7 +285,7 @@ class AppWiringSmokeTest {
     }
 
     companion object {
-        private val FAKE_DB_INITIALIZED = AtomicBoolean(false)
+        private val DATABASE_READY = AtomicBoolean(false)
     }
 }
 

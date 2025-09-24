@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -27,5 +29,20 @@ jobs:
             echo "No conflict markers found.";
           fi
 
-      - name: Build
-        run: ./gradlew build
+      - name: Gradle build
+        uses: gradle/gradle-build-action@v3
+        with:
+          arguments: "--no-daemon --stacktrace clean build"
+
+      - name: App tests
+        run: ./gradlew :app:test --console=plain
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/build/test-results/**/*.xml
+            **/build/reports/tests/**/*
+          if-no-files-found: ignore
