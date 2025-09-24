@@ -1,8 +1,9 @@
 ### Base
 @BASE = http://localhost:8080
 @JWT = {{JWT}}
+@PORTFOLIO_ID = {{PORTFOLIO_ID}}
 
-### Health
+### Health (public)
 GET {{BASE}}/health/db
 
 ### Quotes (public)
@@ -16,20 +17,16 @@ content-type: application/json
   "initData": "<TELEGRAM_WEBAPP_INITDATA>"
 }
 
-### Portfolio (JWT)
+### Portfolio list (JWT)
 GET {{BASE}}/api/portfolio
 Authorization: Bearer {{JWT}}
 
 ### Portfolio create (JWT)
 POST {{BASE}}/api/portfolio
-Authorization: Bearer {{JWT}}
 content-type: application/json
+Authorization: Bearer {{JWT}}
 
-{
-  "name": "My RUB PF",
-  "baseCurrency": "RUB",
-  "valuationMethod": "AVERAGE"
-}
+{ "name":"My RUB PF", "baseCurrency":"RUB", "valuationMethod":"AVERAGE" }
 
 ### Positions (JWT)
 GET {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/positions?sort=instrumentId&order=asc
