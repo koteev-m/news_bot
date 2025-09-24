@@ -11,6 +11,7 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.routing.routing
 import routes.authRoutes
 import routes.portfolioRoutes
+import routes.portfolioPositionsTradesRoutes
 import security.installSecurity
 import security.installUploadGuard
 
@@ -32,6 +33,7 @@ fun Application.module() {
         authRoutes()
         authenticate("auth-jwt") {
             portfolioRoutes()
+            portfolioPositionsTradesRoutes()
         }
     }
 }
