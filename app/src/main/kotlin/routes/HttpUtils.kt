@@ -4,12 +4,12 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import kotlinx.serialization.Serializable
+import kotlin.jvm.JvmName
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
 import routes.dto.ValidationError
 import java.sql.SQLException
-import kotlin.jvm.JvmName
 
 @Serializable
 data class ApiErrorResponse(
@@ -23,6 +23,7 @@ data class HttpErrorResponse(
     val error: String,
     val reason: String? = null,
     val details: List<String>? = null,
+    val limit: Long? = null,
 )
 
 @JvmName("respondBadRequestWithStrings")
@@ -30,9 +31,12 @@ suspend fun ApplicationCall.respondBadRequest(details: List<String>) {
     respond(HttpStatusCode.BadRequest, HttpErrorResponse(error = "bad_request", details = details))
 }
 
-@JvmName("respondBadRequestWithValidation")
 suspend fun ApplicationCall.respondBadRequest(details: List<ValidationError>) {
-    respondBadRequest(details.map { "${it.field}: ${it.message}" })
+    val messages = details.map { validation ->
+        val field = validation.field?.let { "$it: " } ?: ""
+        "$field${validation.message}"
+    }
+    respondBadRequest(messages)
 }
 
 suspend fun ApplicationCall.respondUnauthorized() {
@@ -45,6 +49,14 @@ suspend fun ApplicationCall.respondConflict(reason: String) {
 
 suspend fun ApplicationCall.respondNotFound(reason: String?) {
     respond(HttpStatusCode.NotFound, HttpErrorResponse(error = "not_found", reason = reason))
+}
+
+suspend fun ApplicationCall.respondUnsupportedMediaType() {
+    respond(HttpStatusCode.UnsupportedMediaType, HttpErrorResponse(error = "unsupported_media_type"))
+}
+
+suspend fun ApplicationCall.respondPayloadTooLarge(limit: Long) {
+    respond(HttpStatusCode.PayloadTooLarge, HttpErrorResponse(error = "payload_too_large", limit = limit))
 }
 
 suspend fun ApplicationCall.respondInternal() {
@@ -64,10 +76,10 @@ suspend fun ApplicationCall.handleDomainError(cause: Throwable) {
     }
 
     when {
-        cause.isConflictException() || cause.isUniqueViolation() -> {
+        cause.matchesName(ALREADY_EXISTS_NAMES) || cause.isUniqueViolation() -> {
             respondConflict(cause.message ?: "conflict")
         }
-        cause.isNotFoundException() -> {
+        cause.matchesName(NOT_FOUND_NAMES) -> {
             respondNotFound(cause.message)
         }
         else -> {
@@ -88,19 +100,16 @@ private suspend fun ApplicationCall.handlePortfolioException(exception: Portfoli
     }
 }
 
-private fun Throwable.isConflictException(): Boolean =
-    matchesName(setOf("AlreadyExists", "AlreadyExistsException"))
-
-private fun Throwable.isNotFoundException(): Boolean =
-    matchesName(setOf("NotFound", "NotFoundException"))
-
-private tailrec fun Throwable.matchesName(names: Set<String>): Boolean {
-    val simple = this::class.simpleName
-    if (simple != null && simple in names) {
-        return true
+private fun Throwable.matchesName(names: Set<String>): Boolean {
+    var current: Throwable? = this
+    while (current != null) {
+        if (current::class.simpleName in names) {
+            return true
+        }
+        val next = current.cause
+        current = if (next != null && next !== current) next else null
     }
-    val nested = cause
-    return nested != null && nested !== this && nested.matchesName(names)
+    return false
 }
 
 private fun Throwable.isUniqueViolation(): Boolean = when (this) {
@@ -109,4 +118,6 @@ private fun Throwable.isUniqueViolation(): Boolean = when (this) {
     else -> cause?.takeIf { it !== this }?.isUniqueViolation() == true
 }
 
+private val ALREADY_EXISTS_NAMES = setOf("AlreadyExists", "AlreadyExistsException")
+private val NOT_FOUND_NAMES = setOf("NotFound", "NotFoundException")
 private const val UNIQUE_VIOLATION = "23505"
