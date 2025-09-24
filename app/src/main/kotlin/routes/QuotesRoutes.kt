@@ -2,8 +2,8 @@ package routes
 
 import di.portfolioModule
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.call
 import io.ktor.server.application.application
+import io.ktor.server.application.call
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -28,12 +28,12 @@ fun Route.quotesRoutes() {
 
         pricingService.closeOrLast(instrumentId, date).fold(
             onSuccess = { money -> call.respond(money.toDto()) },
-            onFailure = { throwable -> call.handlePricingFailure(throwable) },
+            onFailure = { throwable -> call.handleQuoteFailure(throwable) },
         )
     }
 }
 
-private suspend fun ApplicationCall.handlePricingFailure(cause: Throwable) {
+private suspend fun ApplicationCall.handleQuoteFailure(cause: Throwable) {
     when (cause) {
         is PortfolioException -> when (val error = cause.error) {
             is PortfolioError.NotFound -> respondNotFound("price_not_available")
@@ -45,7 +45,7 @@ private suspend fun ApplicationCall.handlePricingFailure(cause: Throwable) {
         }
         is IllegalArgumentException -> respondBadRequest(listOf(cause.message ?: "invalid_request"))
         else -> {
-            application.environment.log.error("Unexpected pricing error", cause)
+            application.environment.log.error("Unexpected pricing failure", cause)
             respondInternal()
         }
     }
@@ -85,6 +85,7 @@ private fun ApplicationCall.pricingService(): PricingService {
     if (attributes.contains(Services.Key)) {
         return attributes[Services.Key]
     }
+
     val service = application.portfolioModule().services.pricingService
     attributes.put(Services.Key, service)
     return service

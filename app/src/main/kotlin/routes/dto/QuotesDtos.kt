@@ -8,7 +8,7 @@ private const val MONEY_SCALE = 8
 
 @Serializable
 data class MoneyDto(
-    val amount: String,
+    val amount: String, // scale=8, toPlainString
     val ccy: String,
 )
 

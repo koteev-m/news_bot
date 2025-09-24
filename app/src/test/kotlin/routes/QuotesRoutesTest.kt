@@ -1,19 +1,15 @@
 package routes
 
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
-import io.ktor.server.engine.EmbeddedServer
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.netty.Netty
-import io.ktor.server.netty.NettyApplicationEngine
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
+import io.ktor.server.testing.testApplication
 import java.math.BigDecimal
-import java.net.HttpURLConnection
-import java.net.ServerSocket
-import java.net.URL
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -23,6 +19,8 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import portfolio.errors.DomainResult
+import portfolio.errors.PortfolioError
+import portfolio.errors.PortfolioException
 import portfolio.model.Money
 import portfolio.service.CoingeckoPriceProvider
 import portfolio.service.FxRateRepository
@@ -33,19 +31,17 @@ import routes.dto.MoneyDto
 import routes.quotes.Services
 
 class QuotesRoutesTest {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
+    private val json = Json { ignoreUnknownKeys = true }
 
     @Test
     fun `missing instrument id returns 400`() = testApplication {
         val fixture = pricingFixture()
         application { configureTestApp(fixture.service) }
 
-        val response = get("/api/quotes/closeOrLast")
+        val response = client.get("/api/quotes/closeOrLast")
+
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
         assertEquals("bad_request", payload.error)
         assertEquals(listOf("instrumentId invalid"), payload.details)
         assertTrue(fixture.provider.closeCalls.isEmpty())
@@ -56,9 +52,10 @@ class QuotesRoutesTest {
         val fixture = pricingFixture()
         application { configureTestApp(fixture.service) }
 
-        val response = get("/api/quotes/closeOrLast?instrumentId=0")
+        val response = client.get("/api/quotes/closeOrLast?instrumentId=0")
+
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
         assertEquals("bad_request", payload.error)
         assertEquals(listOf("instrumentId invalid"), payload.details)
         assertTrue(fixture.provider.closeCalls.isEmpty())
@@ -69,9 +66,10 @@ class QuotesRoutesTest {
         val fixture = pricingFixture()
         application { configureTestApp(fixture.service) }
 
-        val response = get("/api/quotes/closeOrLast?instrumentId=12&date=2024-02-30")
+        val response = client.get("/api/quotes/closeOrLast?instrumentId=42&date=2024-02-30")
+
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
         assertEquals("bad_request", payload.error)
         assertEquals(listOf("date invalid"), payload.details)
         assertTrue(fixture.provider.closeCalls.isEmpty())
@@ -86,13 +84,14 @@ class QuotesRoutesTest {
         }
         application { configureTestApp(fixture.service) }
 
-        val response = get("/api/quotes/closeOrLast?instrumentId=42&date=2024-03-15")
+        val response = client.get("/api/quotes/closeOrLast?instrumentId=7&date=2024-03-15")
+
         assertEquals(HttpStatusCode.OK, response.status)
-        val payload = json.decodeFromString<MoneyDto>(response.body)
+        val payload = json.decodeFromString<MoneyDto>(response.bodyAsText())
         assertEquals("123.45000000", payload.amount)
         assertEquals("RUB", payload.ccy)
         val call = fixture.provider.closeCalls.single()
-        assertEquals(42L, call.first)
+        assertEquals(7L, call.first)
         assertEquals(LocalDate.parse("2024-03-15"), call.second)
     }
 
@@ -105,13 +104,14 @@ class QuotesRoutesTest {
         }
         application { configureTestApp(fixture.service) }
 
-        val response = get("/api/quotes/closeOrLast?instrumentId=7")
+        val response = client.get("/api/quotes/closeOrLast?instrumentId=15")
+
         assertEquals(HttpStatusCode.OK, response.status)
-        val payload = json.decodeFromString<MoneyDto>(response.body)
+        val payload = json.decodeFromString<MoneyDto>(response.bodyAsText())
         assertEquals("50.00000000", payload.amount)
         assertEquals("RUB", payload.ccy)
         val call = fixture.provider.closeCalls.single()
-        assertEquals(7L, call.first)
+        assertEquals(15L, call.first)
         assertEquals(LocalDate.now(ZoneOffset.UTC), call.second)
     }
 
@@ -123,9 +123,10 @@ class QuotesRoutesTest {
         }
         application { configureTestApp(fixture.service) }
 
-        val response = get("/api/quotes/closeOrLast?instrumentId=99&date=2024-01-05")
+        val response = client.get("/api/quotes/closeOrLast?instrumentId=99&date=2024-01-05")
+
         assertEquals(HttpStatusCode.NotFound, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
         assertEquals("not_found", payload.error)
         assertEquals("price_not_available", payload.reason)
     }
@@ -139,10 +140,28 @@ class QuotesRoutesTest {
         }
         application { configureTestApp(fixture.service) }
 
-        val response = get("/api/quotes/closeOrLast?instrumentId=15&date=2024-04-01")
+        val response = client.get("/api/quotes/closeOrLast?instrumentId=21&date=2024-04-01")
+
         assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
         assertEquals("internal", payload.error)
+    }
+
+    @Test
+    fun `domain validation returns 400`() = testApplication {
+        val fixture = pricingFixture().apply {
+            provider.closeHandler = { _, _ ->
+                DomainResult.failure(PortfolioException(PortfolioError.Validation("instrument invalid")))
+            }
+        }
+        application { configureTestApp(fixture.service) }
+
+        val response = client.get("/api/quotes/closeOrLast?instrumentId=34&date=2024-05-20")
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
+        assertEquals("bad_request", payload.error)
+        assertEquals(listOf("instrument invalid"), payload.details)
     }
 
     private fun Application.configureTestApp(pricingService: PricingService) {
@@ -152,15 +171,6 @@ class QuotesRoutesTest {
         attributes.put(Services.Key, pricingService)
         routing {
             quotesRoutes()
-        }
-    }
-
-    private fun testApplication(block: SimpleTestApplication.() -> Unit) {
-        val app = SimpleTestApplication()
-        try {
-            app.block()
-        } finally {
-            app.close()
         }
     }
 
@@ -199,65 +209,6 @@ class QuotesRoutesTest {
         override suspend fun lastPrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> {
             lastCalls += instrumentId to on
             return lastHandler(instrumentId, on)
-        }
-    }
-
-    private data class SimpleHttpResponse(
-        val status: HttpStatusCode,
-        val body: String,
-    )
-
-    private class SimpleTestApplication {
-        private var module: (Application.() -> Unit)? = null
-        private var engine: EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration>? = null
-        private var port: Int = 0
-
-        fun application(configure: Application.() -> Unit) {
-            module = configure
-        }
-
-        fun get(path: String, headers: Map<String, String> = emptyMap()): SimpleHttpResponse =
-            request("GET", path, headers)
-
-        private fun request(
-            method: String,
-            path: String,
-            headers: Map<String, String>,
-            body: String? = null,
-        ): SimpleHttpResponse {
-            ensureStarted()
-            val target = URL("http://127.0.0.1:$port$path")
-            val connection = target.openConnection() as HttpURLConnection
-            connection.requestMethod = method
-            connection.instanceFollowRedirects = false
-            headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
-            if (body != null) {
-                connection.doOutput = true
-                connection.outputStream.use { output ->
-                    output.write(body.toByteArray(Charsets.UTF_8))
-                }
-            }
-            val statusCode = connection.responseCode
-            val stream = if (statusCode >= 400) connection.errorStream else connection.inputStream
-            val responseBody = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            connection.disconnect()
-            return SimpleHttpResponse(HttpStatusCode.fromValue(statusCode), responseBody)
-        }
-
-        private fun ensureStarted() {
-            if (engine == null) {
-                val config = module ?: {}
-                val selectedPort = ServerSocket(0).use { it.localPort }
-                val created = embeddedServer(Netty, host = "127.0.0.1", port = selectedPort, module = config)
-                created.start(wait = false)
-                engine = created
-                port = selectedPort
-            }
-        }
-
-        fun close() {
-            engine?.stop(100, 1000)
-            engine = null
         }
     }
 }
