@@ -10,9 +10,10 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.routing.routing
 import routes.authRoutes
-import routes.portfolioImportRoutes
 import routes.portfolioRoutes
 import routes.portfolioPositionsTradesRoutes
+import routes.portfolioValuationReportRoutes
+import routes.portfolioImportRoutes
 import security.installSecurity
 import security.installUploadGuard
 
@@ -36,6 +37,7 @@ fun Application.module() {
             portfolioRoutes()
             portfolioPositionsTradesRoutes()
             portfolioImportRoutes()
+            portfolioValuationReportRoutes()
         }
     }
 }
