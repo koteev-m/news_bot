@@ -10,6 +10,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.routing.routing
 import routes.authRoutes
+import routes.portfolioImportRoutes
 import routes.portfolioRoutes
 import routes.portfolioPositionsTradesRoutes
 import security.installSecurity
@@ -34,6 +35,7 @@ fun Application.module() {
         authenticate("auth-jwt") {
             portfolioRoutes()
             portfolioPositionsTradesRoutes()
+            portfolioImportRoutes()
         }
     }
 }
