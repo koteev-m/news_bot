@@ -3,16 +3,9 @@ package routes.dto
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlinx.serialization.Serializable
-import portfolio.model.Money
 import portfolio.model.PortfolioReport
 import portfolio.model.TopPosition
 import portfolio.model.ValuationDaily
-
-@Serializable
-data class MoneyDto(
-    val amount: String,
-    val ccy: String,
-)
 
 @Serializable
 data class ValuationDailyResponse(
@@ -38,11 +31,6 @@ data class TopPositionItem(
     val instrumentId: Long,
     val weightPercent: String,
     val upl: MoneyDto,
-)
-
-fun Money.toDto(): MoneyDto = MoneyDto(
-    amount = amount.setScale(AMOUNT_SCALE, RoundingMode.HALF_UP).toPlainString(),
-    ccy = ccy,
 )
 
 fun BigDecimal.toAmt(): String = setScale(AMOUNT_SCALE, RoundingMode.HALF_UP).toPlainString()
