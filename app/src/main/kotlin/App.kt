@@ -20,10 +20,12 @@ fun Application.module() {
     installPortfolioModule()
 
     routing {
+        // Публичные
         healthRoutes()
         authRoutes()
         quotesRoutes()
 
+        // Защищённые (под JWT)
         authenticate("auth-jwt") {
             portfolioRoutes()
             portfolioPositionsTradesRoutes()
