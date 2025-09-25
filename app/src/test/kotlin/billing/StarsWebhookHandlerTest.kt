@@ -1,8 +1,8 @@
 package billing
 
 import billing.model.BillingPlan
-import billing.model.Tier
 import billing.model.UserSubscription
+import billing.model.Tier
 import billing.service.BillingService
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -23,15 +23,15 @@ import kotlin.test.assertTrue
 class StarsWebhookHandlerTest {
 
     @Test
-    fun `successful XTR payment triggers billing service`() = testApplication {
-        val service = RecordingBillingService { Result.success(Unit) }
-        application { configureTestRouting(service) }
+    fun `successful payment invokes billing service`() = testApplication {
+        val service = RecordingBillingService()
+        application { testRoute(service) }
 
         val response = postWebhook(successfulPaymentJson())
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals(1, service.applyCalls.size)
-        val call = service.applyCalls.first()
+        assertEquals(1, service.calls.size)
+        val call = service.calls.first()
         assertEquals(7446417641L, call.userId)
         assertEquals(Tier.PRO, call.tier)
         assertEquals(123L, call.amountXtr)
@@ -40,70 +40,65 @@ class StarsWebhookHandlerTest {
     }
 
     @Test
-    fun `duplicate payment is handled idempotently`() = testApplication {
-        val service = RecordingBillingService { Result.success(Unit) }
-        application { configureTestRouting(service) }
+    fun `duplicate payment is acknowledged`() = testApplication {
+        val service = RecordingBillingService()
+        application { testRoute(service) }
 
-        val response1 = postWebhook(successfulPaymentJson())
-        val response2 = postWebhook(successfulPaymentJson())
+        val first = postWebhook(successfulPaymentJson())
+        val second = postWebhook(successfulPaymentJson())
 
-        assertEquals(HttpStatusCode.OK, response1.status)
-        assertEquals(HttpStatusCode.OK, response2.status)
-        assertEquals(2, service.applyCalls.size)
+        assertEquals(HttpStatusCode.OK, first.status)
+        assertEquals(HttpStatusCode.OK, second.status)
+        assertEquals(2, service.calls.size)
     }
 
     @Test
     fun `non XTR payment is ignored`() = testApplication {
-        val service = RecordingBillingService { Result.success(Unit) }
-        application { configureTestRouting(service) }
+        val service = RecordingBillingService()
+        application { testRoute(service) }
 
         val response = postWebhook(successfulPaymentJson(currency = "USD"))
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertTrue(service.applyCalls.isEmpty())
+        assertTrue(service.calls.isEmpty())
     }
 
     @Test
-    fun `missing tier in payload prevents processing`() = testApplication {
-        val service = RecordingBillingService { Result.success(Unit) }
-        application { configureTestRouting(service) }
+    fun `invalid payload prevents processing`() = testApplication {
+        val service = RecordingBillingService()
+        application { testRoute(service) }
 
-        val response = postWebhook(
-            successfulPaymentJson(invoicePayload = "7446417641::abc123")
-        )
+        val response = postWebhook(successfulPaymentJson(invoicePayload = "7446417641::abc123"))
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertTrue(service.applyCalls.isEmpty())
+        assertTrue(service.calls.isEmpty())
     }
 
     @Test
-    fun `invalid JSON body is acknowledged`() = testApplication {
-        val service = RecordingBillingService { Result.success(Unit) }
-        application { configureTestRouting(service) }
+    fun `malformed json is still acknowledged`() = testApplication {
+        val service = RecordingBillingService()
+        application { testRoute(service) }
 
         val response = postWebhook(rawBody = "{ not json }")
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertTrue(service.applyCalls.isEmpty())
+        assertTrue(service.calls.isEmpty())
     }
 
     @Test
-    fun `billing service exception does not break response`() = testApplication {
-        val service = RecordingBillingService { throw RuntimeException("boom") }
-        application { configureTestRouting(service) }
+    fun `billing service failure is swallowed`() = testApplication {
+        val service = RecordingBillingService(fail = true)
+        application { testRoute(service) }
 
         val response = postWebhook(successfulPaymentJson())
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals(1, service.applyCalls.size)
+        assertEquals(1, service.calls.size)
     }
 
-    private suspend fun ApplicationTestBuilder.postWebhook(
-        body: String? = null,
-        rawBody: String? = null
-    ): HttpResponse {
+    private suspend fun ApplicationTestBuilder.postWebhook(body: String? = null, rawBody: String? = null): HttpResponse {
         val payload = rawBody ?: body ?: successfulPaymentJson()
-        return client.post("/telegram/webhook") {
+        return client.post("/test/webhook") {
             header(HttpHeaders.ContentType, ContentType.Application.Json)
             setBody(payload)
         }
@@ -118,19 +113,16 @@ class StarsWebhookHandlerTest {
         """.trimIndent()
     }
 
-    private fun Application.configureTestRouting(billingService: BillingService) {
+    private fun Application.testRoute(service: BillingService) {
         routing {
-            post("/telegram/webhook") {
-                StarsWebhookHandler.handleIfStarsPayment(call, billingService)
+            post("/test/webhook") {
+                StarsWebhookHandler.handleIfStarsPayment(call, service)
             }
         }
     }
 
-    private class RecordingBillingService(
-        private val handler: suspend (ApplyCall) -> Result<Unit>
-    ) : BillingService {
-
-        val applyCalls = mutableListOf<ApplyCall>()
+    private class RecordingBillingService(private val fail: Boolean = false) : BillingService {
+        val calls = mutableListOf<ApplyCall>()
 
         override suspend fun applySuccessfulPayment(
             userId: Long,
@@ -140,20 +132,20 @@ class StarsWebhookHandlerTest {
             payload: String?
         ): Result<Unit> {
             val call = ApplyCall(userId, tier, amountXtr, providerPaymentId, payload)
-            applyCalls += call
-            return handler(call)
+            calls += call
+            return if (fail) Result.failure(RuntimeException("boom")) else Result.success(Unit)
         }
 
         override suspend fun listPlans(): Result<List<BillingPlan>> {
-            throw UnsupportedOperationException("not needed")
+            throw UnsupportedOperationException("not used")
         }
 
         override suspend fun createInvoiceFor(userId: Long, tier: Tier): Result<String> {
-            throw UnsupportedOperationException("not needed")
+            throw UnsupportedOperationException("not used")
         }
 
         override suspend fun getMySubscription(userId: Long): Result<UserSubscription?> {
-            throw UnsupportedOperationException("not needed")
+            throw UnsupportedOperationException("not used")
         }
     }
 
