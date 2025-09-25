@@ -1,6 +1,7 @@
 package billing
 
 import billing.model.Tier
+import billing.port.StarsGateway
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.DefaultRequest
@@ -26,17 +27,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import kotlin.math.min
-
-interface StarsGateway {
-    /**
-     * Создаёт invoice-link для оплаты Stars (XTR).
-     * @param tier   – тариф (для label/описания).
-     * @param priceXtr – цена в XTR (целые).
-     * @param payload  – короткий payload (идемпотентный ключ, ≤ 64 байт).
-     * @return Result<invoiceUrl>
-     */
-    suspend fun createInvoiceLink(tier: Tier, priceXtr: Long, payload: String): Result<String>
-}
 
 class TelegramStarsGateway(
     private val botToken: String,
@@ -142,7 +132,10 @@ class TelegramStarsGateway(
 }
 
 object StarsGatewayFactory {
-    fun fromConfig(env: io.ktor.server.application.ApplicationEnvironment, client: io.ktor.client.HttpClient? = null): StarsGateway {
+    fun fromConfig(
+        env: io.ktor.server.application.ApplicationEnvironment,
+        client: io.ktor.client.HttpClient? = null
+    ): StarsGateway {
         val token = env.config.property("telegram.botToken").getString()
         return TelegramStarsGateway(botToken = token, client = client)
     }

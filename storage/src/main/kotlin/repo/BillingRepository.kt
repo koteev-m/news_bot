@@ -5,6 +5,7 @@ import billing.model.SubStatus
 import billing.model.Tier
 import billing.model.UserSubscription
 import billing.model.Xtr
+import billing.port.BillingRepository
 import db.DatabaseFactory.dbQuery
 import java.time.Instant
 import java.time.ZoneOffset
@@ -17,29 +18,6 @@ import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
-
-interface BillingRepository {
-    suspend fun getActivePlans(): List<BillingPlan>
-
-    suspend fun upsertSubscription(
-        userId: Long,
-        tier: Tier,
-        status: SubStatus,
-        expiresAt: Instant?,
-        lastPaymentId: String?
-    )
-
-    suspend fun findSubscription(userId: Long): UserSubscription?
-
-    suspend fun recordStarPaymentIfNew(
-        userId: Long,
-        tier: Tier,
-        amountXtr: Long,
-        providerPaymentId: String?,
-        payload: String?,
-        status: SubStatus
-    ): Boolean
-}
 
 private const val PROVIDER_STARS = "STARS"
 private const val SQLSTATE_UNIQUE_VIOLATION = "23505"
