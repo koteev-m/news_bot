@@ -143,3 +143,49 @@ curl -s -H "Authorization: Bearer $JWT" \
   `409` — конфликт; `413/415` — лимит/тип; `500` — внутренняя ошибка.
 - PowerShell: `export` замените на `$env:NAME="value"`.
 - Используйте `| jq .` для форматирования JSON в терминале.
+
+## P06 — Billing/Stars smoke
+
+### Планы (публично)
+```bash
+export BASE="http://localhost:8080"
+curl -s "$BASE/api/billing/plans" | jq .
+# 200 → [{"tier":"PRO","title":"…","priceXtr":1234,"isActive":true}, ...]
+
+Создать инвойс Stars (JWT)
+
+export JWT="<PASTE_JWT_FROM_P05_AUTH_VERIFY>"
+curl -s -X POST -H "Authorization: Bearer $JWT" \
+  -H "content-type: application/json" \
+  -d '{ "tier":"PRO" }' \
+  "$BASE/api/billing/stars/invoice" | jq .
+# 201 → {"invoiceLink":"https://t.me/..."}
+# 400 → неверный tier/нет плана; 401 → без JWT
+
+Мой статус подписки (JWT)
+
+curl -s -H "Authorization: Bearer $JWT" "$BASE/api/billing/stars/me" | jq .
+# 200 → {"userId":..., "tier":"PRO", "status":"ACTIVE", ...} или FREE по умолчанию
+
+Webhook успешного платежа (DEV-симуляция)
+
+# Только при локальном тесте, с секретом вебхука:
+export WH_SECRET="test_webhook_secret"  # ваш X-Telegram-Bot-Api-Secret-Token
+curl -s -X POST "$BASE/telegram/webhook" \
+  -H "X-Telegram-Bot-Api-Secret-Token: $WH_SECRET" \
+  -H "content-type: application/json" \
+  -d '{
+    "message": {
+      "from": {"id": 7446417641},
+      "successful_payment": {
+        "currency": "XTR",
+        "total_amount": 1234,
+        "invoice_payload": "7446417641:PRO:abc123",
+        "provider_payment_charge_id": "pmt_demo_1"
+      }
+    }
+  }'
+# 200 (быстрый ACK). Повторная отправка того же JSON → 200 (идемпотентность).
+
+PowerShell: замените export на $env:NAME="value".
+```

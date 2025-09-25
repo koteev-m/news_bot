@@ -1,0 +1,34 @@
+### Base
+@BASE = http://localhost:8080
+@JWT  = {{JWT}}
+
+### Plans (public)
+GET {{BASE}}/api/billing/plans
+
+### Create invoice (JWT)
+POST {{BASE}}/api/billing/stars/invoice
+content-type: application/json
+Authorization: Bearer {{JWT}}
+
+{ "tier": "PRO" }
+
+### My subscription (JWT)
+GET {{BASE}}/api/billing/stars/me
+Authorization: Bearer {{JWT}}
+
+### Webhook simulate (DEV)
+POST {{BASE}}/telegram/webhook
+X-Telegram-Bot-Api-Secret-Token: {{WH_SECRET}}
+content-type: application/json
+
+{
+  "message": {
+    "from": { "id": 7446417641 },
+    "successful_payment": {
+      "currency": "XTR",
+      "total_amount": 1234,
+      "invoice_payload": "7446417641:PRO:abc123",
+      "provider_payment_charge_id": "pmt_demo_1"
+    }
+  }
+}

@@ -23,16 +23,17 @@ jobs:
 
       - name: Fail on merge conflict markers
         run: |
-          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!**/.github/**' ; then
-            echo "Merge conflict markers found. Please resolve conflicts."; exit 1;
-          else
-            echo "No conflict markers found.";
+          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ; then
+            echo "Merge conflict markers found. Please resolve conflicts." && exit 1
           fi
 
-      - name: Gradle build
+      - name: Build
         uses: gradle/gradle-build-action@v3
         with:
-          arguments: "--no-daemon --stacktrace clean build"
+          arguments: --no-daemon --stacktrace clean build
+
+      - name: Core tests
+        run: ./gradlew :core:test --console=plain
 
       - name: App tests
         run: ./gradlew :app:test --console=plain
