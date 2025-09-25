@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>MOEX News</title>
+    <item>
+      <title>MOEX: Торги по акциям SBER остановлены</title>
+      <link>https://www.moex.com/n46700?from=official</link>
+      <guid>moex-1</guid>
+      <pubDate>Mon, 20 Jan 2025 09:30:00 +0300</pubDate>
+      <description><![CDATA[Проведены внеплановые торги по бумагам SBER и GAZP.]]></description>
+    </item>
+    <item>
+      <title>MOEX повторно сообщает о торгах SBER</title>
+      <link>https://www.moex.com/n46700?from=duplicate</link>
+      <guid>moex-2</guid>
+      <pubDate>Mon, 20 Jan 2025 09:32:00 +0300</pubDate>
+      <description><![CDATA[Дополнительная информация по операциям с SBER и GAZP на Московской бирже.]]></description>
+    </item>
+  </channel>
+</rss>
