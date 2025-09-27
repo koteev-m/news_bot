@@ -1,10 +1,26 @@
 <configuration>
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <property name="MASK_REGEX">(?i)\\b(bearer\\s+[A-Za-z0-9._-]+|x-telegram-bot-api-secret-token:[^,\\s]+|initData=[^&\\s]+|token=[A-Za-z0-9:_-]{20,})</property>
+    <property name="LOG_PATTERN">%d{ISO8601} %-5level [%X{requestId}] %logger{36} - %replace(%msg){'${MASK_REGEX}','***'}%n</property>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>${LOG_PATTERN}</pattern>
         </encoder>
     </appender>
+
+    <appender name="TEST" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="io.micrometer" level="WARN"/>
+    <logger name="test" additivity="false">
+        <level value="INFO"/>
+        <appender-ref ref="TEST"/>
+    </logger>
+
     <root level="INFO">
-        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="CONSOLE"/>
     </root>
 </configuration>

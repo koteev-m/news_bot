@@ -7,6 +7,7 @@ flyway = "10.17.2"
 exposed = "0.52.0"
 serialization = "1.6.3"
 micrometer = "1.12.5"
+prometheus = "1.12.5"
 hikari = "5.1.0"
 postgres = "42.7.4"
 kotest = "5.9.1"
@@ -26,6 +27,9 @@ ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt", version.ref = 
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
+ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-micrometer", version.ref = "ktor" }
+ktor-server-call-id = { module = "io.ktor:ktor-server-call-id", version.ref = "ktor" }
+ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
 java-jwt = { module = "com.auth0:java-jwt", version.ref = "javajwt" }
 exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
 exposed-dao = { module = "org.jetbrains.exposed:exposed-dao", version.ref = "exposed" }
@@ -35,6 +39,7 @@ exposed-json = { module = "org.jetbrains.exposed:exposed-json", version.ref = "e
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgres" }
 micrometer-core = { module = "io.micrometer:micrometer-core", version.ref = "micrometer" }
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "prometheus" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 typesafe-config = { module = "com.typesafe:config", version = "1.4.3" }
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
