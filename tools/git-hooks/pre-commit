@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Найти конфликтные маркеры в индексированных файлах
-FILES=$(git diff --cached --name-only)
-if [ -z "$FILES" ]; then
-  exit 0
-fi
-
+# 1) Блокируем конфликтные маркеры
 if git diff --cached --name-only \
  | xargs -I{} sh -c "grep -Hn -E '^(<<<<<<<|=======|>>>>>>>)' '{}' || true" \
  | grep -E '^(<<<<<<<|=======|>>>>>>>)' >/dev/null 2>&1; then
-  echo "ERROR: merge conflict markers detected. Resolve conflicts before commit."
+  echo "ERROR: merge conflict markers detected. Resolve before commit."
   exit 1
+fi
+
+# 2) Быстрый линт перед коммитом
+if [ -x "./gradlew" ]; then
+  ./gradlew -q ktlintCheck detekt || {
+    echo "ERROR: ktlint/detekt violations. Fix or run: ./gradlew format"
+    exit 1
+  }
 fi
 
 exit 0

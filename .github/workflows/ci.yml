@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["**"]
   pull_request:
 
 jobs:
@@ -14,18 +14,21 @@ jobs:
         with:
           lfs: true
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-
       - name: Fail on merge conflict markers
         run: |
-          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ; then
-            echo "Merge conflict markers found. Please resolve conflicts." && exit 1
+          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!**/.github/**' ; then
+            echo "Merge conflict markers found. Please resolve."; exit 1;
           fi
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Lint (ktlint + detekt)
+        run: ./gradlew --no-daemon --stacktrace ktlintCheck detekt
 
       - name: Build
         uses: gradle/gradle-build-action@v3
@@ -38,12 +41,13 @@ jobs:
       - name: App tests
         run: ./gradlew :app:test --console=plain
 
-      - name: Upload test reports
+      - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports
+          name: quality-reports
           path: |
-            **/build/test-results/**/*.xml
+            **/build/reports/ktlint/**/*
+            **/build/reports/detekt/**/*
             **/build/reports/tests/**/*
           if-no-files-found: ignore
