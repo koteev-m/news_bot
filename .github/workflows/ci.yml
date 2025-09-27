@@ -5,49 +5,105 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  precheck:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true
-
+          fetch-depth: 0
       - name: Fail on merge conflict markers
         run: |
-          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!**/.github/**' ; then
-            echo "Merge conflict markers found. Please resolve."; exit 1;
+          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!**/.github/**'; then
+            echo "Merge conflict markers found. Please resolve.";
+            exit 1;
           fi
+          echo "No merge conflict markers found."
 
-      - name: Setup JDK 21
+  backend:
+    needs: precheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+      - name: Setup JDK 21 (Temurin) with Gradle cache
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
-          cache: 'gradle'
-
+          cache: gradle
       - name: Lint (ktlint + detekt)
         run: ./gradlew --no-daemon --stacktrace ktlintCheck detekt
-
-      - name: Build
+      - name: Build (Gradle)
         uses: gradle/gradle-build-action@v3
         with:
           arguments: --no-daemon --stacktrace clean build
-
-      - name: Core tests
-        run: ./gradlew :core:test --console=plain
-
-      - name: App tests
-        run: ./gradlew :app:test --console=plain
-
-      - name: Upload reports
+      - name: Module tests (:core :storage :app)
+        run: ./gradlew :core:test :storage:test :app:test --console=plain
+      - name: Upload backend reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: quality-reports
+          name: backend-reports
           path: |
             **/build/reports/ktlint/**/*
             **/build/reports/detekt/**/*
             **/build/reports/tests/**/*
+          if-no-files-found: ignore
+
+  miniapp:
+    if: ${{ hashFiles('miniapp/pnpm-lock.yaml') != '' }}
+    needs: precheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'pnpm'
+          cache-dependency-path: miniapp/pnpm-lock.yaml
+      - name: Enable corepack and pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          pnpm -v
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: linux-pnpm-${{ hashFiles('miniapp/pnpm-lock.yaml') }}
+          restore-keys: |
+            linux-pnpm-
+      - name: Install dependencies
+        working-directory: miniapp
+        run: pnpm install --frozen-lockfile
+      - name: Build miniapp
+        working-directory: miniapp
+        run: pnpm build
+      - name: Test miniapp
+        working-directory: miniapp
+        run: pnpm test -- --run
+      - name: Upload miniapp artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniapp-artifacts
+          path: |
+            miniapp/dist/**/*
+            miniapp/coverage/**/*
           if-no-files-found: ignore
