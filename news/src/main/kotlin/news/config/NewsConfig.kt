@@ -10,7 +10,8 @@ data class NewsConfig(
     val httpTimeoutMs: Long,
     val sourceWeights: List<SourceWeight>,
     val channelId: Long,
-    val botDeepLinkBase: String
+    val botDeepLinkBase: String,
+    val maxPayloadBytes: Int = 64
 )
 
 object NewsDefaults {
@@ -29,7 +30,8 @@ object NewsDefaults {
         httpTimeoutMs = 30_000,
         sourceWeights = defaultWeights,
         channelId = 0L,
-        botDeepLinkBase = "https://t.me/example_bot"
+        botDeepLinkBase = "https://t.me/example_bot",
+        maxPayloadBytes = 64
     )
 
     fun weightFor(domain: String, weights: List<SourceWeight> = defaultWeights): Int {
