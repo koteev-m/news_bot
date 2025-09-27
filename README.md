@@ -19,6 +19,19 @@ Use Java 21. To list projects:
 ./gradlew -q projects
 ```
 
+## Local Review / Pre-push
+
+Install git hooks and run local revision before pushing:
+
+```bash
+./gradlew installGitHooks
+bash tools/audit/run_all.sh
+bash tools/audit/run_all.sh --skip-build
+bash tools/audit/run_all.sh --only-audit
+```
+
+`run_all.sh` orchestrates Kotlin lint/tests/build, grep-based audit checks, and optional miniapp verification. The script refuses to run when `APP_PROFILE=prod`. The pre-push hook executes `run_all.sh --skip-build` automatically and blocks the push on failures.
+
 ## Environment
 
 Copy `.env.example` to `.env` and provide the required values.

@@ -98,17 +98,30 @@ subprojects {
     }
 }
 
-// Hook installer: переустановит pre-commit
 tasks.register("installGitHooks") {
     group = "git"
-    description = "Install pre-commit hook for lint/conflict markers"
+    description = "Install pre-commit and pre-push hooks"
     doLast {
-        val src = file("tools/git-hooks/pre-commit")
-        val dst = file(".git/hooks/pre-commit")
-        if (!src.exists()) error("Missing tools/git-hooks/pre-commit")
-        dst.parentFile.mkdirs()
-        src.copyTo(dst, overwrite = true)
-        dst.setExecutable(true)
-        println("Installed .git/hooks/pre-commit")
+        val hooksDir = file(".git/hooks")
+        hooksDir.mkdirs()
+
+        val hooks = mapOf(
+            "pre-commit" to file("tools/git-hooks/pre-commit"),
+            "pre-push" to file("tools/git-hooks/pre-push")
+        )
+
+        hooks.forEach { (name, source) ->
+            if (!source.exists()) {
+                println("WARN: missing ${source.toRelativeString(projectDir)}")
+                return@forEach
+            }
+
+            val destination = hooksDir.resolve(name)
+            source.copyTo(destination, overwrite = true)
+            if (!destination.setExecutable(true)) {
+                println("WARN: failed to mark ${destination} as executable")
+            }
+            println("Installed ${destination.toPath().normalize()}")
+        }
     }
 }
