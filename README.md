@@ -279,10 +279,73 @@ docker volume rm deploy_compose_dbdata
 
 Security: не храните реальные токены/ключи в репозитории. Используйте переменные окружения/секрет-менеджер.
 
+## P18 — Seed & Demo
+
+Полный smoke-сценарий для не-prod окружений: seeding через SQL + REST, импорт тестовых сделок и проверка портфеля. Не запускайте сидинг на production.
+
+### 1. Подготовка окружения
+
+```bash
+export APP_PROFILE=dev
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/newsbot"
+# Альтернатива: DATABASE_USER/DATABASE_PASSWORD/DATABASE_HOST/DATABASE_PORT/DATABASE_NAME
+```
+
+PowerShell:
+
+```powershell
+$env:APP_PROFILE="dev"
+$env:DATABASE_URL="postgresql://postgres:postgres@localhost:5432/newsbot"
+```
+
+### 2. Применить demo seed (SQL)
+
+```bash
+bash tools/demo/seed.sh
+```
+
+Повторные запуски безопасны — используются UPSERT/ON CONFLICT.
+
+### 3. Быстрый REST smoke (если включены demo-роуты)
+
+```bash
+curl -s -X POST http://localhost:8080/demo/seed | jq .
+curl -s -X POST http://localhost:8080/demo/reset | jq .   # требует DEMO_RESET_ENABLE=true
+```
+
+`/demo/seed` вызовет `tools/demo/seed.sh`, `/demo/reset` очистит ключевые таблицы (dev/test only).
+
+### 4. Импорт тестовых сделок
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $JWT" \
+  -F "file=@miniapp/samples/trades_demo.csv;type=text/csv" \
+  "$BASE/api/portfolio/$PORTFOLIO_ID/trades/import/csv" | jq .
+```
+
+Файл `miniapp/samples/trades_demo.csv` содержит BUY/SELL по SBER и GAZP, crypto BUY по BTCUSDT, дубликат `ext_id` и SELL с превышением qty (попадёт в `failed`).
+
+### 5. Проверка позиций и оценки
+
+```bash
+curl -s -H "Authorization: Bearer $JWT" \
+  "$BASE/api/portfolio/$PORTFOLIO_ID/positions?sort=instrumentId" | jq .
+
+curl -s -H "Authorization: Bearer $JWT" \
+  "$BASE/api/portfolio/$PORTFOLIO_ID/trades?limit=20&offset=0" | jq .
+```
+
+Ожидаем: позиции по SBER/GAZP/BTCUSDT с количествами > 0 (кроме SELL > qty, он в failed); trades-репорт покажет вставленные и пропущенные дубликаты.
+
+### 6. Защита от production
+
+- `tools/demo/seed.sh` завершается ошибкой при `APP_PROFILE=prod`.
+- Demo-роуты не регистрируются в prod-профиле и требуют явного `DEMO_RESET_ENABLE=true` для `/demo/reset`.
+
 ---
 
 ## DoD (Definition of Done)
-- `docker build` успешен; `docker compose up -d` поднимает `db/app/nginx` (`healthy`).  
-- `/healthz` и `/metrics` доступны через `nginx`.  
+- `docker build` успешен; `docker compose up -d` поднимает `db/app/nginx` (`healthy`).
+- `/healthz` и `/metrics` доступны через `nginx`.
 - `setWebhook` срабатывает; Ktor получает запросы по HTTPS (TLS терминация в Nginx).  
 - Файлы сгенерированы строго в формате для автосоздания PR.

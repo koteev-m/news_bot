@@ -13,6 +13,7 @@ import billing.service.BillingService
 import billing.service.BillingServiceImpl
 import com.pengrad.telegrambot.BotUtils
 import di.ensureTelegramBot
+import demo.demoRoutes
 import di.installPortfolioModule
 import health.healthRoutes
 import io.ktor.http.HttpStatusCode
@@ -54,6 +55,7 @@ fun Application.module() {
         healthRoutes()
         authRoutes()
         quotesRoutes()
+        demoRoutes()
 
         post("/telegram/webhook") {
             val expectedSecret = environment.config.propertyOrNull("telegram.webhookSecret")?.getString()

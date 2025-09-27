@@ -28,6 +28,45 @@ jobs:
           fi
           echo "No merge conflict markers found."
 
+  seed-syntax-check:
+    needs: precheck
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Wait for Postgres
+        run: |
+          for i in {1..20}; do
+            if pg_isready -h localhost -U postgres; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: SQL seed presence & basic check
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d postgres -f deploy/seed/demo_seed.sql
+
   backend:
     needs: precheck
     runs-on: ubuntu-latest
