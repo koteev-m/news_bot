@@ -14,6 +14,8 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.util.AttributeKey
+import observability.DomainMetrics
+import observability.Observability
 import repo.BillingRepositoryImpl
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
@@ -28,10 +30,13 @@ import security.installSecurity
 import security.installUploadGuard
 
 fun Application.module() {
+    val prometheusRegistry = Observability.install(this)
+    val metrics = DomainMetrics(prometheusRegistry)
+
     installSecurity()
     installUploadGuard()
     installPortfolioModule()
-    ensureBillingServices()
+    ensureBillingServices(metrics)
 
     routing {
         // Публичные
@@ -62,9 +67,15 @@ fun Application.module() {
     }
 }
 
-private fun Application.ensureBillingServices(): Services {
+private fun Application.ensureBillingServices(metrics: DomainMetrics): Services {
     if (attributes.contains(Services.Key)) {
-        return attributes[Services.Key]
+        val existing = attributes[Services.Key]
+        if (existing.metrics == null) {
+            val enriched = existing.copy(metrics = metrics)
+            attributes.put(Services.Key, enriched)
+            return enriched
+        }
+        return existing
     }
 
     val billingService = BillingServiceImpl(
@@ -72,7 +83,7 @@ private fun Application.ensureBillingServices(): Services {
         stars = StarsGatewayFactory.fromConfig(environment),
         defaultDurationDays = billingDefaultDuration(),
     )
-    val services = Services(billingService = billingService)
+    val services = Services(billingService = billingService, metrics = metrics)
     attributes.put(Services.Key, services)
     attributes.put(BillingRouteServicesKey, BillingRouteServices(billingService))
     return services
@@ -83,7 +94,7 @@ private fun Application.billingDefaultDuration(): Long {
     return raw?.toLongOrNull() ?: 30L
 }
 
-data class Services(val billingService: BillingService) {
+data class Services(val billingService: BillingService, val metrics: DomainMetrics? = null) {
     companion object {
         val Key: AttributeKey<Services> = AttributeKey("AppServices")
     }
