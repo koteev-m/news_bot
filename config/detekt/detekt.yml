@@ -1,0 +1,111 @@
+build:
+  maxIssues: 0
+  excludes: ""
+
+config:
+  validation: true
+
+processors:
+  active: true
+
+console-reports:
+  active: true
+  exclude:
+    - 'ProjectStatisticsReport'
+    - 'ComplexityReport'
+
+comments:
+  active: true
+  AbsentOrWrongFileLicense:
+    active: false
+
+style:
+  MagicNumber:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**', '**/generated/**']
+    ignoreNumbers: ['-1','0','1','2','2.0','1.5','5.0','22','50','60','0.7','1.3','7']
+  WildcardImport:
+    active: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+  ReturnCount:
+    active: false
+  UnusedPrivateMember:
+    active: true
+  ForbiddenComment:
+    active: true
+    comments:
+      - reason: 'Forbidden TODO marker in production code.'
+        value: 'TODO:'
+      - reason: 'Forbidden FIXME marker in production code.'
+        value: 'FIXME:'
+      - reason: 'Forbidden HACK marker in production code.'
+        value: 'HACK:'
+    allowedPatterns: ''
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - reason: 'print does not allow you to configure the output stream. Use a logger instead.'
+        value: 'kotlin.io.print'
+      - reason: 'println does not allow you to configure the output stream. Use a logger instead.'
+        value: 'kotlin.io.println'
+
+formatting:
+  active: true
+  android: false
+  FinalNewline:
+    active: true
+  NoWildcardImports:
+    active: true
+  ImportOrdering:
+    active: false
+  Indentation:
+    active: true
+    indentSize: 4
+  MaximumLineLength:
+    active: true
+    maxLineLength: 120
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    active: true
+
+performance:
+  active: true
+  ForEachOnRange:
+    active: true
+
+potential-bugs:
+  active: true
+  UnsafeCallOnNullableType:
+    active: true
+  LateinitUsage:
+    active: true
+    excludes: ['**/test/**']
+
+exceptions:
+  active: true
+  PrintStackTrace:
+    active: true
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
+
+complexity:
+  active: true
+  LongParameterList:
+    active: true
+    constructorThreshold: 9
+    functionThreshold: 8
+    ignoreDefaultParameters: true
+
+empty-blocks:
+  active: true
+  EmptyFunctionBlock:
+    active: false
