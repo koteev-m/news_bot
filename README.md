@@ -213,3 +213,69 @@ curl -s -X POST -H "Authorization: Bearer $JWT" \
 2. Проверьте предпросмотр, при необходимости поменяйте delimiter.
 3. Настройте соответствие колонок — все обязательные поля должны быть сопоставлены.
 4. После успешной валидации отправьте файл и дождитесь отчёта.
+
+## P14 — Docker & Compose (app + Postgres + Nginx TLS)
+
+### 1) Build образа приложения
+```bash
+docker build -t newsbot-app:latest .
+```
+
+### 2) Подготовка окружения
+```bash
+cp deploy/compose/.env.example deploy/compose/.env
+# отредактируйте TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET при необходимости
+```
+
+Положите TLS-сертификаты в:
+
+- `deploy/compose/nginx/certs/tls.crt`
+- `deploy/compose/nginx/certs/tls.key`
+
+### 3) Запуск docker compose
+```bash
+cd deploy/compose
+docker compose up -d
+docker compose ps
+```
+Ожидаем: db (healthy), затем app (healthy), затем nginx (healthy).
+
+### 4) Health и метрики
+```bash
+curl -s http://localhost:${NGINX_HTTP_PORT:-8081}/healthz
+curl -s http://localhost:${NGINX_HTTP_PORT:-8081}/metrics | head
+```
+
+### 5) Настройка вебхука (пример, замените host/secret)
+```bash
+export BOT_TOKEN="<your_bot_token>"
+export PUBLIC_HTTPS="https://<your-domain>:${NGINX_HTTPS_PORT:-8443}"
+export WH_SECRET="<your_webhook_secret>"
+
+curl -sG "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+  --data-urlencode "url=${PUBLIC_HTTPS}/telegram/webhook" \
+  --data-urlencode "secret_token=${WH_SECRET}" | jq .
+```
+
+### 6) Логи и отладка
+```bash
+docker compose logs -f app
+docker compose logs -f nginx
+docker compose logs -f db
+```
+
+### 7) Остановка/очистка
+```bash
+docker compose down
+docker volume rm deploy_compose_dbdata
+```
+
+Security: не храните реальные токены/ключи в репозитории. Используйте переменные окружения/секрет-менеджер.
+
+---
+
+## DoD (Definition of Done)
+- `docker build` успешен; `docker compose up -d` поднимает `db/app/nginx` (`healthy`).  
+- `/healthz` и `/metrics` доступны через `nginx`.  
+- `setWebhook` срабатывает; Ktor получает запросы по HTTPS (TLS терминация в Nginx).  
+- Файлы сгенерированы строго в формате для автосоздания PR.
