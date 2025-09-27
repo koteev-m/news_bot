@@ -190,6 +190,13 @@ curl -s -X POST "$BASE/telegram/webhook" \
 PowerShell: замените export на $env:NAME="value".
 ```
 
+## P16 — Bot: Stars/Subscriptions
+
+- Команды бота: `/plans` (активные тарифы и цены в XTR), `/buy` (inline-кнопки PRO/PRO+/VIP), `/status` (текущая подписка).
+- UX: выберите план через `/buy`, получите `invoiceLink`, оплатите в Stars, webhook успешного платежа активирует/продлевает подписку, `/status` отражает актуальный уровень.
+- Безопасность: логи без токенов, сумм и PII; повторные доставки `update_id` от Telegram не создают дубликаты ответов (in-memory idempotency).
+- Smoke: используйте webhook-имитацию из P06-05 для успешного платежа и команду `/status` в чате бота для проверки активации.
+
 ## P10 — CSV/Sheets import
 
 ### Smoke-curl

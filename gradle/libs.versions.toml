@@ -16,6 +16,7 @@ testcontainers = "1.20.2"
 logback = "1.5.12"
 ktlintGradle = "12.1.0"
 detekt = "1.23.6"
+pengrad = "6.9.1"
 
 
 [libraries]
@@ -58,6 +59,7 @@ testcontainers-core = { module = "org.testcontainers:testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+pengrad-bot = { module = "com.github.pengrad:java-telegram-bot-api", version.ref = "pengrad" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

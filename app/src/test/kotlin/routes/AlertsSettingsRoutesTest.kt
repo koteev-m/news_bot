@@ -17,6 +17,9 @@ import billing.model.SubStatus
 import billing.model.Tier
 import billing.model.UserSubscription
 import billing.service.BillingService
+import com.pengrad.telegrambot.TelegramBot
+import com.pengrad.telegrambot.request.BaseRequest
+import com.pengrad.telegrambot.response.BaseResponse
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
@@ -130,7 +133,7 @@ class AlertsSettingsRoutesTest {
 
             application {
                 installSecurity()
-                attributes.put(Services.Key, Services(billingService))
+                attributes.put(Services.Key, Services(billingService, NoopTelegramBot()))
                 attributes.put(AlertsSettingsDepsKey, AlertsSettingsRouteDeps(billingService, service))
                 routing {
                     authenticate("auth-jwt") {
@@ -190,4 +193,13 @@ class AlertsSettingsRoutesTest {
             )
         )
     )
+}
+
+private class NoopTelegramBot : TelegramBot("test-token") {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : BaseRequest<T, R>, R : BaseResponse> execute(request: BaseRequest<T, R>): R {
+        val ctor = BaseResponse::class.java.getDeclaredConstructor()
+        ctor.isAccessible = true
+        return ctor.newInstance() as R
+    }
 }

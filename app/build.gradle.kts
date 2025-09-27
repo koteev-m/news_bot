@@ -27,6 +27,7 @@ dependencies {
     implementation(libs.exposed.dao)
     implementation(libs.exposed.jdbc)
     implementation(libs.exposed.java.time)
+    implementation(libs.pengrad.bot)
     testImplementation(libs.kotlin.test)
     testImplementation(kotlin("test-junit5"))
     testImplementation(libs.ktor.server.test.host)

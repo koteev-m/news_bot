@@ -2,18 +2,29 @@ package app
 
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
+import billing.bot.StarsBotCommands
+import billing.bot.StarsBotRouter
+import billing.bot.StarsBotRouter.BotRoute
+import billing.bot.StarsBotRouter.BotRoute.Buy
+import billing.bot.StarsBotRouter.BotRoute.Callback
+import billing.bot.StarsBotRouter.BotRoute.Plans
+import billing.bot.StarsBotRouter.BotRoute.Status
 import billing.service.BillingService
 import billing.service.BillingServiceImpl
+import com.pengrad.telegrambot.BotUtils
+import di.ensureTelegramBot
 import di.installPortfolioModule
 import health.healthRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.util.AttributeKey
+import kotlinx.coroutines.launch
 import observability.DomainMetrics
 import observability.Observability
 import repo.BillingRepositoryImpl
@@ -52,8 +63,32 @@ fun Application.module() {
                 return@post
             }
 
+            val rawUpdate = runCatching { call.receiveText() }.getOrNull()
+            val update = rawUpdate?.let { runCatching { BotUtils.parseUpdate(it) }.getOrNull() }
+
             val services = attributes[Services.Key]
             StarsWebhookHandler.handleIfStarsPayment(call, services.billingService)
+
+            if (update == null) {
+                return@post
+            }
+
+            val bot = services.telegramBot
+            val billingSvc = services.billingService
+            val route = StarsBotRouter.route(update)
+            if (route == BotRoute.Unknown) {
+                return@post
+            }
+
+            launch {
+                when (route) {
+                    Plans -> StarsBotCommands.handlePlans(update, bot, billingSvc)
+                    Buy -> StarsBotCommands.handleBuy(update, bot, billingSvc)
+                    Status -> StarsBotCommands.handleStatus(update, bot, billingSvc)
+                    Callback -> StarsBotCommands.handleCallback(update, bot, billingSvc)
+                    BotRoute.Unknown -> Unit
+                }
+            }
         }
 
         // Защищённые (под JWT)
@@ -78,12 +113,14 @@ private fun Application.ensureBillingServices(metrics: DomainMetrics): Services 
         return existing
     }
 
+    val telegramBot = ensureTelegramBot()
+
     val billingService = BillingServiceImpl(
         repo = BillingRepositoryImpl(),
         stars = StarsGatewayFactory.fromConfig(environment),
         defaultDurationDays = billingDefaultDuration(),
     )
-    val services = Services(billingService = billingService, metrics = metrics)
+    val services = Services(billingService = billingService, telegramBot = telegramBot, metrics = metrics)
     attributes.put(Services.Key, services)
     attributes.put(BillingRouteServicesKey, BillingRouteServices(billingService))
     return services
@@ -94,7 +131,11 @@ private fun Application.billingDefaultDuration(): Long {
     return raw?.toLongOrNull() ?: 30L
 }
 
-data class Services(val billingService: BillingService, val metrics: DomainMetrics? = null) {
+data class Services(
+    val billingService: BillingService,
+    val telegramBot: com.pengrad.telegrambot.TelegramBot,
+    val metrics: DomainMetrics? = null,
+) {
     companion object {
         val Key: AttributeKey<Services> = AttributeKey("AppServices")
     }
