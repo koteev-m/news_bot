@@ -1,0 +1,14 @@
+**/build/
+.gradle/
+.git/
+.gitignore
+**/.idea/
+**/.vscode/
+node_modules/
+miniapp/node_modules/
+miniapp/dist/
+miniapp/.turbo/
+*.iml
+*.log
+.DS_Store
+.tmp/
