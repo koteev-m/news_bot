@@ -2,43 +2,62 @@ package routes
 
 import db.DatabaseFactory.dbQuery
 import di.portfolioModule
+import integrations.integrationsModule
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.RedirectResponseException
+import io.ktor.client.plugins.ServerResponseException
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
-import io.ktor.http.content.PartData
+import io.ktor.http.contentType
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.config.ApplicationConfig
 import io.ktor.server.config.configOrNull
-import io.ktor.server.request.contentLength
-import io.ktor.server.request.contentType
+import io.ktor.server.request.receive
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import io.ktor.util.AttributeKey
+import io.ktor.utils.io.cancel
 import io.ktor.utils.io.jvm.javaio.toInputStream
+import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.core.readBytes
+import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
 import java.io.Reader
-import java.nio.charset.CodingErrorAction
+import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
+import kotlin.math.min
+import kotlinx.coroutines.CancellationException
 import portfolio.errors.DomainResult
 import portfolio.service.CsvImportService
 import repo.InstrumentRepository
 import repo.TradeRepository
 import repo.tables.TradesTable
+import routes.dto.ImportByUrlRequest
 import routes.dto.ImportFailedItem
 import routes.dto.ImportReportResponse
 import security.userIdOrNull
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.slf4j.Logger
 
 private const val MAX_LINES = 100_000
 private const val MAX_LINE_LENGTH = 64_000
+private const val SNIFF_PREVIEW_LIMIT = 2_048
+private const val CSV_ACCEPT_HEADER = "text/csv, text/plain; q=0.8, */*; q=0.1"
 
 fun Route.portfolioImportRoutes() {
     post("/api/portfolio/{id}/trades/import/csv") {
@@ -56,26 +75,21 @@ fun Route.portfolioImportRoutes() {
 
         val deps = call.importDeps()
         val uploadSettings = deps.uploadSettings
-        val contentLength = call.request.contentLength()
-        if (contentLength != null && contentLength > uploadSettings.csvMaxBytes) {
-            call.respondPayloadTooLarge(uploadSettings.csvMaxBytes)
+        val multipart = try {
+            call.receiveMultipart()
+        } catch (cause: Throwable) {
+            call.application.environment.log.error("csv_multipart_error", cause)
+            call.respondInternal()
             return@post
         }
 
-        val requestContentType = runCatching { call.request.contentType() }.getOrNull()
-        if (requestContentType == null || !requestContentType.match(ContentType.MultiPart.FormData)) {
-            call.respondBadRequest(listOf("multipart form-data required"))
-            return@post
-        }
-
-        val multipart = call.receiveMultipart()
         var processed = false
         while (true) {
             val part = multipart.readPart() ?: break
             when (part) {
-                is PartData.FileItem -> {
-                    val name = part.name?.lowercase()
-                    if (name != null && name != "file") {
+                is io.ktor.http.content.PartData.FileItem -> {
+                    val partName = part.name?.lowercase()
+                    if (partName != null && partName != "file") {
                         part.dispose()
                         continue
                     }
@@ -103,29 +117,21 @@ fun Route.portfolioImportRoutes() {
                         }
                     } catch (limit: LineLimitExceededException) {
                         call.respondPayloadTooLarge(uploadSettings.csvMaxBytes)
+                        part.dispose()
                         return@post
                     } catch (coding: CharacterCodingException) {
+                        part.dispose()
                         call.respondBadRequest(listOf("file must be UTF-8 encoded"))
                         return@post
                     } catch (cause: Throwable) {
-                        call.application.environment.log.error("CSV import failed", cause)
+                        part.dispose()
+                        call.application.environment.log.error("csv_import_failed", cause)
                         call.respondInternal()
                         return@post
-                    } finally {
-                        part.dispose()
                     }
 
-                    importResult.fold(
-                        onSuccess = { report ->
-                            val response = ImportReportResponse(
-                                inserted = report.inserted,
-                                skippedDuplicates = report.skippedDuplicates,
-                                failed = report.failed.map { ImportFailedItem(line = it.lineNumber, error = it.message) },
-                            )
-                            call.respond(response)
-                        },
-                        onFailure = { error -> call.handleDomainError(error) },
-                    )
+                    part.dispose()
+                    call.respondImportResult(importResult)
                     return@post
                 }
 
@@ -140,6 +146,106 @@ fun Route.portfolioImportRoutes() {
 
         call.respondInternal()
     }
+
+    post("/api/portfolio/{id}/trades/import/by-url") {
+        val subject = call.userIdOrNull
+        if (subject == null) {
+            call.respondUnauthorized()
+            return@post
+        }
+
+        val portfolioId = call.parameters["id"].toPortfolioIdOrNull()
+        if (portfolioId == null) {
+            call.respondBadRequest(listOf("portfolioId invalid"))
+            return@post
+        }
+
+        val request = try {
+            call.receive<ImportByUrlRequest>()
+        } catch (_: Throwable) {
+            call.respondBadRequest(listOf("invalid json"))
+            return@post
+        }
+
+        val rawUrl = request.url.trim()
+        if (rawUrl.isEmpty()) {
+            call.respondBadRequest(listOf("url must not be empty"))
+            return@post
+        }
+        val httpsUrl = runCatching { java.net.URI(rawUrl) }.getOrNull()
+        if (httpsUrl == null || httpsUrl.scheme == null || httpsUrl.scheme.lowercase() != "https") {
+            call.respondBadRequest(listOf("url must use https"))
+            return@post
+        }
+
+        val deps = call.importDeps()
+        val uploadSettings = deps.uploadSettings
+        val remoteCsv = try {
+            deps.downloadCsv(rawUrl, uploadSettings.csvMaxBytes)
+        } catch (tooLarge: RemoteCsvTooLargeException) {
+            call.respondPayloadTooLarge(tooLarge.limit)
+            return@post
+        } catch (download: RemoteCsvDownloadException) {
+            call.application.environment.log.warn("csv_download_failed: {}", download.code)
+            call.respondInternal()
+            return@post
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (cause: Throwable) {
+            call.application.environment.log.error("csv_download_error", cause)
+            call.respondInternal()
+            return@post
+        }
+
+        val contentType = remoteCsv.contentType
+        val isProbablyCsv = looksLikeCsv(remoteCsv.bytes)
+        if (contentType != null && !uploadSettings.isAllowed(contentType) && !isProbablyCsv) {
+            call.respondUnsupportedMediaType()
+            return@post
+        }
+        if (contentType == null && !isProbablyCsv) {
+            call.respondUnsupportedMediaType()
+            return@post
+        }
+
+        val importResult: DomainResult<CsvImportService.ImportReport>
+        try {
+            ByteArrayInputStream(remoteCsv.bytes).use { stream ->
+                val reader = stream.toUtf8Reader()
+                LineLimitingReader(reader, MAX_LINES, MAX_LINE_LENGTH).use { limitingReader ->
+                    importResult = deps.importCsv(portfolioId, limitingReader)
+                }
+            }
+        } catch (limit: LineLimitExceededException) {
+            call.respondPayloadTooLarge(uploadSettings.csvMaxBytes)
+            return@post
+        } catch (coding: CharacterCodingException) {
+            call.respondBadRequest(listOf("file must be UTF-8 encoded"))
+            return@post
+        } catch (cause: Throwable) {
+            call.application.environment.log.error("csv_import_failed", cause)
+            call.respondInternal()
+            return@post
+        }
+
+        call.respondImportResult(importResult)
+    }
+}
+
+private suspend fun ApplicationCall.respondImportResult(result: DomainResult<CsvImportService.ImportReport>) {
+    result.fold(
+        onSuccess = { report ->
+            val response = ImportReportResponse(
+                inserted = report.inserted,
+                skippedDuplicates = report.skippedDuplicates,
+                failed = report.failed.map { failure ->
+                    ImportFailedItem(line = failure.lineNumber, error = failure.message)
+                },
+            )
+            respond(response)
+        },
+        onFailure = { error -> handleDomainError(error) },
+    )
 }
 
 private fun String?.toPortfolioIdOrNull(): UUID? = this?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
@@ -151,6 +257,12 @@ internal val PortfolioImportDepsKey = AttributeKey<PortfolioImportDeps>("Portfol
 internal data class PortfolioImportDeps(
     val importCsv: suspend (UUID, Reader) -> DomainResult<CsvImportService.ImportReport>,
     val uploadSettings: UploadSettings,
+    val downloadCsv: suspend (String, Long) -> RemoteCsv,
+)
+
+internal data class RemoteCsv(
+    val contentType: ContentType?,
+    val bytes: ByteArray,
 )
 
 private fun ApplicationCall.importDeps(): PortfolioImportDeps {
@@ -160,19 +272,22 @@ private fun ApplicationCall.importDeps(): PortfolioImportDeps {
     }
 
     val module = application.portfolioModule()
+    val integrations = application.integrationsModule()
     val instrumentRepository = module.repositories.instrumentRepository
     val tradeRepository = module.repositories.tradeRepository
     val portfolioService = module.services.portfolioService
     val valuationMethod = module.settings.portfolio.defaultValuationMethod
     val settings = UploadSettings.fromConfig(application.environment.config)
-    val service = CsvImportService(
+    val importService = CsvImportService(
         instrumentResolver = DatabaseInstrumentResolver(instrumentRepository),
         tradeLookup = DatabaseTradeLookup(tradeRepository),
         portfolioService = portfolioService,
     )
+    val downloader = HttpCsvFetcher(integrations.httpClient, application.environment.log)
     val deps = PortfolioImportDeps(
-        importCsv = { portfolioId, reader -> service.import(portfolioId, reader, valuationMethod) },
+        importCsv = { portfolioId, reader -> importService.import(portfolioId, reader, valuationMethod) },
         uploadSettings = settings,
+        downloadCsv = { url, limit -> downloader.fetch(url, limit) },
     )
     attributes.put(PortfolioImportDepsKey, deps)
     return deps
@@ -286,6 +401,83 @@ private class LineLimitingReader(
 }
 
 private class LineLimitExceededException : RuntimeException()
+
+internal class RemoteCsvTooLargeException(val limit: Long) : RuntimeException()
+
+internal class RemoteCsvDownloadException(val code: String, cause: Throwable? = null) : RuntimeException(code, cause)
+
+private fun looksLikeCsv(bytes: ByteArray): Boolean {
+    val preview = decodePreview(bytes) ?: return false
+    val firstLine = preview.lineSequence().firstOrNull { it.isNotBlank() } ?: return false
+    val delimiters = charArrayOf(',', ';', '\t')
+    return delimiters.any { delimiter -> firstLine.count { it == delimiter } >= 1 }
+}
+
+private fun decodePreview(bytes: ByteArray): String? {
+    if (bytes.isEmpty()) return null
+    val size = min(bytes.size, SNIFF_PREVIEW_LIMIT)
+    val buffer = ByteBuffer.wrap(bytes, 0, size)
+    val decoder = Charsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+    return runCatching { decoder.decode(buffer).toString() }.getOrNull()
+}
+
+private class HttpCsvFetcher(
+    private val client: HttpClient,
+    private val logger: Logger,
+) {
+    suspend fun fetch(url: String, limit: Long): RemoteCsv {
+        val response = try {
+            client.get(url) {
+                header(HttpHeaders.Accept, CSV_ACCEPT_HEADER)
+            }
+        } catch (timeout: HttpRequestTimeoutException) {
+            throw RemoteCsvDownloadException("timeout", timeout)
+        } catch (redirect: RedirectResponseException) {
+            throw RemoteCsvDownloadException("http_${redirect.response.status.value}", redirect)
+        } catch (clientError: ClientRequestException) {
+            throw RemoteCsvDownloadException("http_${clientError.response.status.value}", clientError)
+        } catch (serverError: ServerResponseException) {
+            throw RemoteCsvDownloadException("http_${serverError.response.status.value}", serverError)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (cause: Throwable) {
+            throw RemoteCsvDownloadException("network", cause)
+        }
+
+        val channel = response.bodyAsChannel()
+        try {
+            val declaredLength = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+            if (declaredLength != null && declaredLength > limit) {
+                throw RemoteCsvTooLargeException(limit)
+            }
+            val bytes = readBytesLimited(channel, limit)
+            return RemoteCsv(contentType = response.contentType(), bytes = bytes)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (tooLarge: RemoteCsvTooLargeException) {
+            throw tooLarge
+        } catch (download: RemoteCsvDownloadException) {
+            throw download
+        } catch (cause: Throwable) {
+            logger.warn("csv_download_exception", cause)
+            throw RemoteCsvDownloadException("unexpected", cause)
+        } finally {
+            channel.cancel()
+        }
+    }
+
+    private suspend fun readBytesLimited(channel: io.ktor.utils.io.ByteReadChannel, limit: Long): ByteArray {
+        val packet = channel.readRemaining(limit + 1)
+        val bytes = packet.readBytes()
+        if (bytes.size > limit) {
+            channel.cancel()
+            throw RemoteCsvTooLargeException(limit)
+        }
+        return bytes
+    }
+}
 
 private class DatabaseInstrumentResolver(
     private val repository: InstrumentRepository,

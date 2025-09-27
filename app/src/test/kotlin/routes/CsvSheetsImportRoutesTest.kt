@@ -17,24 +17,22 @@ import io.ktor.server.netty.NettyApplicationEngine
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.ServerSocket
-import java.net.URL
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.UUID
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import kotlin.io.readText
-import portfolio.errors.PortfolioError
-import portfolio.errors.PortfolioException
 import portfolio.service.CsvImportService
 import routes.dto.ImportReportResponse
 import security.JwtConfig
 import security.JwtSupport
 
-class PortfolioImportRoutesTest {
+class CsvSheetsImportRoutesTest {
     private val jwtConfig = JwtConfig(
         issuer = "newsbot",
         audience = "newsbot-clients",
@@ -48,28 +46,56 @@ class PortfolioImportRoutesTest {
         encodeDefaults = true
     }
 
-    @Test
-    fun `requests without JWT return 401`() = testApplication {
-        val deps = FakeDeps()
-        application { configureTestApp(deps.toDeps()) }
+    private lateinit var app: SimpleTestApplication
 
-        val response = postMultipart(
+    @BeforeTest
+    fun setUp() {
+        app = SimpleTestApplication()
+    }
+
+    @AfterTest
+    fun tearDown() {
+        app.close()
+    }
+
+    @Test
+    fun `multipart import without JWT returns 401`() {
+        val deps = FakeDeps()
+        app.application { configureTestApp(deps.toDeps()) }
+
+        val response = app.postMultipart(
             path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
-            parts = listOf(multipartFile("file", "trades.csv", "text/csv", "ext_id,datetime\n".toByteArray())),
+            parts = listOf(
+                multipartFile("file", "trades.csv", "text/csv", "ext_id,datetime\n".toByteArray()),
+            ),
         )
         assertEquals(HttpStatusCode.Unauthorized, response.status)
     }
 
     @Test
-    fun `invalid portfolio id returns 400`() = testApplication {
+    fun `import by url without JWT returns 401`() {
         val deps = FakeDeps()
-        application { configureTestApp(deps.toDeps()) }
+        app.application { configureTestApp(deps.toDeps()) }
+
+        val response = app.postJson(
+            path = "/api/portfolio/${UUID.randomUUID()}/trades/import/by-url",
+            body = """{"url":"https://example.com/sample.csv"}""",
+        )
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `invalid portfolio id returns 400`() {
+        val deps = FakeDeps()
+        app.application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("123")
-        val response = postMultipart(
+        val response = app.postMultipart(
             path = "/api/portfolio/not-a-uuid/trades/import/csv",
             headers = authHeader(token),
-            parts = listOf(multipartFile("file", "trades.csv", "text/csv", "ext_id,datetime\n".toByteArray())),
+            parts = listOf(
+                multipartFile("file", "trades.csv", "text/csv", "ext_id,datetime\n".toByteArray()),
+            ),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
         val payload = json.decodeFromString<HttpErrorResponse>(response.body)
@@ -78,12 +104,12 @@ class PortfolioImportRoutesTest {
     }
 
     @Test
-    fun `missing file part returns 400`() = testApplication {
+    fun `missing file part returns 400`() {
         val deps = FakeDeps()
-        application { configureTestApp(deps.toDeps()) }
+        app.application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("456")
-        val response = postMultipart(
+        val response = app.postMultipart(
             path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
             headers = authHeader(token),
             parts = listOf(
@@ -97,12 +123,12 @@ class PortfolioImportRoutesTest {
     }
 
     @Test
-    fun `unsupported mime type returns 415`() = testApplication {
+    fun `unsupported mime type returns 415`() {
         val deps = FakeDeps()
-        application { configureTestApp(deps.toDeps()) }
+        app.application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("789")
-        val response = postMultipart(
+        val response = app.postMultipart(
             path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
             headers = authHeader(token),
             parts = listOf(multipartFile("file", "image.png", "image/png", ByteArray(8) { 1 })),
@@ -113,13 +139,13 @@ class PortfolioImportRoutesTest {
     }
 
     @Test
-    fun `payload larger than limit returns 413`() = testApplication {
+    fun `payload larger than limit returns 413`() {
         val deps = FakeDeps().apply { maxBytes = 64 }
-        application { configureTestApp(deps.toDeps()) }
+        app.application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("111")
         val large = ByteArray(256) { 'A'.code.toByte() }
-        val response = postMultipart(
+        val response = app.postMultipart(
             path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
             headers = authHeader(token),
             parts = listOf(
@@ -139,9 +165,9 @@ class PortfolioImportRoutesTest {
     }
 
     @Test
-    fun `successful import returns report`() = testApplication {
+    fun `successful multipart import returns report`() {
         val deps = FakeDeps().apply {
-            result = Result.success(
+            importResult = Result.success(
                 CsvImportService.ImportReport(
                     inserted = 3,
                     skippedDuplicates = 1,
@@ -152,14 +178,14 @@ class PortfolioImportRoutesTest {
                 ),
             )
         }
-        application { configureTestApp(deps.toDeps()) }
+        app.application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("222")
-        val csv = "ext_id,datetime,ticker,exchange,board,alias_source,side,quantity,price,currency,fee,fee_currency,tax,tax_currency,broker,note\n"
-        val response = postMultipart(
+        val csvBytes = Files.readAllBytes(Paths.get("..", "samples", "trades.csv"))
+        val response = app.postMultipart(
             path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
             headers = authHeader(token),
-            parts = listOf(multipartFile("file", "trades.csv", "text/csv", csv.toByteArray())),
+            parts = listOf(multipartFile("file", "trades.csv", "text/csv", csvBytes)),
         )
         assertEquals(HttpStatusCode.OK, response.status)
         val payload = json.decodeFromString<ImportReportResponse>(response.body)
@@ -175,31 +201,92 @@ class PortfolioImportRoutesTest {
     }
 
     @Test
-    fun `domain not found returns 404`() = testApplication {
+    fun `successful import by url returns report`() {
+        val csv = "ext_id,datetime\n".toByteArray()
         val deps = FakeDeps().apply {
-            result = Result.failure(PortfolioException(PortfolioError.NotFound("Portfolio missing")))
+            downloadBytes = csv
+            downloadContentType = ContentType.Text.CSV
+            importResult = Result.success(
+                CsvImportService.ImportReport(
+                    inserted = 2,
+                    skippedDuplicates = 0,
+                    failed = emptyList(),
+                ),
+            )
         }
-        application { configureTestApp(deps.toDeps()) }
+        app.application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("333")
-        val response = postMultipart(
-            path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
+        val response = app.postJson(
+            path = "/api/portfolio/${UUID.randomUUID()}/trades/import/by-url",
             headers = authHeader(token),
-            parts = listOf(multipartFile("file", "trades.csv", "text/csv", "ext_id,datetime\n".toByteArray())),
+            body = """{"url":"https://example.com/trades.csv"}""",
         )
-        assertEquals(HttpStatusCode.NotFound, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
-        assertEquals("not_found", payload.error)
-        assertEquals("Portfolio missing", payload.reason)
+        assertEquals(HttpStatusCode.OK, response.status)
+        val payload = json.decodeFromString<ImportReportResponse>(response.body)
+        assertEquals(2, payload.inserted)
+        assertEquals(0, payload.skippedDuplicates)
+        assertTrue(payload.failed.isEmpty())
     }
 
     @Test
-    fun `unexpected errors return 500`() = testApplication {
-        val deps = FakeDeps().apply { throwOnImport = RuntimeException("boom") }
-        application { configureTestApp(deps.toDeps()) }
+    fun `non https url returns 400`() {
+        val deps = FakeDeps()
+        app.application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("444")
-        val response = postMultipart(
+        val response = app.postJson(
+            path = "/api/portfolio/${UUID.randomUUID()}/trades/import/by-url",
+            headers = authHeader(token),
+            body = """{"url":"http://example.com/data.csv"}""",
+        )
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        assertEquals("bad_request", payload.error)
+    }
+
+    @Test
+    fun `empty url returns 400`() {
+        val deps = FakeDeps()
+        app.application { configureTestApp(deps.toDeps()) }
+
+        val token = issueToken("555")
+        val response = app.postJson(
+            path = "/api/portfolio/${UUID.randomUUID()}/trades/import/by-url",
+            headers = authHeader(token),
+            body = """{"url":"   "}""",
+        )
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        assertEquals("bad_request", payload.error)
+    }
+
+    @Test
+    fun `download exceeding limit returns 413`() {
+        val deps = FakeDeps().apply {
+            downloadError = RemoteCsvTooLargeException(limit = 256)
+        }
+        app.application { configureTestApp(deps.toDeps()) }
+
+        val token = issueToken("666")
+        val response = app.postJson(
+            path = "/api/portfolio/${UUID.randomUUID()}/trades/import/by-url",
+            headers = authHeader(token),
+            body = """{"url":"https://example.com/big.csv"}""",
+        )
+        assertEquals(HttpStatusCode.PayloadTooLarge, response.status)
+        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        assertEquals("payload_too_large", payload.error)
+        assertEquals(256, payload.limit)
+    }
+
+    @Test
+    fun `unexpected importer error returns 500`() {
+        val deps = FakeDeps().apply { throwOnImport = RuntimeException("boom") }
+        app.application { configureTestApp(deps.toDeps()) }
+
+        val token = issueToken("777")
+        val response = app.postMultipart(
             path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
             headers = authHeader(token),
             parts = listOf(multipartFile("file", "trades.csv", "text/csv", "ext_id,datetime\n".toByteArray())),
@@ -246,15 +333,6 @@ class PortfolioImportRoutesTest {
         headers = headers,
     )
 
-    private fun testApplication(block: SimpleTestApplication.() -> Unit) {
-        val app = SimpleTestApplication()
-        try {
-            app.block()
-        } finally {
-            app.close()
-        }
-    }
-
     private data class MultipartPart(
         val name: String,
         val filename: String?,
@@ -290,6 +368,15 @@ class PortfolioImportRoutesTest {
             return request("POST", path, combinedHeaders, body, length)
         }
 
+        fun postJson(path: String, body: String, headers: Map<String, String> = emptyMap()): SimpleHttpResponse =
+            request(
+                method = "POST",
+                path = path,
+                headers = headers + mapOf("Content-Type" to "application/json"),
+                body = body.toByteArray(),
+                contentLength = body.toByteArray().size.toLong(),
+            )
+
         private fun request(
             method: String,
             path: String,
@@ -298,7 +385,7 @@ class PortfolioImportRoutesTest {
             contentLength: Long?,
         ): SimpleHttpResponse {
             ensureStarted()
-            val connection = (URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection)
+            val connection = java.net.URL("http://127.0.0.1:$port$path").openConnection() as java.net.HttpURLConnection
             connection.requestMethod = method
             connection.instanceFollowRedirects = false
             headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
@@ -355,7 +442,7 @@ class PortfolioImportRoutesTest {
         private fun ensureStarted() {
             if (engine == null) {
                 val config = module ?: {}
-                val selectedPort = ServerSocket(0).use { it.localPort }
+                val selectedPort = java.net.ServerSocket(0).use { it.localPort }
                 val created = embeddedServer(Netty, host = "127.0.0.1", port = selectedPort, module = config)
                 created.start(wait = false)
                 engine = created
@@ -370,21 +457,28 @@ class PortfolioImportRoutesTest {
     }
 
     private class FakeDeps {
-        var result: Result<CsvImportService.ImportReport> = Result.success(CsvImportService.ImportReport())
+        var importResult: Result<CsvImportService.ImportReport> = Result.success(CsvImportService.ImportReport())
         var throwOnImport: Throwable? = null
         var maxBytes: Long = 1_048_576
-        var allowed: Set<ContentType> = setOf(ContentType.Text.CSV)
+        var allowed: Set<ContentType> = setOf(ContentType.Text.CSV, ContentType.Application.OctetStream)
+        var downloadBytes: ByteArray = ByteArray(0)
+        var downloadContentType: ContentType? = ContentType.Text.CSV
+        var downloadError: Throwable? = null
 
         fun toDeps(): PortfolioImportDeps = PortfolioImportDeps(
             importCsv = { _, reader ->
                 throwOnImport?.let { throw it }
                 reader.use { it.readText() }
-                result
+                importResult
             },
             uploadSettings = UploadSettings(
                 csvMaxBytes = maxBytes,
                 allowedContentTypes = allowed,
             ),
+            downloadCsv = { _, _ ->
+                downloadError?.let { throw it }
+                RemoteCsv(contentType = downloadContentType, bytes = downloadBytes)
+            },
         )
     }
 }

@@ -189,3 +189,27 @@ curl -s -X POST "$BASE/telegram/webhook" \
 
 PowerShell: замените export на $env:NAME="value".
 ```
+
+## P10 — CSV/Sheets import
+
+### Smoke-curl
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $JWT" \
+  -F "file=@samples/trades.csv;type=text/csv" \
+  "$BASE/api/portfolio/$PORTFOLIO_ID/trades/import/csv" | jq .
+
+curl -s -X POST -H "Authorization: Bearer $JWT" \
+  -H "content-type: application/json" \
+  -d '{"url":"https://docs.google.com/spreadsheets/d/.../export?format=csv"}' \
+  "$BASE/api/portfolio/$PORTFOLIO_ID/trades/import/by-url" | jq .
+```
+
+Коды ответов: `200/400/401/413/415/500`. Продажи, которые ведут к отрицательной позиции (SELL>qty), вернутся в `failed` со строкой и причиной.
+
+В Mini App переключитесь во вкладку **Import**, выберите «File» или «By URL». Для CSV-файлов:
+
+1. Загрузите файл (drag & drop или кнопка).
+2. Проверьте предпросмотр, при необходимости поменяйте delimiter.
+3. Настройте соответствие колонок — все обязательные поля должны быть сопоставлены.
+4. После успешной валидации отправьте файл и дождитесь отчёта.

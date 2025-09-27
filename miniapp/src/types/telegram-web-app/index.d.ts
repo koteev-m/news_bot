@@ -1,4 +1,4 @@
-interface TelegramWebAppThemeParams {
+export interface TelegramWebAppThemeParams {
   bg_color?: string;
   text_color?: string;
   hint_color?: string;
@@ -7,14 +7,14 @@ interface TelegramWebAppThemeParams {
   button_text_color?: string;
 }
 
-interface TelegramBackButton {
+export interface TelegramBackButton {
   isVisible: boolean;
   onClick(callback: () => void): void;
   show(): void;
   hide(): void;
 }
 
-interface TelegramMainButton {
+export interface TelegramMainButton {
   text: string;
   isVisible: boolean;
   setText(text: string): TelegramMainButton;
@@ -23,7 +23,7 @@ interface TelegramMainButton {
   hide(): void;
 }
 
-interface TelegramWebApp {
+export interface TelegramWebApp {
   initData: string;
   initDataUnsafe: unknown;
   themeParams: TelegramWebAppThemeParams;
@@ -35,13 +35,14 @@ interface TelegramWebApp {
   BackButton: TelegramBackButton;
 }
 
-interface Telegram {
-  WebApp: TelegramWebApp;
+export interface TelegramNamespace {
+  WebApp?: TelegramWebApp;
+  [key: string]: unknown;
 }
 
 declare global {
   interface Window {
-    Telegram?: Telegram;
+    Telegram?: TelegramNamespace;
   }
 }
 

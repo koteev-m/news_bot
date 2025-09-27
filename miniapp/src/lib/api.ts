@@ -27,10 +27,10 @@ export interface TradesResponse {
   offset: number;
 }
 
-export interface ImportResult {
+export interface ImportReport {
   inserted: number;
-  skipped: number;
-  failed: Array<{ row: number; reason: string }>;
+  skippedDuplicates: number;
+  failed: Array<{ line: number; error: string }>;
 }
 
 export interface ReportSummary {
@@ -83,11 +83,11 @@ async function request<T>(path: string, init: RequestInit = {}, options?: { requ
     const response = await fetch(withBase(path), {
       ...init,
       headers,
-      signal: controller.signal
+      signal: controller.signal,
     });
     if (response.status === 401) {
       clearJwt();
-      throw new Error("Unauthorized");
+      throw new Error("Unauthorized. Please restart the Mini App.");
     }
     if (!response.ok) {
       const message = await safeReadError(response);
@@ -115,12 +115,12 @@ async function safeReadError(response: Response): Promise<string> {
       return response.statusText || "Request failed";
     }
     try {
-      const data = JSON.parse(text) as { message?: string };
-      return data.message ?? text;
-    } catch (error) {
+      const data = JSON.parse(text) as { message?: string; reason?: string; error?: string };
+      return data.message ?? data.reason ?? data.error ?? text;
+    } catch (_error) {
       return text;
     }
-  } catch (error) {
+  } catch (_error) {
     return response.statusText || "Request failed";
   }
 }
@@ -129,10 +129,14 @@ export async function authWebApp(initData: string): Promise<string> {
   if (!initData) {
     throw new Error("Missing init data");
   }
-  const tokenResponse = await request<{ token: string }>("/api/auth/telegram/verify", {
-    method: "POST",
-    body: JSON.stringify({ initData })
-  }, { requireAuth: false });
+  const tokenResponse = await request<{ token: string }>(
+    "/api/auth/telegram/verify",
+    {
+      method: "POST",
+      body: JSON.stringify({ initData }),
+    },
+    { requireAuth: false },
+  );
   if (!tokenResponse.token) {
     throw new Error("Invalid auth response");
   }
@@ -158,13 +162,26 @@ export async function getTrades(params: { limit?: number; offset?: number; side?
   return request<TradesResponse>(url.toString(), { method: "GET" });
 }
 
-export async function postImportCsv(file: File): Promise<ImportResult> {
+export async function postImportCsv(portfolioId: string, file: File): Promise<ImportReport> {
+  if (!portfolioId) {
+    throw new Error("Portfolio ID is required");
+  }
   const form = new FormData();
   form.append("file", file);
-  return request<ImportResult>("/api/import/csv", {
+  return request<ImportReport>(`/api/portfolio/${portfolioId}/trades/import/csv`, {
     method: "POST",
-    body: form
-  });
+    body: form,
+  }, { timeoutMs: 30000 });
+}
+
+export async function postImportByUrl(portfolioId: string, url: string): Promise<ImportReport> {
+  if (!portfolioId) {
+    throw new Error("Portfolio ID is required");
+  }
+  return request<ImportReport>(`/api/portfolio/${portfolioId}/trades/import/by-url`, {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  }, { timeoutMs: 30000 });
 }
 
 export async function postRevalue(): Promise<{ status: string }> {
