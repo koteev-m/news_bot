@@ -1,9 +1,23 @@
-export type Tg = typeof window.Telegram & { WebApp: any };
+interface TelegramNamespace {
+  WebApp?: {
+    initData?: string;
+    initDataUnsafe?: Record<string, unknown>;
+    ready?: () => void;
+    expand?: () => void;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
 
-declare global {
-  interface Window {
-    Telegram?: Tg;
+function resolveNamespace(): TelegramNamespace | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
   }
+  const candidate = (window as Window & { Telegram?: unknown }).Telegram;
+  if (candidate && typeof candidate === "object") {
+    return candidate as TelegramNamespace;
+  }
+  return undefined;
 }
 
 export interface StartParam {
@@ -22,11 +36,8 @@ export type InitDataUnsafe = Record<string, unknown> & {
   startParam?: string;
 };
 
-export function getWebApp(): Tg["WebApp"] | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return window.Telegram?.WebApp ?? null;
+export function getWebApp(): TelegramNamespace["WebApp"] | null {
+  return resolveNamespace()?.WebApp ?? null;
 }
 
 export function ready(): void {

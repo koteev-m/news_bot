@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getWebApp, parseStartParam } from "../lib/telegram";
 
-declare global {
-  interface Window {
-    Telegram?: any;
-  }
-}
-
 describe("telegram helpers", () => {
   beforeEach(() => {
     delete window.Telegram;
@@ -27,14 +21,19 @@ describe("telegram helpers", () => {
   });
 
   it("reads start_param from global WebApp", () => {
-    window.Telegram = {
+    (window as Window & { Telegram?: unknown }).Telegram = {
       WebApp: {
         initData: "",
         initDataUnsafe: {
-          start_param: "tab=trades"
-        }
-      }
-    };
+          start_param: "tab=trades",
+        },
+        ready: () => {},
+        expand: () => {},
+        close: () => {},
+        MainButton: {} as any,
+        BackButton: {} as any,
+      } as any,
+    } as any;
     const params = parseStartParam();
     expect(params.tab).toBe("trades");
   });

@@ -1,0 +1,25 @@
+### Base
+@BASE = http://localhost:8080
+@JWT = {{JWT}}
+@PORTFOLIO_ID = {{PORTFOLIO_ID}}
+
+### Import trades CSV (JWT)
+POST {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/trades/import/csv
+Authorization: Bearer {{JWT}}
+Content-Type: multipart/form-data; boundary=ImportBoundary
+
+--ImportBoundary
+Content-Disposition: form-data; name="file"; filename="trades.csv"
+Content-Type: text/csv
+
+< ./samples/trades.csv
+--ImportBoundary--
+
+### Import trades by URL (JWT)
+POST {{BASE}}/api/portfolio/{{PORTFOLIO_ID}}/trades/import/by-url
+Authorization: Bearer {{JWT}}
+content-type: application/json
+
+{
+  "url": "https://docs.google.com/spreadsheets/d/.../export?format=csv"
+}
