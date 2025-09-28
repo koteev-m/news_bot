@@ -1,0 +1,54 @@
+name: Mini App E2E
+
+on:
+  push:
+    paths:
+      - "miniapp/**"
+      - ".github/workflows/miniapp-e2e.yml"
+  pull_request:
+    paths:
+      - "miniapp/**"
+      - ".github/workflows/miniapp-e2e.yml"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('miniapp/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        working-directory: miniapp
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: miniapp
+        run: pnpm playwright:install
+
+      - name: Run e2e tests
+        working-directory: miniapp
+        run: pnpm test:e2e -- --reporter=html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniapp-playwright-report
+          path: miniapp/playwright-report
+          if-no-files-found: warn
