@@ -11,98 +11,124 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 import org.slf4j.LoggerFactory
 
+@Serializable
+data class TgUpdate(val message: TgMessage? = null)
+
+@Serializable
+data class TgMessage(
+    val from: TgUser? = null,
+    val successful_payment: TgSuccessfulPayment? = null
+)
+
+@Serializable
+data class TgUser(val id: Long? = null)
+
+@Serializable
+data class TgSuccessfulPayment(
+    val currency: String,
+    val total_amount: Long,
+    val invoice_payload: String? = null,
+    val provider_payment_charge_id: String? = null
+)
+
 object StarsWebhookHandler {
 
     private val logger = LoggerFactory.getLogger(StarsWebhookHandler::class.java)
 
-    private val json = Json { ignoreUnknownKeys = true }
-
-    @Serializable
-    private data class TgUpdate(val message: TgMessage? = null)
-
-    @Serializable
-    private data class TgMessage(val from: TgUser? = null, val successful_payment: TgSuccessfulPayment? = null)
-
-    @Serializable
-    private data class TgUser(val id: Long? = null)
-
-    @Serializable
-    private data class TgSuccessfulPayment(
-        val currency: String,
-        val total_amount: Long,
-        val invoice_payload: String? = null,
-        val provider_payment_charge_id: String? = null
-    )
+    internal val json = Json { ignoreUnknownKeys = true }
 
     /**
      * Возвращает true, если Update содержит успешный XTR-платёж и он обработан (или идемпотентно пропущен).
      * В любом случае отвечает 200 (быстрый ACK), чтобы Telegram не ретраил.
      */
     suspend fun handleIfStarsPayment(call: ApplicationCall, billing: BillingService): Boolean {
-        val requestId = UUID.randomUUID().toString()
+        val requestId = requestId()
         val body = runCatching { call.receiveText() }.getOrElse {
-            logger.warn("stars-webhook requestId={} read_body_failed", requestId)
             call.respond(HttpStatusCode.OK)
             return false
         }
 
-        val update = runCatching { json.decodeFromString(TgUpdate.serializer(), body) }.getOrNull()
-        val successfulPayment = update?.message?.successful_payment
+        val update = runCatching { json.decodeFromString(TgUpdate.serializer(), body) }.getOrElse {
+            call.respond(HttpStatusCode.OK)
+            return false
+        }
+
+        return handleParsed(call, update, billing, requestId)
+    }
+
+    suspend fun handleParsed(
+        call: ApplicationCall,
+        update: TgUpdate,
+        billing: BillingService
+    ): Boolean {
+        val requestId = requestId()
+        return handleParsed(call, update, billing, requestId)
+    }
+
+    private suspend fun handleParsed(
+        call: ApplicationCall,
+        update: TgUpdate,
+        billing: BillingService,
+        requestId: String
+    ): Boolean {
+        val successfulPayment = update.message?.successful_payment
         if (successfulPayment == null) {
-            logger.debug("stars-webhook requestId={} no_successful_payment", requestId)
             call.respond(HttpStatusCode.OK)
             return false
         }
 
         if (!successfulPayment.currency.equals("XTR", ignoreCase = true)) {
-            logger.info(
-                "stars-webhook requestId={} currency_mismatch currency={}",
-                requestId,
-                successfulPayment.currency
-            )
+            logger.info("stars-webhook requestId={} reason=currency_mismatch", requestId)
             call.respond(HttpStatusCode.OK)
             return true
         }
 
         val userId = update.message?.from?.id
-        val providerPaymentId = successfulPayment.provider_payment_charge_id
         val payload = successfulPayment.invoice_payload
-        val amountXtr = successfulPayment.total_amount
+        val payloadData = parsePayload(payload)
+        if (payloadData == null) {
+            logger.info("stars-webhook requestId={} reason=payload_missing", requestId)
+            call.respond(HttpStatusCode.OK)
+            return true
+        }
+        val (payloadUserId, tier) = payloadData
 
-        val tier = runCatching { extractTierFromPayload(payload) }.getOrNull()
-
-        if (userId == null || tier == null || amountXtr < 0) {
-            logger.warn("stars-webhook requestId={} invalid_data", requestId)
+        if (userId == null || payloadUserId != userId) {
+            logger.info("stars-webhook requestId={} reason=user_mismatch", requestId)
             call.respond(HttpStatusCode.OK)
             return true
         }
 
-        val applied = try {
-            billing.applySuccessfulPayment(
-                userId = userId,
-                tier = tier,
-                amountXtr = amountXtr,
-                providerPaymentId = providerPaymentId,
-                payload = payload
-            )
-        } catch (error: Throwable) {
-            Result.failure(error)
-        }
+        val result = billing.applySuccessfulPayment(
+            userId = userId,
+            tier = tier,
+            amountXtr = successfulPayment.total_amount,
+            providerPaymentId = successfulPayment.provider_payment_charge_id,
+            payload = successfulPayment.invoice_payload
+        )
 
-        if (applied.isFailure) {
-            logger.error("stars-webhook requestId={} billing_failure", requestId, applied.exceptionOrNull())
+        if (result.isSuccess) {
+            logger.info("stars-webhook requestId={} reason=applied_ok", requestId)
+        } else {
+            logger.error(
+                "stars-webhook requestId={} reason=applied_ok status=error",
+                requestId,
+                result.exceptionOrNull()
+            )
         }
 
         call.respond(HttpStatusCode.OK)
         return true
     }
 
-    /** payload формат: "<userId>:<TIER>:<uuid>" → берём TIER и парсим в enum */
-    private fun extractTierFromPayload(payload: String?): Tier? {
+    private fun parsePayload(payload: String?): Pair<Long, Tier>? {
         if (payload.isNullOrBlank()) return null
         val parts = payload.split(':')
-        if (parts.size < 2) return null
-        val tierStr = parts[1]
-        return runCatching { Tier.valueOf(tierStr.uppercase()) }.getOrNull()
+        if (parts.size < 3) return null
+        val userId = parts[0].toLongOrNull() ?: return null
+        val tier = runCatching { Tier.valueOf(parts[1].uppercase()) }.getOrNull() ?: return null
+        return userId to tier
     }
+
+    private fun requestId(): String = UUID.randomUUID().toString()
 }

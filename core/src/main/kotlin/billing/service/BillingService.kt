@@ -6,10 +6,13 @@ import billing.model.Tier
 import billing.model.UserSubscription
 import billing.port.BillingRepository
 import billing.port.StarsGateway
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import org.slf4j.LoggerFactory
 
 interface BillingService {
     /** Активные планы, отсортированы по возрастанию уровня tier. */
@@ -45,6 +48,8 @@ class BillingServiceImpl(
     private val clock: Clock = Clock.systemUTC()
 ) : BillingService {
 
+    private val logger = LoggerFactory.getLogger(BillingServiceImpl::class.java)
+
     init {
         require(defaultDurationDays >= 1) { "defaultDurationDays must be >= 1" }
     }
@@ -72,14 +77,21 @@ class BillingServiceImpl(
     ): Result<Unit> = runCatching {
         require(amountXtr >= 0) { "amountXtr must be >= 0" }
 
-        repo.recordStarPaymentIfNew(
+        val pid = providerPaymentId ?: deterministicChargeId(userId, tier, payload)
+
+        val isNew = repo.recordStarPaymentIfNew(
             userId = userId,
             tier = tier,
             amountXtr = amountXtr,
-            providerPaymentId = providerPaymentId,
+            providerPaymentId = pid,
             payload = payload,
             status = SubStatus.ACTIVE
         )
+
+        if (!isNew) {
+            logger.info("stars-payment reason=duplicate")
+            return@runCatching
+        }
 
         val expiresAt = now().plus(Duration.ofDays(defaultDurationDays))
         repo.upsertSubscription(
@@ -87,8 +99,9 @@ class BillingServiceImpl(
             tier = tier,
             status = SubStatus.ACTIVE,
             expiresAt = expiresAt,
-            lastPaymentId = providerPaymentId
+            lastPaymentId = pid
         )
+        logger.info("stars-payment reason=applied_ok")
     }
 
     override suspend fun getMySubscription(userId: Long): Result<UserSubscription?> =
@@ -100,4 +113,16 @@ class BillingServiceImpl(
     }
 
     private fun now(): Instant = Instant.now(clock)
+
+    private fun deterministicChargeId(userId: Long, tier: Tier, payload: String?): String {
+        val source = "xtr:$userId:${tier.name}:${payload ?: ""}"
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(source.toByteArray(StandardCharsets.UTF_8))
+        val hex = buildString(digest.size * 2) {
+            for (byte in digest) {
+                append(String.format("%02x", byte))
+            }
+        }
+        return hex.take(64)
+    }
 }
