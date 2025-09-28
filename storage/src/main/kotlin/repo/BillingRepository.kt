@@ -7,9 +7,10 @@ import billing.model.UserSubscription
 import billing.model.Xtr
 import billing.port.BillingRepository
 import db.DatabaseFactory.dbQuery
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneOffset
-import java.util.UUID
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
@@ -95,7 +96,7 @@ class BillingRepositoryImpl : BillingRepository {
         payload: String?,
         status: SubStatus
     ): Boolean = dbQuery {
-        val chargeId = providerPaymentId ?: UUID.randomUUID().toString()
+        val chargeId = providerPaymentId ?: deterministicChargeId(userId, tier, payload)
         try {
             StarPaymentsTable.insert {
                 it[StarPaymentsTable.userId] = userId
@@ -108,7 +109,7 @@ class BillingRepositoryImpl : BillingRepository {
             }
             true
         } catch (exception: ExposedSQLException) {
-            if (providerPaymentId != null && exception.sqlState == SQLSTATE_UNIQUE_VIOLATION) {
+            if (exception.sqlState == SQLSTATE_UNIQUE_VIOLATION) {
                 false
             } else {
                 throw exception
@@ -131,3 +132,15 @@ private fun ResultRow.toUserSubscription(): UserSubscription = UserSubscription(
     startedAt = this[UserSubscriptionsTable.startedAt].toInstant(),
     expiresAt = this[UserSubscriptionsTable.expiresAt].toInstant()
 )
+
+private fun deterministicChargeId(userId: Long, tier: Tier, payload: String?): String {
+    val source = "xtr:$userId:${tier.name}:${payload ?: ""}"
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest(source.toByteArray(StandardCharsets.UTF_8))
+    val hex = buildString(digest.size * 2) {
+        for (byte in digest) {
+            append(String.format("%02x", byte))
+        }
+    }
+    return hex.take(64)
+}

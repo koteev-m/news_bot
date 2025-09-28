@@ -2,6 +2,7 @@ package app
 
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
+import billing.TgUpdate
 import billing.bot.StarsBotCommands
 import billing.bot.StarsBotRouter
 import billing.bot.StarsBotRouter.BotRoute
@@ -26,6 +27,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.util.AttributeKey
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
 import observability.DomainMetrics
 import observability.Observability
 import repo.BillingRepositoryImpl
@@ -65,12 +67,20 @@ fun Application.module() {
                 return@post
             }
 
-            val rawUpdate = runCatching { call.receiveText() }.getOrNull()
-            val update = rawUpdate?.let { runCatching { BotUtils.parseUpdate(it) }.getOrNull() }
-
             val services = attributes[Services.Key]
-            StarsWebhookHandler.handleIfStarsPayment(call, services.billingService)
+            val rawUpdate = runCatching { call.receiveText() }.getOrElse {
+                call.respond(HttpStatusCode.OK)
+                return@post
+            }
 
+            val tgUpdate = runCatching { StarsWebhookHandler.json.decodeFromString<TgUpdate>(rawUpdate) }.getOrElse {
+                call.respond(HttpStatusCode.OK)
+                return@post
+            }
+
+            StarsWebhookHandler.handleParsed(call, tgUpdate, services.billingService)
+
+            val update = runCatching { BotUtils.parseUpdate(rawUpdate) }.getOrNull()
             if (update == null) {
                 return@post
             }

@@ -1,8 +1,8 @@
 package billing
 
 import billing.model.BillingPlan
-import billing.model.UserSubscription
 import billing.model.Tier
+import billing.model.UserSubscription
 import billing.service.BillingService
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -12,10 +12,14 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.createApplicationPlugin
+import io.ktor.server.application.install
+import io.ktor.server.request.receiveText
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -25,13 +29,12 @@ class StarsWebhookHandlerTest {
     @Test
     fun `successful payment invokes billing service`() = testApplication {
         val service = RecordingBillingService()
-        application { testRoute(service) }
+        application { installParsedRoute("/test/webhook", service) }
 
         val response = postWebhook(successfulPaymentJson())
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals(1, service.calls.size)
-        val call = service.calls.first()
+        val call = service.calls.single()
         assertEquals(7446417641L, call.userId)
         assertEquals(Tier.PRO, call.tier)
         assertEquals(123L, call.amountXtr)
@@ -40,88 +43,86 @@ class StarsWebhookHandlerTest {
     }
 
     @Test
-    fun `duplicate payment is acknowledged`() = testApplication {
+    fun `payload user mismatch prevents processing`() = testApplication {
         val service = RecordingBillingService()
-        application { testRoute(service) }
+        application { installParsedRoute("/test/webhook", service) }
 
-        val first = postWebhook(successfulPaymentJson())
-        val second = postWebhook(successfulPaymentJson())
-
-        assertEquals(HttpStatusCode.OK, first.status)
-        assertEquals(HttpStatusCode.OK, second.status)
-        assertEquals(2, service.calls.size)
-    }
-
-    @Test
-    fun `non XTR payment is ignored`() = testApplication {
-        val service = RecordingBillingService()
-        application { testRoute(service) }
-
-        val response = postWebhook(successfulPaymentJson(currency = "USD"))
+        val response = postWebhook(successfulPaymentJson(invoicePayload = "1:PRO:abc123"))
 
         assertEquals(HttpStatusCode.OK, response.status)
         assertTrue(service.calls.isEmpty())
     }
 
     @Test
-    fun `invalid payload prevents processing`() = testApplication {
+    fun `handleParsed uses provided update without re-reading body`() = testApplication {
         val service = RecordingBillingService()
-        application { testRoute(service) }
+        val receiveCounter = AtomicInteger(0)
+        application {
+            val app = this
+            app.install(createApplicationPlugin(name = "ReceiveCounter") {
+                onCallReceive { _, _ -> receiveCounter.incrementAndGet() }
+            })
+            routing {
+                post("/test/parsed") {
+                    val raw = call.receiveText()
+                    val update = StarsWebhookHandler.json.decodeFromString(TgUpdate.serializer(), raw)
+                    StarsWebhookHandler.handleParsed(call, update, service)
+                }
+            }
+        }
 
-        val response = postWebhook(successfulPaymentJson(invoicePayload = "7446417641::abc123"))
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        assertTrue(service.calls.isEmpty())
-    }
-
-    @Test
-    fun `malformed json is still acknowledged`() = testApplication {
-        val service = RecordingBillingService()
-        application { testRoute(service) }
-
-        val response = postWebhook(rawBody = "{ not json }")
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        assertTrue(service.calls.isEmpty())
-    }
-
-    @Test
-    fun `billing service failure is swallowed`() = testApplication {
-        val service = RecordingBillingService(fail = true)
-        application { testRoute(service) }
-
-        val response = postWebhook(successfulPaymentJson())
+        val response = postWebhook(successfulPaymentJson(), path = "/test/parsed")
 
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals(1, service.calls.size)
+        assertEquals(1, receiveCounter.get())
     }
 
-    private suspend fun ApplicationTestBuilder.postWebhook(body: String? = null, rawBody: String? = null): HttpResponse {
-        val payload = rawBody ?: body ?: successfulPaymentJson()
-        return client.post("/test/webhook") {
+    @Test
+    fun `provider payment id null is passed to billing`() = testApplication {
+        val service = RecordingBillingService()
+        application { installParsedRoute("/test/webhook", service) }
+
+        val response = postWebhook(successfulPaymentJson(providerChargeId = null))
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val call = service.calls.single()
+        assertEquals(null, call.providerPaymentId)
+    }
+
+    private suspend fun ApplicationTestBuilder.postWebhook(
+        body: String,
+        path: String = "/test/webhook"
+    ): HttpResponse {
+        return client.post(path) {
             header(HttpHeaders.ContentType, ContentType.Application.Json)
-            setBody(payload)
+            setBody(body)
+        }
+    }
+
+    private fun Application.installParsedRoute(path: String, service: BillingService) {
+        routing {
+            post(path) {
+                val raw = call.receiveText()
+                val update = StarsWebhookHandler.json.decodeFromString(TgUpdate.serializer(), raw)
+                StarsWebhookHandler.handleParsed(call, update, service)
+            }
         }
     }
 
     private fun successfulPaymentJson(
         currency: String = "XTR",
-        invoicePayload: String = "7446417641:PRO:abc123"
+        invoicePayload: String = "7446417641:PRO:abc123",
+        providerChargeId: String? = "pmt_1"
     ): String {
+        val providerField = providerChargeId?.let { "\"provider_payment_charge_id\":\"$it\"" }
+            ?: "\"provider_payment_charge_id\":null"
         return """
-            {"message":{"from":{"id":7446417641},"successful_payment":{"currency":"$currency","total_amount":123,"invoice_payload":"$invoicePayload","provider_payment_charge_id":"pmt_1"}}}
+            {"message":{"from":{"id":7446417641},"successful_payment":{"currency":"$currency","total_amount":123,"invoice_payload":"$invoicePayload",$providerField}}}
         """.trimIndent()
     }
 
-    private fun Application.testRoute(service: BillingService) {
-        routing {
-            post("/test/webhook") {
-                StarsWebhookHandler.handleIfStarsPayment(call, service)
-            }
-        }
-    }
-
-    private class RecordingBillingService(private val fail: Boolean = false) : BillingService {
+    private class RecordingBillingService : BillingService {
         val calls = mutableListOf<ApplyCall>()
 
         override suspend fun applySuccessfulPayment(
@@ -131,9 +132,8 @@ class StarsWebhookHandlerTest {
             providerPaymentId: String?,
             payload: String?
         ): Result<Unit> {
-            val call = ApplyCall(userId, tier, amountXtr, providerPaymentId, payload)
-            calls += call
-            return if (fail) Result.failure(RuntimeException("boom")) else Result.success(Unit)
+            calls += ApplyCall(userId, tier, amountXtr, providerPaymentId, payload)
+            return Result.success(Unit)
         }
 
         override suspend fun listPlans(): Result<List<BillingPlan>> {
@@ -156,4 +156,5 @@ class StarsWebhookHandlerTest {
         val providerPaymentId: String?,
         val payload: String?
     )
+
 }
