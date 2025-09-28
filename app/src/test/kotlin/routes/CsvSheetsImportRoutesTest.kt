@@ -19,6 +19,7 @@ import io.ktor.server.routing.routing
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.time.Clock
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -28,9 +29,14 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import portfolio.service.CsvImportService
+import routes.ImportByUrlRateLimiterHolder
+import routes.ImportByUrlSettings
 import routes.dto.ImportReportResponse
+import routes.setImportByUrlLimiterHolder
+import routes.setImportByUrlSettings
 import security.JwtConfig
 import security.JwtSupport
+import security.RateLimitConfig
 
 class CsvSheetsImportRoutesTest {
     private val jwtConfig = JwtConfig(
@@ -308,6 +314,13 @@ class CsvSheetsImportRoutesTest {
             }
         }
         attributes.put(PortfolioImportDepsKey, deps)
+        setImportByUrlSettings(
+            ImportByUrlSettings(
+                enabled = true,
+                rateLimit = RateLimitConfig(capacity = 100, refillPerMinute = 100),
+            ),
+        )
+        setImportByUrlLimiterHolder(ImportByUrlRateLimiterHolder(Clock.systemUTC()))
         routing {
             authenticate("auth-jwt") {
                 portfolioImportRoutes()

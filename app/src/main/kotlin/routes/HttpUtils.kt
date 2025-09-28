@@ -59,6 +59,15 @@ suspend fun ApplicationCall.respondPayloadTooLarge(limit: Long) {
     respond(HttpStatusCode.PayloadTooLarge, HttpErrorResponse(error = "payload_too_large", limit = limit))
 }
 
+suspend fun ApplicationCall.respondTooManyRequests(retryAfterSeconds: Long) {
+    response.headers.append("Retry-After", retryAfterSeconds.toString(), safeOnly = false)
+    respond(HttpStatusCode.TooManyRequests, mapOf("error" to "rate_limited"))
+}
+
+suspend fun ApplicationCall.respondServiceUnavailable(reason: String = "by_url_disabled") {
+    respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to reason))
+}
+
 suspend fun ApplicationCall.respondInternal() {
     respond(HttpStatusCode.InternalServerError, HttpErrorResponse(error = "internal"))
 }

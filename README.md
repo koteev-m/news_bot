@@ -199,6 +199,20 @@ curl -s -X POST "$BASE/telegram/webhook" \
     }
   }'
 
+## P25 — Import by-URL: feature-flag & rate-limit
+
+Toggle and configure the CSV import via URL guard with HOCON:
+
+```hocon
+import {
+  byUrlEnabled = true
+  byUrlRateLimit { capacity = 3, refillPerMinute = 3 }
+}
+```
+
+- `503 Service Unavailable` + `{ "error":"by_url_disabled" }` when the feature flag is off.
+- `429 Too Many Requests` + `Retry-After` header and `{ "error":"rate_limited" }` when the per-subject bucket is empty.
+
 ## P24 — Nightly soak
 
 Ночной soak-тесты выполняются GitHub Actions workflow [`Nightly Load Soak`](.github/workflows/load-nightly.yml) по расписанию `0 2 * * *` (02:00 UTC) и вручную через `workflow_dispatch`. Для прогона нужны секреты окружения:
