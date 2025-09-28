@@ -360,5 +360,39 @@ curl -s -H "Authorization: Bearer $JWT" \
 ## DoD (Definition of Done)
 - `docker build` успешен; `docker compose up -d` поднимает `db/app/nginx` (`healthy`).
 - `/healthz` и `/metrics` доступны через `nginx`.
-- `setWebhook` срабатывает; Ktor получает запросы по HTTPS (TLS терминация в Nginx).  
+- `setWebhook` срабатывает; Ktor получает запросы по HTTPS (TLS терминация в Nginx).
 - Файлы сгенерированы строго в формате для автосоздания PR.
+
+## P21 — Monitoring (Prometheus + Grafana + Alertmanager)
+
+### 1) Поднять app/db/nginx (P14)
+
+```bash
+docker compose -f deploy/compose/docker-compose.yml up -d
+```
+
+### 2) Поднять monitoring (в той же сети compose_default)
+
+```bash
+cd deploy/monitoring
+cp .env.example .env
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+### 3) Открыть Grafana
+
+Откройте http://localhost:3000 и авторизуйтесь с `admin / $GF_SECURITY_ADMIN_PASSWORD`.
+
+### 4) Dashboard
+
+Дашборд "NewsBot / Observability" импортируется автоматически.
+
+### 5) Alerts
+
+Проверьте состояние алёртов в Prometheus: http://localhost:9090/alerts.
+
+### Примечания
+
+- Сеть `compose_default` должна существовать (поднимайте app-compose перед monitoring).
+- В бою меняйте пароли и webhook-URL через переменные окружения или секрет-менеджер.
+- Метрики webhook/duplicates требуют инкремента соответствующих счётчиков в коде (если ещё не сделано).
