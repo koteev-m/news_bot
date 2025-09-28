@@ -159,6 +159,12 @@ curl -s -H "Authorization: Bearer $JWT" \
 
 ## P06 — Billing/Stars smoke
 
+## P26 — Webhook queue
+
+Очередь вебхука Telegram построена на ограниченном `Channel` с конфигурируемой вместимостью (`webhook.queue.capacity`), количеством воркеров (`webhook.queue.workers`) и стратегией переполнения (`webhook.queue.overflow` — `drop_oldest` или `drop_latest`). Маршрут `/telegram/webhook` читает тело один раз, мгновенно отвечает `200 OK` и передаёт `TgUpdate` в очередь, поэтому обработка платежей идёт в фоновых корутинах с корректным завершением на shutdown.
+
+Метрики очереди экспортируются в `/metrics` и включают `webhook_queue_size` (текущий размер), `webhook_queue_dropped_total` (дропы из-за переполнения), `webhook_queue_processed_total` (успешно обработанные элементы) и `webhook_handle_seconds` (таймер длительности обработчика).
+
 ### Планы (публично)
 ```bash
 export BASE="http://localhost:8080"
