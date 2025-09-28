@@ -14,6 +14,7 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
+import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.config.ApplicationConfig
@@ -34,10 +35,12 @@ import java.io.Reader
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
+import java.time.Clock
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 import kotlinx.coroutines.CancellationException
 import portfolio.errors.DomainResult
@@ -48,6 +51,10 @@ import repo.tables.TradesTable
 import routes.dto.ImportByUrlRequest
 import routes.dto.ImportFailedItem
 import routes.dto.ImportReportResponse
+import routes.respondServiceUnavailable
+import routes.respondTooManyRequests
+import security.RateLimitConfig
+import security.RateLimiter
 import security.userIdOrNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
@@ -148,9 +155,23 @@ fun Route.portfolioImportRoutes() {
     }
 
     post("/api/portfolio/{id}/trades/import/by-url") {
-        val subject = call.userIdOrNull
-        if (subject == null) {
+        val userId = call.userIdOrNull
+        if (userId == null) {
             call.respondUnauthorized()
+            return@post
+        }
+
+        val subject = call.rateLimitSubject(userId)
+
+        val settings = call.importByUrlSettings()
+        if (!settings.enabled) {
+            call.respondServiceUnavailable()
+            return@post
+        }
+        val limiter = call.application.importByUrlRateLimiter(settings.rateLimit)
+        val (allowed, retryAfter) = limiter.tryAcquire(subject)
+        if (!allowed) {
+            call.respondTooManyRequests(retryAfter ?: 60)
             return@post
         }
 
@@ -254,16 +275,76 @@ private fun String?.toPortfolioIdOrNull(): UUID? = this?.trim()?.takeIf { it.isN
 
 internal val PortfolioImportDepsKey = AttributeKey<PortfolioImportDeps>("PortfolioImportDeps")
 
+internal val ImportByUrlLimiterHolderKey = AttributeKey<ImportByUrlRateLimiterHolder>("ImportByUrlLimiterHolder")
+internal val ImportByUrlSettingsKey = AttributeKey<ImportByUrlSettings>("ImportByUrlSettings")
+
 internal data class PortfolioImportDeps(
     val importCsv: suspend (UUID, Reader) -> DomainResult<CsvImportService.ImportReport>,
     val uploadSettings: UploadSettings,
     val downloadCsv: suspend (String, Long) -> RemoteCsv,
 )
 
+internal class ImportByUrlRateLimiterHolder(private val clock: Clock) {
+    private val limiters = ConcurrentHashMap<RateLimitConfig, RateLimiter>()
+
+    fun limiter(config: RateLimitConfig): RateLimiter = limiters.computeIfAbsent(config) { RateLimiter(it, clock) }
+}
+
+internal data class ImportByUrlSettings(
+    val enabled: Boolean,
+    val rateLimit: RateLimitConfig,
+)
+
 internal data class RemoteCsv(
     val contentType: ContentType?,
     val bytes: ByteArray,
 )
+
+private fun Application.importByUrlRateLimiter(config: RateLimitConfig): RateLimiter {
+    val attributes = attributes
+    val holder = if (attributes.contains(ImportByUrlLimiterHolderKey)) {
+        attributes[ImportByUrlLimiterHolderKey]
+    } else {
+        val created = ImportByUrlRateLimiterHolder(Clock.systemUTC())
+        attributes.put(ImportByUrlLimiterHolderKey, created)
+        created
+    }
+    return holder.limiter(config)
+}
+
+internal fun Application.setImportByUrlLimiterHolder(holder: ImportByUrlRateLimiterHolder) {
+    attributes.put(ImportByUrlLimiterHolderKey, holder)
+}
+
+internal fun Application.setImportByUrlSettings(settings: ImportByUrlSettings) {
+    attributes.put(ImportByUrlSettingsKey, settings)
+}
+
+private fun ApplicationCall.rateLimitSubject(userId: String?): String {
+    if (userId != null) {
+        return userId
+    }
+    val forwarded = request.headers[HttpHeaders.XForwardedFor]
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.firstOrNull { it.isNotEmpty() }
+    val remote = forwarded
+        ?: request.headers["X-Real-IP"]?.trim()?.takeIf { it.isNotEmpty() }
+        ?: request.headers[HttpHeaders.Host]?.substringBefore(':')
+    return remote?.takeIf { it.isNotBlank() } ?: "anonymous"
+}
+
+private fun ApplicationCall.importByUrlSettings(): ImportByUrlSettings {
+    val attributes = application.attributes
+    if (attributes.contains(ImportByUrlSettingsKey)) {
+        return attributes[ImportByUrlSettingsKey]
+    }
+    val conf = application.environment.config
+    val enabled = conf.propertyOrNull("import.byUrlEnabled")?.getString()?.toBoolean() ?: false
+    val capacity = conf.property("import.byUrlRateLimit.capacity").getString().toInt()
+    val refill = conf.property("import.byUrlRateLimit.refillPerMinute").getString().toInt()
+    return ImportByUrlSettings(enabled = enabled, rateLimit = RateLimitConfig(capacity, refill))
+}
 
 private fun ApplicationCall.importDeps(): PortfolioImportDeps {
     val attributes = application.attributes
