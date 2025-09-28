@@ -417,3 +417,22 @@ PROM_URL=http://localhost:9090 bash tools/sre/sli_query.sh webhook_p95 5m
 ### Monitoring Stack
 - Используйте инструкции раздела P21 (выше) для запуска Prometheus/Grafana (`deploy/monitoring/docker-compose.monitoring.yml`).
 - Дашборд: Grafana → "NewsBot / Observability" (включает метрики SLO).
+
+## P23 — Load testing (k6/JMeter)
+
+k6 сценарии находятся в `deploy/load/k6`. Перед запуском скопируйте пример окружения и заполните значения:
+
+```bash
+cp deploy/load/.env.example deploy/load/.env
+export $(grep -v '^#' deploy/load/.env | xargs)
+# smoke
+k6 run deploy/load/k6/portfolio_scenario.js
+k6 run deploy/load/k6/webhook_scenario.js
+# or via runner
+bash tools/load/run_k6.sh portfolio:smoke
+bash tools/load/run_k6.sh webhook:burst
+```
+
+Раннер и скрипты проверяют `APP_PROFILE`. При значении `prod` выполнение прерывается, что защищает боевой контур. Для коротких проверок (например, в CI) можно задать `K6_SCENARIO=smoke K6_SHORT_RUN=true K6_DRY_RUN=true` — сценарии выполнятся в dry-run без реальных запросов.
+
+В каталоге `deploy/load/jmeter/` расположен план `portfolio_plan.jmx`. Откройте его в JMeter GUI, задайте переменные (`BASE_URL`, `JWT`, `PORTFOLIO_ID`) и запустите Thread Group. Для non-GUI режима сохраните план и выполните `jmeter -n -t deploy/load/jmeter/portfolio_plan.jmx -l results.jtl`.

@@ -1,0 +1,54 @@
+name: Load smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/load/**'
+      - 'tools/load/**'
+      - '.github/workflows/load-smoke.yml'
+      - 'README.md'
+  pull_request:
+    paths:
+      - 'deploy/load/**'
+      - 'tools/load/**'
+      - '.github/workflows/load-smoke.yml'
+      - 'README.md'
+
+jobs:
+  k6-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Portfolio scenario (dry run)
+        env:
+          BASE_URL: http://localhost:9999
+          APP_PROFILE: ci
+          K6_SCENARIO: smoke
+          K6_DRY_RUN: 'true'
+          K6_SHORT_RUN: 'true'
+        run: |
+          mkdir -p artifacts
+          k6 run deploy/load/k6/portfolio_scenario.js | tee artifacts/portfolio_smoke.log
+
+      - name: Webhook scenario (dry run)
+        env:
+          BASE_URL: http://localhost:9999
+          APP_PROFILE: ci
+          K6_SCENARIO: smoke
+          K6_DRY_RUN: 'true'
+          K6_SHORT_RUN: 'true'
+        run: |
+          k6 run deploy/load/k6/webhook_scenario.js | tee artifacts/webhook_smoke.log
+
+      - name: Upload k6 logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-smoke-logs
+          path: artifacts
