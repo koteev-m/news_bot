@@ -1,0 +1,43 @@
+name: Monitoring Validation
+
+on:
+  push:
+    paths:
+      - 'deploy/monitoring/**'
+      - '.github/workflows/monitoring.yml'
+  pull_request:
+    paths:
+      - 'deploy/monitoring/**'
+      - '.github/workflows/monitoring.yml'
+
+jobs:
+  promlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate monitoring files exist
+        run: |
+          for file in \
+            deploy/monitoring/docker-compose.monitoring.yml \
+            deploy/monitoring/prometheus/prometheus.yml \
+            deploy/monitoring/prometheus/alerts.rules.yml \
+            deploy/monitoring/alertmanager/alertmanager.yml; do
+            if [ ! -s "$file" ]; then
+              echo "Missing required file: $file" >&2
+              exit 1
+            fi
+          done
+
+      - name: Basic YAML validation
+        run: |
+          sudo apt-get update && sudo apt-get install -y yamllint
+          yamllint -d '{extends: default, rules: {line-length: disable}}' \
+            deploy/monitoring/docker-compose.monitoring.yml \
+            deploy/monitoring/prometheus/prometheus.yml \
+            deploy/monitoring/prometheus/alerts.rules.yml \
+            deploy/monitoring/alertmanager/alertmanager.yml \
+            deploy/monitoring/grafana/provisioning/datasources/datasource.yml \
+            deploy/monitoring/grafana/provisioning/dashboards/dashboards.yml \
+            .github/workflows/monitoring.yml

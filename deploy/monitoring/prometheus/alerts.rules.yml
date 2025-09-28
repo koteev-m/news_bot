@@ -1,0 +1,91 @@
+groups:
+  - name: newsbot.rules
+    rules:
+      - alert: WebhookP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(http_server_requests_seconds_bucket{job="app", uri="/telegram/webhook"}[5m])
+            )
+          ) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Webhook /telegram/webhook latency p95 is high"
+          description: |
+            The 95th percentile latency for /telegram/webhook is above 1.5s for more than 5 minutes.
+      - alert: WebhookP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(http_server_requests_seconds_bucket{job="app", uri="/telegram/webhook"}[5m])
+            )
+          ) > 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Webhook /telegram/webhook latency p95 is critically high"
+          description: |
+            The 95th percentile latency for /telegram/webhook is above 3s for more than 5 minutes.
+
+      - alert: Http5xxRateHigh
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="app", status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{job="app"}[5m])), 1e-9)
+          ) > 0.02
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 5xx error rate is elevated"
+          description: |
+            More than 2% of HTTP responses over the last 5 minutes are 5xx errors.
+      - alert: Http5xxRateHigh
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="app", status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{job="app"}[5m])), 1e-9)
+          ) > 0.04
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 5xx error rate is critically high"
+          description: |
+            More than 4% of HTTP responses over the last 5 minutes are 5xx errors.
+
+      - alert: StarsDuplicateRateHigh
+        expr: |
+          (
+            increase(webhook_stars_duplicate_total{job="app"}[5m])
+            /
+            clamp_min(increase(webhook_stars_success_total{job="app"}[5m]), 1e-9)
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Duplicate star payments rate is elevated"
+          description: |
+            Duplicate webhook star payments exceed 1% of successful payments over the last 5 minutes.
+      - alert: StarsDuplicateRateHigh
+        expr: |
+          (
+            increase(webhook_stars_duplicate_total{job="app"}[5m])
+            /
+            clamp_min(increase(webhook_stars_success_total{job="app"}[5m]), 1e-9)
+          ) > 0.02
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Duplicate star payments rate is critically high"
+          description: |
+            Duplicate webhook star payments exceed 2% of successful payments over the last 5 minutes.
