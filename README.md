@@ -198,6 +198,17 @@ curl -s -X POST "$BASE/telegram/webhook" \
       }
     }
   }'
+
+## P24 — Nightly soak
+
+Ночной soak-тесты выполняются GitHub Actions workflow [`Nightly Load Soak`](.github/workflows/load-nightly.yml) по расписанию `0 2 * * *` (02:00 UTC) и вручную через `workflow_dispatch`. Для прогона нужны секреты окружения:
+
+- `STAGE_BASE_URL` — базовый URL стейджинга;
+- `STAGE_JWT` — JWT для портфельных запросов (опционально `STAGE_PORTFOLIO_ID`);
+- `STAGE_WEBHOOK_SECRET` — Telegram webhook secret;
+- `STAGE_TG_USER_ID` — Telegram user id для успешного платежа.
+
+Оба job'а выгружают артефакты `summary.json` и `junit.xml` (портфель и вебхук) через `Actions → Nightly Load Soak → <run> → Artifacts`.
 # 200 (быстрый ACK). Повторная отправка того же JSON → 200 (идемпотентность).
 
 PowerShell: замените export на $env:NAME="value".
