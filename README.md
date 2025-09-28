@@ -396,3 +396,24 @@ docker compose -f docker-compose.monitoring.yml up -d
 - Сеть `compose_default` должна существовать (поднимайте app-compose перед monitoring).
 - В бою меняйте пароли и webhook-URL через переменные окружения или секрет-менеджер.
 - Метрики webhook/duplicates требуют инкремента соответствующих счётчиков в коде (если ещё не сделано).
+
+## P22 — SLA/SLO & Runbooks
+
+### Ресурсы
+- `docs/SLA_SLO_POLICY.md` — политика SLA/SLO/SLI, error budget, связи с `deploy/monitoring/prometheus/alerts.rules.yml`.
+- `docs/INCIDENT_RESPONSE.md` — роли, матрица эскалации, шаблоны коммуникаций.
+- `docs/RUNBOOKS/` — операционные инструкции для webhook latency, HTTP 5xx, дубликатов платежей, DoS на импорт и шумных алертов.
+- `docs/TEMPLATES/` — шаблоны инцидентов и пост-мортемов.
+- `docs/ONCALL_ROTATION.md` — расписание on-call и handoff чек-лист.
+
+### Быстрые команды
+```bash
+# Новый инцидент (каркас)
+bash tools/sre/incident_new.sh "webhook-xtr-latency"
+# Запрос SLI к Prometheus
+PROM_URL=http://localhost:9090 bash tools/sre/sli_query.sh webhook_p95 5m
+```
+
+### Monitoring Stack
+- Используйте инструкции раздела P21 (выше) для запуска Prometheus/Grafana (`deploy/monitoring/docker-compose.monitoring.yml`).
+- Дашборд: Grafana → "NewsBot / Observability" (включает метрики SLO).
