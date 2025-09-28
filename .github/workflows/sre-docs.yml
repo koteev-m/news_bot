@@ -1,0 +1,58 @@
+name: SRE Docs Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Verify required files
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            docs/SLA_SLO_POLICY.md
+            docs/INCIDENT_RESPONSE.md
+            docs/ONCALL_ROTATION.md
+            docs/RUNBOOKS/WEBHOOK_XTR.md
+            docs/RUNBOOKS/API_5XX.md
+            docs/RUNBOOKS/DUPLICATE_PAYMENTS.md
+            docs/RUNBOOKS/IMPORT_DOS.md
+            docs/RUNBOOKS/ALERTS_NOISE.md
+            docs/TEMPLATES/INCIDENT_TEMPLATE.md
+            docs/TEMPLATES/POSTMORTEM_TEMPLATE.md
+            tools/sre/sli_query.sh
+            tools/sre/incident_new.sh
+          )
+          missing=false
+          for path in "${required[@]}"; do
+            if [[ ! -f "$path" ]]; then
+              echo "::error::missing required file: $path"
+              missing=true
+            fi
+          done
+          if [[ "$missing" == true ]]; then
+            exit 1
+          fi
+
+      - name: Shell lint SRE scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/sre/sli_query.sh
+          bash -n tools/sre/incident_new.sh
+
+      - name: Ensure docs do not contain TODO markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R "TODO" docs; then
+            echo "::error::TODO marker found in docs"
+            exit 1
+          fi
