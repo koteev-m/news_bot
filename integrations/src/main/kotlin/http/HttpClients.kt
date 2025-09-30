@@ -6,83 +6,174 @@ import io.ktor.client.engine.HttpClientEngineFactory
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpRequestRetry
+import io.ktor.client.plugins.HttpRequestRetryEvent
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.ResponseException
-import io.ktor.client.plugins.cache.HttpCache
-import io.ktor.client.plugins.compression.ContentEncoding
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
-import io.ktor.client.plugins.logging.Logging
-import io.ktor.client.plugins.logging.SIMPLE
+import io.ktor.client.request.accept
 import io.ktor.client.request.header
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
-import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Timer
 import java.io.IOException
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CancellationException
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.ThreadContextElement
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
-import org.slf4j.LoggerFactory
-import kotlin.math.pow
 
-fun defaultHttpClient(appName: String): HttpClient = HttpClient(CIO) {
-    configureDefaultHttpClient(appName)
-}
+object HttpClients {
+    private val currentService: ThreadLocal<String?> = ThreadLocal()
 
-internal fun defaultHttpClient(appName: String, engineFactory: HttpClientEngineFactory<*>): HttpClient =
-    HttpClient(engineFactory) {
-        configureDefaultHttpClient(appName)
-    }
+    private class ServiceContextElement(private val service: String?) : ThreadContextElement<String?> {
+        override val key: CoroutineContext.Key<ServiceContextElement> get() = Key
 
-internal fun HttpClientConfig<*>.configureDefaultHttpClient(appName: String) {
-    expectSuccess = true
-
-    install(HttpTimeout) {
-        connectTimeoutMillis = Duration.ofSeconds(5).toMillis()
-        requestTimeoutMillis = Duration.ofSeconds(15).toMillis()
-        socketTimeoutMillis = Duration.ofSeconds(15).toMillis()
-    }
-
-    install(HttpRequestRetry) {
-        maxRetries = 3
-        retryIf(maxRetries) { _, response ->
-            response.status == HttpStatusCode.TooManyRequests || response.status.value >= 500
+        override fun updateThreadContext(context: CoroutineContext): String? {
+            val previous = currentService.get()
+            currentService.set(service)
+            return previous
         }
-        retryOnExceptionIf { _, cause -> cause is IOException }
-        delayMillis(respectRetryAfterHeader = false) { attempt ->
-            val headerDelay = response?.headers?.get(HttpHeaders.RetryAfter)?.let { parseRetryAfterMillis(it) }
-            headerDelay ?: calculateExponentialDelay(attempt)
+
+        override fun restoreThreadContext(context: CoroutineContext, oldState: String?) {
+            currentService.set(oldState)
         }
+
+        companion object Key : CoroutineContext.Key<ServiceContextElement>
     }
 
-    install(ContentNegotiation) {
-        json(
-            kotlinx.serialization.json.Json {
-                ignoreUnknownKeys = true
-                explicitNulls = false
-                encodeDefaults = false
+    private var metricsRef: IntegrationsMetrics? = null
+
+    fun build(
+        cfg: IntegrationsHttpConfig,
+        metrics: IntegrationsMetrics,
+        clock: Clock = Clock.systemUTC(),
+        engineFactory: HttpClientEngineFactory<*> = CIO
+    ): HttpClient {
+        val client = HttpClient(engineFactory) {
+            configure(cfg, metrics, clock)
+        }
+        registerRetryMonitor(client, metrics)
+        return client
+    }
+
+    internal fun HttpClientConfig<*>.configure(
+        cfg: IntegrationsHttpConfig,
+        metrics: IntegrationsMetrics,
+        clock: Clock
+    ) {
+        metricsRef = metrics
+        val retryCfg = cfg.retry
+
+        expectSuccess = true
+
+        install(HttpTimeout) {
+            connectTimeoutMillis = cfg.timeoutMs.connect
+            requestTimeoutMillis = cfg.timeoutMs.request
+            socketTimeoutMillis = cfg.timeoutMs.socket
+        }
+
+        install(DefaultRequest) {
+            header(HttpHeaders.UserAgent, cfg.userAgent)
+            accept(ContentType.Application.Json)
+        }
+
+        install(io.ktor.client.plugins.contentnegotiation.ContentNegotiation) {
+            json(
+                kotlinx.serialization.json.Json {
+                    ignoreUnknownKeys = true
+                    explicitNulls = false
+                    encodeDefaults = false
+                }
+            )
+        }
+
+        install(HttpRequestRetry) {
+            val maxRetries = (retryCfg.maxAttempts - 1).coerceAtLeast(0)
+            this.maxRetries = maxRetries
+            retryIf { _, response ->
+                retryCfg.retryOn.contains(response.status.value)
             }
-        )
+            retryOnExceptionIf { _, cause ->
+                cause is IOException || cause is HttpRequestTimeoutException || cause is ResponseException
+            }
+            delayMillis(respectRetryAfterHeader = false) { attempt ->
+                computeDelayMillis(this, attempt, retryCfg, metrics, clock)
+            }
+        }
     }
 
-    install(ContentEncoding)
-    install(HttpCache)
-    install(Logging) {
-        logger = Logger.SIMPLE
-        level = LogLevel.INFO
+    internal fun registerRetryMonitor(client: HttpClient, metrics: IntegrationsMetrics) {
+        client.monitor.subscribe(HttpRequestRetryEvent) { event ->
+            if (event.retryCount <= 0) return@subscribe
+            val service = currentService.get() ?: "unknown"
+            metrics.retryCounter(service).increment()
+        }
     }
 
-    install(DefaultRequest) {
-        header(HttpHeaders.UserAgent, "$appName (Ktor)")
+    suspend fun <T> measure(service: String, block: suspend () -> T): T {
+        val metrics = metricsRef ?: error("HttpClients metrics are not initialized")
+        val sample = metrics.timerSample()
+        return withContext(ServiceContextElement(service)) {
+            try {
+                val result = block()
+                metrics.stopTimer(sample, service, "success")
+                result
+            } catch (ex: Throwable) {
+                metrics.stopTimer(sample, service, "error")
+                throw ex
+            }
+        }
+    }
+
+    private fun computeDelayMillis(
+        context: io.ktor.client.plugins.HttpRetryDelayContext,
+        attempt: Int,
+        retryCfg: RetryCfg,
+        metrics: IntegrationsMetrics,
+        clock: Clock
+    ): Long {
+        val service = currentService.get()
+        if (retryCfg.respectRetryAfter) {
+            val retryAfter = context.response?.headers?.get(HttpHeaders.RetryAfter)
+            val headerDelay = retryAfter?.let { parseRetryAfterMillis(it, clock.instant()) }
+            if (headerDelay != null) {
+                val tag = service ?: "unknown"
+                metrics.retryAfterHonored(tag).increment()
+                return headerDelay
+            }
+        }
+        val multiplier = 1L shl attempt.coerceAtMost(16)
+        val baseDelay = retryCfg.baseBackoffMs * multiplier
+        val jitterRange = retryCfg.jitterMs
+        val jitter = if (jitterRange > 0) {
+            ThreadLocalRandom.current().nextLong(-jitterRange, jitterRange + 1)
+        } else {
+            0L
+        }
+        val computed = baseDelay + jitter
+        return if (computed < 0L) Long.MAX_VALUE else computed.coerceAtLeast(0L)
+    }
+
+    private fun parseRetryAfterMillis(headerValue: String, now: Instant): Long? {
+        headerValue.toLongOrNull()?.let { seconds ->
+            if (seconds < 0) return 0L
+            return TimeUnit.SECONDS.toMillis(seconds)
+        }
+        return try {
+            val retryInstant = ZonedDateTime.parse(headerValue, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()
+            val diff = Duration.between(now, retryInstant).toMillis()
+            if (diff <= 0) 0L else diff
+        } catch (_: DateTimeParseException) {
+            null
+        }
     }
 }
 
@@ -124,7 +215,7 @@ sealed class HttpClientError(message: String, cause: Throwable? = null) : Runtim
 internal fun Throwable.toHttpClientError(): HttpClientError = when (this) {
     is HttpClientError -> this
     is HttpRequestTimeoutException -> HttpClientError.TimeoutError(null, this)
-    is ResponseException -> {
+    is io.ktor.client.plugins.ResponseException -> {
         val requestUrl = runCatching { response.call.request.url.toString() }.getOrNull() ?: "unknown"
         HttpClientError.HttpStatusError(response.status, requestUrl, this)
     }
@@ -133,73 +224,4 @@ internal fun Throwable.toHttpClientError(): HttpClientError = when (this) {
     else -> HttpClientError.UnexpectedError(null, this)
 }
 
-private const val REQUEST_COUNTER = "integrations.http.client.requests"
-private const val ERROR_COUNTER = "integrations.http.client.errors"
-private const val DURATION_TIMER = "integrations.http.client.duration"
-
-internal class HttpMetricsRecorder(
-    private val registry: MeterRegistry,
-    private val clientName: String,
-    loggerName: String
-) {
-    private val logger = LoggerFactory.getLogger(loggerName)
-
-    suspend fun <T> record(operation: String, block: suspend () -> T): T {
-        registry.counter(REQUEST_COUNTER, "client", clientName, "operation", operation).increment()
-        val sample = Timer.start(registry)
-        return try {
-            val result = block()
-            sample.stop(timer(operation, "success"))
-            result
-        } catch (t: Throwable) {
-            if (t is CancellationException) {
-                sample.stop(timer(operation, "cancelled"))
-                throw t
-            }
-            val error = t.toHttpClientError()
-            sample.stop(timer(operation, "failure"))
-            registry.counter(
-                ERROR_COUNTER,
-                "client",
-                clientName,
-                "operation",
-                operation,
-                "code",
-                error.metricsTag
-            ).increment()
-            logger.warn("{} request '{}' failed: {}", clientName, operation, error.message)
-            throw error
-        }
-    }
-
-    private fun timer(operation: String, outcome: String): Timer = registry.timer(
-        DURATION_TIMER,
-        "client",
-        clientName,
-        "operation",
-        operation,
-        "outcome",
-        outcome
-    )
-}
-
 typealias HttpResult<T> = Result<T>
-
-private fun parseRetryAfterMillis(headerValue: String): Long? {
-    headerValue.toLongOrNull()?.let { seconds ->
-        return TimeUnit.SECONDS.toMillis(seconds.coerceAtLeast(0))
-    }
-    return try {
-        val retryInstant = ZonedDateTime.parse(headerValue, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()
-        val now = Instant.now()
-        val diff = Duration.between(now, retryInstant).toMillis()
-        if (diff > 0) diff else 0L
-    } catch (_: DateTimeParseException) {
-        null
-    }
-}
-
-private fun calculateExponentialDelay(attempt: Int): Long {
-    val base = 200.0
-    return (base * 2.0.pow((attempt - 1).coerceAtLeast(0))).toLong()
-}
