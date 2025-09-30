@@ -5,6 +5,9 @@ import billing.StarsWebhookHandler
 import billing.TgUpdate
 import billing.service.ApplyPaymentOutcome
 import billing.service.BillingServiceWithOutcome
+import features.FeatureFlags
+import features.FeatureFlagsPatch
+import features.FeatureFlagsService
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -19,6 +22,8 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import observability.adapters.AlertMetricsAdapter
@@ -38,6 +43,8 @@ class DomainMetricsWiringTest {
                 Services(
                     billingService = billing,
                     telegramBot = NoopTelegramBot(),
+                    featureFlags = stubFeatureFlagsService(),
+                    adminUserIds = emptySet(),
                     metrics = domainMetrics,
                     alertMetrics = AlertMetricsAdapter(domainMetrics),
                     newsMetrics = NewsMetricsAdapter(domainMetrics)
@@ -133,6 +140,24 @@ class DomainMetricsWiringTest {
 
         override suspend fun getMySubscription(userId: Long): Result<billing.model.UserSubscription?> =
             Result.failure(UnsupportedOperationException("not used"))
+    }
+
+    private fun stubFeatureFlagsService(): FeatureFlagsService {
+        val defaults = FeatureFlags(
+            importByUrl = false,
+            webhookQueue = true,
+            newsPublish = true,
+            alertsEngine = true,
+            billingStars = true,
+            miniApp = true
+        )
+        return object : FeatureFlagsService {
+            private val flow = MutableStateFlow(0L)
+            override val updatesFlow: StateFlow<Long> = flow
+            override suspend fun defaults(): FeatureFlags = defaults
+            override suspend fun effective(): FeatureFlags = defaults
+            override suspend fun upsertGlobal(patch: FeatureFlagsPatch) {}
+        }
     }
 
     private class NoopTelegramBot : com.pengrad.telegrambot.TelegramBot("test-token")

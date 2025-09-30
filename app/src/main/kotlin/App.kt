@@ -16,6 +16,7 @@ import billing.service.BillingService
 import billing.service.BillingServiceImpl
 import billing.service.applySuccessfulPaymentOutcome
 import com.pengrad.telegrambot.utility.BotUtils
+import di.FeatureFlagsModule
 import di.ensureTelegramBot
 import demo.demoRoutes
 import di.installPortfolioModule
@@ -45,6 +46,7 @@ import org.slf4j.LoggerFactory
 import repo.BillingRepositoryImpl
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
+import routes.adminFeaturesRoutes
 import routes.authRoutes
 import routes.billingRoutes
 import routes.portfolioImportRoutes
@@ -57,6 +59,8 @@ import security.installUploadGuard
 import webhook.OverflowMode
 import webhook.WebhookQueue
 
+import features.FeatureFlagsService
+
 fun Application.module() {
     val prometheusRegistry = Observability.install(this)
     val metrics = DomainMetrics(prometheusRegistry)
@@ -65,7 +69,12 @@ fun Application.module() {
     installSecurity()
     installUploadGuard()
     installPortfolioModule()
-    val services = ensureBillingServices(metrics)
+    val featureFlags = FeatureFlagsModule.install(this)
+    val services = ensureBillingServices(
+        metrics = metrics,
+        featureFlagsService = featureFlags.service,
+        adminUserIds = featureFlags.adminUserIds
+    )
 
     val queueConfig = webhookQueueConfig()
     val webhookQueue = WebhookQueue(
@@ -142,14 +151,19 @@ fun Application.module() {
             portfolioImportRoutes()
             portfolioValuationReportRoutes()
             billingRoutes()
+            adminFeaturesRoutes()
         }
     }
 }
 
-private fun Application.ensureBillingServices(metrics: DomainMetrics): Services {
+private fun Application.ensureBillingServices(
+    metrics: DomainMetrics,
+    featureFlagsService: FeatureFlagsService,
+    adminUserIds: Set<Long>
+): Services {
     if (attributes.contains(Services.Key)) {
         val existing = attributes[Services.Key]
-        val enriched = existing.enrich(metrics)
+        val enriched = existing.enrich(metrics, featureFlagsService, adminUserIds)
         attributes.put(Services.Key, enriched)
         attributes.put(BillingRouteServicesKey, BillingRouteServices(enriched.billingService))
         return enriched
@@ -165,6 +179,8 @@ private fun Application.ensureBillingServices(metrics: DomainMetrics): Services 
     val services = Services(
         billingService = billingService,
         telegramBot = telegramBot,
+        featureFlags = featureFlagsService,
+        adminUserIds = adminUserIds,
         metrics = metrics,
         alertMetrics = AlertMetricsAdapter(metrics),
         newsMetrics = NewsMetricsAdapter(metrics)
@@ -174,8 +190,14 @@ private fun Application.ensureBillingServices(metrics: DomainMetrics): Services 
     return services
 }
 
-private fun Services.enrich(metrics: DomainMetrics): Services {
+private fun Services.enrich(
+    metrics: DomainMetrics,
+    featureFlagsService: FeatureFlagsService,
+    adminUserIds: Set<Long>
+): Services {
     return copy(
+        featureFlags = featureFlagsService,
+        adminUserIds = adminUserIds,
         metrics = metrics,
         alertMetrics = alertMetrics ?: AlertMetricsAdapter(metrics),
         newsMetrics = newsMetrics ?: NewsMetricsAdapter(metrics)
@@ -264,6 +286,8 @@ private fun parsePayload(payload: String?): Pair<Long, billing.model.Tier>? {
 data class Services(
     val billingService: BillingService,
     val telegramBot: com.pengrad.telegrambot.TelegramBot,
+    val featureFlags: FeatureFlagsService,
+    val adminUserIds: Set<Long>,
     val metrics: DomainMetrics? = null,
     val alertMetrics: AlertMetricsPort? = null,
     val newsMetrics: NewsMetricsPort? = null,

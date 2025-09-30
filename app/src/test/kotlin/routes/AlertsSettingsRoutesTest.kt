@@ -20,6 +20,9 @@ import billing.service.BillingService
 import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.request.BaseRequest
 import com.pengrad.telegrambot.response.BaseResponse
+import features.FeatureFlags
+import features.FeatureFlagsPatch
+import features.FeatureFlagsService
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
@@ -39,6 +42,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import repo.AlertsSettingsRepository
@@ -133,7 +138,15 @@ class AlertsSettingsRoutesTest {
 
             application {
                 installSecurity()
-                attributes.put(Services.Key, Services(billingService, NoopTelegramBot()))
+                attributes.put(
+                    Services.Key,
+                    Services(
+                        billingService = billingService,
+                        telegramBot = NoopTelegramBot(),
+                        featureFlags = stubFeatureFlagsService(),
+                        adminUserIds = emptySet()
+                    )
+                )
                 attributes.put(AlertsSettingsDepsKey, AlertsSettingsRouteDeps(billingService, service))
                 routing {
                     authenticate("auth-jwt") {
@@ -156,7 +169,7 @@ class AlertsSettingsRoutesTest {
         override suspend fun find(userId: Long): String? = store[userId]
     }
 
-    private class FakeBillingService(private val tier: Tier) : BillingService {
+private class FakeBillingService(private val tier: Tier) : BillingService {
         override suspend fun listPlans(): Result<List<BillingPlan>> = Result.success(emptyList())
         override suspend fun createInvoiceFor(userId: Long, tier: Tier): Result<String> =
             Result.failure(UnsupportedOperationException("not supported"))
@@ -193,6 +206,24 @@ class AlertsSettingsRoutesTest {
             )
         )
     )
+}
+
+private fun stubFeatureFlagsService(): FeatureFlagsService {
+    val defaults = FeatureFlags(
+        importByUrl = false,
+        webhookQueue = true,
+        newsPublish = true,
+        alertsEngine = true,
+        billingStars = true,
+        miniApp = true
+    )
+    return object : FeatureFlagsService {
+        private val flow = MutableStateFlow(0L)
+        override val updatesFlow: StateFlow<Long> = flow
+        override suspend fun defaults(): FeatureFlags = defaults
+        override suspend fun effective(): FeatureFlags = defaults
+        override suspend fun upsertGlobal(patch: FeatureFlagsPatch) {}
+    }
 }
 
 private class NoopTelegramBot : TelegramBot("test-token") {

@@ -65,6 +65,36 @@ bash tools/db/restore.sh --dump backups/20250101_023000/db.dump --target-url pos
 - Ночной CI-бэкап: [.github/workflows/db-backup.yml](.github/workflows/db-backup.yml) — артефакты доступны 7 дней на странице Actions (Releases → Artifacts).
 - Скрипты `tools/db/backup.sh` и `tools/db/restore.sh` с защитой `APP_PROFILE=prod` предназначены для локальных/staging работ.
 
+## P32 — Feature-flags & Admin
+
+```hocon
+admin {
+  adminUserIds = [ 7446417641 ]  # Telegram user_id c правом PATCH
+}
+
+features {
+  importByUrl  = false
+  webhookQueue = true
+  newsPublish  = true
+  alertsEngine = true
+  billingStars = true
+  miniApp      = true
+}
+```
+
+```bash
+# read (любой аутентифицированный пользователь / any authenticated user)
+curl -s -H "Authorization: Bearer $JWT" $BASE/api/admin/features | jq .
+
+# patch (admin only)
+curl -s -X PATCH -H "Authorization: Bearer $JWT" -H "content-type: application/json" \
+  -d '{ "importByUrl": true }' $BASE/api/admin/features -i
+```
+
+- Тогглы обновляются мгновенно: `FeatureFlagsService.updatesFlow` bump'ится после каждой успешной правки, сервисы (alerts/news/webhook/import) считывают обновлённое состояние без рестарта.
+- PATCH доступен только аккаунтам из `admin.adminUserIds`; для поиска `user_id` возьмите значение из Telegram (например, `/my_id` в @userinfobot или payload от Stars-платежей).
+- Ответы компактные JSON без PII, ошибки 401/403/400 покрывают неаутентифицированные/неадминские/битые запросы.
+
 ## P27 — Integrations hardening
 
 ## P28 — Metrics wiring
