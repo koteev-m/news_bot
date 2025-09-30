@@ -1,0 +1,226 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (X.Y.Z)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  precheck:
+    name: Pre-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify absence of merge conflict markers
+        run: |
+          set -euo pipefail
+          if git grep -n '<<<<<<< ' -- .; then
+            echo 'Merge conflict markers detected.' >&2
+            exit 1
+          fi
+          if git grep -n '>>>>>>> ' -- .; then
+            echo 'Merge conflict markers detected.' >&2
+            exit 1
+          fi
+
+  build:
+    name: Build and package
+    runs-on: ubuntu-latest
+    needs: precheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Build with Gradle
+        run: ./gradlew --no-daemon --stacktrace clean build
+      - name: Prepare artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          if [ -d app/build/install/app ]; then
+            (cd app/build/install && zip -r ../../../../artifacts/app-dist.zip app)
+          elif compgen -G "app/build/libs/*.jar" > /dev/null; then
+            first_jar=$(ls app/build/libs/*.jar | head -n 1)
+            cp "$first_jar" artifacts/app.jar
+          fi
+          if [ -d deploy/compose ]; then
+            (cd deploy && zip -r ../artifacts/compose.zip compose)
+          fi
+          if [ -d deploy/seed ]; then
+            (cd deploy && zip -r ../artifacts/seed.zip seed)
+          fi
+          if [ -d deploy/monitoring ]; then
+            (cd deploy && zip -r ../artifacts/monitoring.zip monitoring)
+          fi
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: artifacts
+          if-no-files-found: error
+
+  docker:
+    name: Build and publish Docker image
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      DISPATCH_VERSION: ${{ github.event.inputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -z "${DISPATCH_VERSION}" ]; then
+              echo 'workflow_dispatch requires a version input.' >&2
+              exit 1
+            fi
+            version="$DISPATCH_VERSION"
+            if [[ "$version" != v* ]]; then
+              version="v$version"
+            fi
+            if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo 'Version must follow vX.Y.Z.' >&2
+              exit 1
+            fi
+            echo "ref_tag=$version" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build Docker image
+        run: docker build -t ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.ref_tag }} .
+      - name: Publish Docker image
+        run: |
+          set -euo pipefail
+          docker push ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.ref_tag }}
+          if [ "${{ github.event_name }}" = "push" ]; then
+            docker tag ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.ref_tag }} ghcr.io/${{ github.repository }}:latest
+            docker push ghcr.io/${{ github.repository }}:latest
+          fi
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build, docker]
+    env:
+      DISPATCH_VERSION: ${{ github.event.inputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -z "${DISPATCH_VERSION}" ]; then
+              echo 'workflow_dispatch requires a version input.' >&2
+              exit 1
+            fi
+            version="$DISPATCH_VERSION"
+            if [[ "$version" != v* ]]; then
+              version="v$version"
+            fi
+            if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo 'Version must follow vX.Y.Z.' >&2
+              exit 1
+            fi
+            echo "ref_tag=$version" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: release-artifacts
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          set -euo pipefail
+          ref_tag="${{ steps.tag.outputs.ref_tag }}"
+          python3 - "$ref_tag" <<'PY'
+import sys
+from pathlib import Path
+ref_tag = sys.argv[1]
+changelog_path = Path('CHANGELOG.md')
+if not changelog_path.exists():
+    sys.exit('CHANGELOG.md not found')
+lines = changelog_path.read_text(encoding='utf-8').splitlines()
+start = None
+for idx, line in enumerate(lines):
+    if line.startswith(f"## [{ref_tag}]"):
+        start = idx
+        break
+if start is None:
+    sys.exit(f'Changelog entry for {ref_tag} not found')
+end = len(lines)
+for idx in range(start + 1, len(lines)):
+    if lines[idx].startswith('## ['):
+        end = idx
+        break
+section = "\n".join(lines[start:end]).strip() + "\n"
+Path('RELEASE_BODY.md').write_text(section, encoding='utf-8')
+PY
+      - name: Prepare release assets
+        id: assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-upload
+          if [ -d release-artifacts ]; then
+            cp release-artifacts/* release-upload/ || true
+          fi
+          if [ -f deploy/compose/docker-compose.yml ]; then
+            cp deploy/compose/docker-compose.yml release-upload/
+          fi
+          if [ -f deploy/seed/demo_seed.sql ]; then
+            cp deploy/seed/demo_seed.sql release-upload/
+          fi
+          if [ -f deploy/monitoring/docker-compose.monitoring.yml ]; then
+            cp deploy/monitoring/docker-compose.monitoring.yml release-upload/
+          fi
+          {
+            echo 'files<<EOF'
+            for path in release-upload/*; do
+              [ -e "$path" ] || continue
+              echo "$path"
+            done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.ref_tag }}
+          name: ${{ steps.tag.outputs.ref_tag }}
+          body_path: RELEASE_BODY.md
+          files: ${{ steps.assets.outputs.files }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

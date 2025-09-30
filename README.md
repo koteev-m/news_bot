@@ -75,6 +75,19 @@ integrations.http {
 - Метрики Micrometer: `integrations_retry_total`, `integrations_retry_after_honored_total`, `integrations_cb_state`, `integrations_cb_open_total`, `integrations_request_seconds{service, outcome}` доступны по `/metrics`.
 - Клиенты MOEX/CoinGecko/CBR используют общий клиент и локальную реализацию CB — внешние «тяжёлые» библиотеки (resilience4j и др.) не подключаются.
 
+## P29 — Release pipeline
+
+```bash
+bash tools/release/bump_version.sh 1.2.0
+git push origin v1.2.0
+```
+
+The GitHub Actions workflow publishes GitHub Releases and pushes Docker images to `ghcr.io/<owner>/<repo>` using the built-in `GITHUB_TOKEN`. No additional secrets are required for the default pipeline. When working with a personal container registry, define a `CR_PAT` secret for local usage, but the workflow itself continues to rely on `GITHUB_TOKEN` for authentication.
+
+Release artifacts (application bundle plus deployment helpers) are attached to the GitHub Releases page, and container images are available under the repository package feed in GHCR.
+
+When triggering `workflow_dispatch`, provide the desired `version` input in SemVer format (e.g. `1.2.0`).
+
 ## P05 — API smoke
 
 Быстрые smoke-команды для проверки ключевых REST-ручек локального стенда (`./gradlew :app:run`). Все примеры используют `curl`
