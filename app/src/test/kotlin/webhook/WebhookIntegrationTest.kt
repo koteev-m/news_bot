@@ -6,6 +6,9 @@ import billing.model.BillingPlan
 import billing.model.Tier
 import billing.model.UserSubscription
 import billing.service.BillingService
+import features.FeatureFlags
+import features.FeatureFlagsPatch
+import features.FeatureFlagsService
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -24,6 +27,8 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withTimeout
 
 class WebhookIntegrationTest {
@@ -48,7 +53,15 @@ class WebhookIntegrationTest {
         }
 
         application {
-            attributes.put(Services.Key, Services(billingService = billing, telegramBot = NoopTelegramBot()))
+            attributes.put(
+                Services.Key,
+                Services(
+                    billingService = billing,
+                    telegramBot = NoopTelegramBot(),
+                    featureFlags = stubFeatureFlagsService(),
+                    adminUserIds = emptySet()
+                )
+            )
             module()
         }
 
@@ -142,4 +155,22 @@ private fun metricValue(metrics: String, name: String): Double {
         .firstOrNull { it.startsWith(name) && !it.contains('{') }
         ?: return 0.0
     return line.substringAfter(' ').toDoubleOrNull() ?: 0.0
+}
+
+private fun stubFeatureFlagsService(): FeatureFlagsService {
+    val defaults = FeatureFlags(
+        importByUrl = false,
+        webhookQueue = true,
+        newsPublish = true,
+        alertsEngine = true,
+        billingStars = true,
+        miniApp = true
+    )
+    return object : FeatureFlagsService {
+        private val flow = MutableStateFlow(0L)
+        override val updatesFlow: StateFlow<Long> = flow
+        override suspend fun defaults(): FeatureFlags = defaults
+        override suspend fun effective(): FeatureFlags = defaults
+        override suspend fun upsertGlobal(patch: FeatureFlagsPatch) {}
+    }
 }
