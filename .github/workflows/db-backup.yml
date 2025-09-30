@@ -1,0 +1,46 @@
+name: Database Backup (Staging)
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run backup script
+        id: run-backup
+        env:
+          APP_PROFILE: staging
+          DATABASE_URL: ${{ secrets.STAGE_DB_URL }}
+          BACKUP_RETENTION_COUNT: 7
+        run: |
+          set -euo pipefail
+          bash tools/db/backup.sh
+          latest_dir=$(ls -1 backups | sort | tail -n1)
+          echo "latest_dir=$latest_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ steps.run-backup.outputs.latest_dir }}
+          path: backups/${{ steps.run-backup.outputs.latest_dir }}
+          retention-days: 7
+
+      - name: Publish summary
+        run: |
+          set -euo pipefail
+          echo "## Backup summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Directory: ${{ steps.run-backup.outputs.latest_dir }}" >> "$GITHUB_STEP_SUMMARY"

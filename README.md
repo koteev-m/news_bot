@@ -49,6 +49,22 @@ Copy `.env.example` to `.env` and provide the required values.
 - Detailed policy: [docs/SECRETS_POLICY.md](docs/SECRETS_POLICY.md).
 - Run grep-based leak checks with [tools/audit/grep_checks.sh](tools/audit/grep_checks.sh).
 
+## P31 — Backups & DR
+
+```bash
+# локальный бэкап (dev/test)
+APP_PROFILE=dev DATABASE_URL=postgres://user:pass@localhost:5432/app \
+bash tools/db/backup.sh
+
+# восстановление (на НЕ-prod)
+I_UNDERSTAND=1 APP_PROFILE=staging \
+bash tools/db/restore.sh --dump backups/20250101_023000/db.dump --target-url postgres://user:pass@host:5432/db
+```
+
+- Полный план: [docs/DR_PLAN.md](docs/DR_PLAN.md).
+- Ночной CI-бэкап: [.github/workflows/db-backup.yml](.github/workflows/db-backup.yml) — артефакты доступны 7 дней на странице Actions (Releases → Artifacts).
+- Скрипты `tools/db/backup.sh` и `tools/db/restore.sh` с защитой `APP_PROFILE=prod` предназначены для локальных/staging работ.
+
 ## P27 — Integrations hardening
 
 ## P28 — Metrics wiring
