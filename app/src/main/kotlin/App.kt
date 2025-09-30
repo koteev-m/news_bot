@@ -1,5 +1,6 @@
 package app
 
+import alerts.metrics.AlertMetricsPort
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
 import billing.TgUpdate
@@ -10,9 +11,11 @@ import billing.bot.StarsBotRouter.BotRoute.Buy
 import billing.bot.StarsBotRouter.BotRoute.Callback
 import billing.bot.StarsBotRouter.BotRoute.Plans
 import billing.bot.StarsBotRouter.BotRoute.Status
+import billing.bot.StarsBotRouter.BotRoute.Unknown
 import billing.service.BillingService
 import billing.service.BillingServiceImpl
-import com.pengrad.telegrambot.BotUtils
+import billing.service.applySuccessfulPaymentOutcome
+import com.pengrad.telegrambot.utility.BotUtils
 import di.ensureTelegramBot
 import demo.demoRoutes
 import di.installPortfolioModule
@@ -32,9 +35,12 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
+import news.metrics.NewsMetricsPort
 import observability.DomainMetrics
 import observability.Observability
 import observability.WebhookMetrics
+import observability.adapters.AlertMetricsAdapter
+import observability.adapters.NewsMetricsAdapter
 import org.slf4j.LoggerFactory
 import repo.BillingRepositoryImpl
 import routes.BillingRouteServices
@@ -69,7 +75,7 @@ fun Application.module() {
         scope = this,
         metrics = webhookMetrics
     ) { update ->
-        processStarsPayment(update, services.billingService, services.metrics)
+        processStarsPayment(update, services.billingService, metrics)
     }
     webhookQueue.start()
 
@@ -115,7 +121,7 @@ fun Application.module() {
             val bot = servicesAttr.telegramBot
             val billingSvc = servicesAttr.billingService
             val route = StarsBotRouter.route(botUpdate)
-            if (route == BotRoute.Unknown) {
+            if (route == Unknown) {
                 return@post
             }
 
@@ -125,7 +131,7 @@ fun Application.module() {
                     Buy -> StarsBotCommands.handleBuy(botUpdate, bot, billingSvc)
                     Status -> StarsBotCommands.handleStatus(botUpdate, bot, billingSvc)
                     Callback -> StarsBotCommands.handleCallback(botUpdate, bot, billingSvc)
-                    BotRoute.Unknown -> Unit
+                    Unknown -> Unit
                 }
             }
         }
@@ -143,12 +149,10 @@ fun Application.module() {
 private fun Application.ensureBillingServices(metrics: DomainMetrics): Services {
     if (attributes.contains(Services.Key)) {
         val existing = attributes[Services.Key]
-        if (existing.metrics == null) {
-            val enriched = existing.copy(metrics = metrics)
-            attributes.put(Services.Key, enriched)
-            return enriched
-        }
-        return existing
+        val enriched = existing.enrich(metrics)
+        attributes.put(Services.Key, enriched)
+        attributes.put(BillingRouteServicesKey, BillingRouteServices(enriched.billingService))
+        return enriched
     }
 
     val telegramBot = ensureTelegramBot()
@@ -158,10 +162,24 @@ private fun Application.ensureBillingServices(metrics: DomainMetrics): Services 
         stars = StarsGatewayFactory.fromConfig(environment),
         defaultDurationDays = billingDefaultDuration(),
     )
-    val services = Services(billingService = billingService, telegramBot = telegramBot, metrics = metrics)
+    val services = Services(
+        billingService = billingService,
+        telegramBot = telegramBot,
+        metrics = metrics,
+        alertMetrics = AlertMetricsAdapter(metrics),
+        newsMetrics = NewsMetricsAdapter(metrics)
+    )
     attributes.put(Services.Key, services)
     attributes.put(BillingRouteServicesKey, BillingRouteServices(billingService))
     return services
+}
+
+private fun Services.enrich(metrics: DomainMetrics): Services {
+    return copy(
+        metrics = metrics,
+        alertMetrics = alertMetrics ?: AlertMetricsAdapter(metrics),
+        newsMetrics = newsMetrics ?: NewsMetricsAdapter(metrics)
+    )
 }
 
 private fun Application.billingDefaultDuration(): Long {
@@ -196,7 +214,7 @@ private val webhookLogger = LoggerFactory.getLogger("WebhookProcessor")
 private suspend fun processStarsPayment(
     update: TgUpdate,
     billing: BillingService,
-    metrics: DomainMetrics?
+    metrics: DomainMetrics
 ) {
     val successfulPayment = update.message?.successful_payment ?: return
     if (!successfulPayment.currency.equals("XTR", ignoreCase = true)) {
@@ -210,7 +228,7 @@ private suspend fun processStarsPayment(
         return
     }
 
-    val result = billing.applySuccessfulPayment(
+    val outcomeResult = billing.applySuccessfulPaymentOutcome(
         userId = userId,
         tier = tier,
         amountXtr = successfulPayment.total_amount,
@@ -218,12 +236,20 @@ private suspend fun processStarsPayment(
         payload = successfulPayment.invoice_payload
     )
 
-    if (result.isSuccess) {
-        metrics?.webhookStarsSuccess?.increment()
-        webhookLogger.info("webhook-queue reason=applied_ok")
-    } else {
-        webhookLogger.error("webhook-queue reason=apply_failed", result.exceptionOrNull())
-    }
+    outcomeResult.fold(
+        onSuccess = { outcome ->
+            if (outcome.duplicate) {
+                metrics.webhookStarsDuplicate.increment()
+                webhookLogger.info("webhook-queue reason=duplicate")
+            } else {
+                metrics.webhookStarsSuccess.increment()
+                webhookLogger.info("webhook-queue reason=applied_ok")
+            }
+        },
+        onFailure = { error ->
+            webhookLogger.error("webhook-queue reason=apply_failed", error)
+        }
+    )
 }
 
 private fun parsePayload(payload: String?): Pair<Long, billing.model.Tier>? {
@@ -239,6 +265,8 @@ data class Services(
     val billingService: BillingService,
     val telegramBot: com.pengrad.telegrambot.TelegramBot,
     val metrics: DomainMetrics? = null,
+    val alertMetrics: AlertMetricsPort? = null,
+    val newsMetrics: NewsMetricsPort? = null,
 ) {
     companion object {
         val Key: AttributeKey<Services> = AttributeKey("AppServices")

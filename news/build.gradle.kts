@@ -8,7 +8,7 @@ dependencies {
     implementation("io.ktor:ktor-client-cio:${libs.versions.ktor.get()}")
     implementation("io.ktor:ktor-client-content-negotiation:${libs.versions.ktor.get()}")
     implementation("io.ktor:ktor-client-logging:${libs.versions.ktor.get()}")
-    implementation("com.github.pengrad:java-telegram-bot-api:9.2.0")
+    implementation(libs.pengrad.bot)
     implementation("org.slf4j:slf4j-api:2.0.13")
 
     testImplementation("io.ktor:ktor-client-mock:${libs.versions.ktor.get()}")

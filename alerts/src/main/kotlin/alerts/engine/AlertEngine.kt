@@ -6,6 +6,7 @@ import alerts.antinoise.QuietHoursGuard
 import alerts.config.AlertsConfig
 import alerts.config.InstrumentClass
 import alerts.config.Thresholds
+import alerts.metrics.AlertMetricsPort
 import alerts.model.AlertEvent
 import alerts.model.PortfolioAlertEvent
 import alerts.ports.MarketDataPort
@@ -28,7 +29,8 @@ public class AlertEngine(
     private val cooldown: CooldownRegistry,
     private val budget: BudgetLimiter,
     private val quiet: QuietHoursGuard,
-    private val clock: Clock
+    private val clock: Clock,
+    private val metrics: AlertMetricsPort = AlertMetricsPort.Noop
 ) {
     private data class InstrumentState(var fastActive: Boolean = false, var dayActive: Boolean = false)
     private data class PortfolioState(var dayActive: Boolean = false, var drawdownActive: Boolean = false)
@@ -76,13 +78,16 @@ public class AlertEngine(
             return
         }
         if (quiet.isQuiet(now)) {
+            metrics.incBudgetReject()
             return
         }
         val cooldownId = portfolioId.mostSignificantBits xor portfolioId.leastSignificantBits
         if (!cooldown.allow(cooldownId)) {
+            metrics.incBudgetReject()
             return
         }
         if (!budget.tryConsume()) {
+            metrics.incBudgetReject()
             return
         }
         val type = if (shouldSendDay) PortfolioAlertEvent.Type.DAY_MOVE else PortfolioAlertEvent.Type.DRAWDOWN
@@ -95,6 +100,7 @@ public class AlertEngine(
                 snapshotTime = now
             )
         )
+        metrics.incPush()
         if (shouldSendDay) {
             state.dayActive = true
         } else {
@@ -141,12 +147,15 @@ public class AlertEngine(
             return
         }
         if (!cooldown.allow(instrumentId)) {
+            metrics.incBudgetReject()
             return
         }
         if (quiet.isQuiet(now)) {
+            metrics.incBudgetReject()
             return
         }
         if (!budget.tryConsume()) {
+            metrics.incBudgetReject()
             return
         }
         val hysteresisState = AlertEvent.HysteresisState.ENTER
@@ -178,6 +187,7 @@ public class AlertEngine(
             )
         }
         notifier.push(instrumentId, event)
+        metrics.incPush()
         cooldown.markTriggered(instrumentId)
         state.fastActive = true
     }
@@ -203,12 +213,15 @@ public class AlertEngine(
             return
         }
         if (!cooldown.allow(instrumentId)) {
+            metrics.incBudgetReject()
             return
         }
         if (quiet.isQuiet(now)) {
+            metrics.incBudgetReject()
             return
         }
         if (!budget.tryConsume()) {
+            metrics.incBudgetReject()
             return
         }
         val hysteresisState = AlertEvent.HysteresisState.ENTER
@@ -230,6 +243,7 @@ public class AlertEngine(
             )
         }
         notifier.push(instrumentId, event)
+        metrics.incPush()
         cooldown.markTriggered(instrumentId)
         state.dayActive = true
     }
