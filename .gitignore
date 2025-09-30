@@ -2,3 +2,10 @@
 **/build/
 node_modules/
 *.log
+
+# env files
+.env
+**/.env
+deploy/compose/.env
+deploy/monitoring/.env
+deploy/load/.env

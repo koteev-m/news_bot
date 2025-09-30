@@ -14,6 +14,8 @@ jobs:
     env:
       BASE_URL: ${{ secrets.STAGE_BASE_URL }}
       JWT: ${{ secrets.STAGE_JWT }}
+      WEBHOOK_SECRET: ${{ secrets.STAGE_WEBHOOK_SECRET }}
+      TG_USER_ID: ${{ secrets.STAGE_TG_USER_ID }}
       APP_PROFILE: staging
     steps:
       - name: Checkout
@@ -39,14 +41,12 @@ jobs:
             exit 2;
           fi
       - name: Run portfolio ramp soak
-        env:
-          PORTFOLIO_ID: ${{ secrets.STAGE_PORTFOLIO_ID }}
         run: |
           k6 run --summary-export=summary.json deploy/load/k6/portfolio_ramp.js
       - name: Convert summary to JUnit
         run: node deploy/load/k6/summary-to-junit.js summary.json junit.xml
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: portfolio-ramp-reports
           path: |
@@ -57,6 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASE_URL: ${{ secrets.STAGE_BASE_URL }}
+      JWT: ${{ secrets.STAGE_JWT }}
       WEBHOOK_SECRET: ${{ secrets.STAGE_WEBHOOK_SECRET }}
       TG_USER_ID: ${{ secrets.STAGE_TG_USER_ID }}
       APP_PROFILE: staging
@@ -89,7 +90,7 @@ jobs:
       - name: Convert summary to JUnit
         run: node deploy/load/k6/summary-to-junit.js summary.json junit.xml
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: webhook-burst-reports
           path: |

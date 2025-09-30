@@ -36,6 +36,19 @@ bash tools/audit/run_all.sh --only-audit
 
 Copy `.env.example` to `.env` and provide the required values.
 
+## P30 — Secrets & ENV
+
+- Store local secrets in `.env` files (root or service-specific) that are ignored by Git. Use GitHub Secrets for CI/CD (`STAGE_*` for load tests) and Vault/SOPS for production delivery.
+- Provision runtime variables for compose by copying the template and starting the stack:
+  ```bash
+  cp deploy/compose/.env.example deploy/compose/.env
+  docker compose -f deploy/compose/docker-compose.yml up -d
+  ```
+- Configure load nightly workflows exclusively through GitHub Secrets (`STAGE_BASE_URL`, `STAGE_JWT`, `STAGE_WEBHOOK_SECRET`, `STAGE_TG_USER_ID`). No plaintext values in the repository or workflow logs.
+- The miniapp keeps JWT tokens only in memory (e.g., React state) — never persist them in `localStorage`/`sessionStorage`.
+- Detailed policy: [docs/SECRETS_POLICY.md](docs/SECRETS_POLICY.md).
+- Run grep-based leak checks with [tools/audit/grep_checks.sh](tools/audit/grep_checks.sh).
+
 ## P27 — Integrations hardening
 
 ## P28 — Metrics wiring
