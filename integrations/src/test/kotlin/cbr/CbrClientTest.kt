@@ -1,24 +1,36 @@
 package cbr
 
+import http.CircuitBreaker
+import http.IntegrationsHttpConfig
+import http.IntegrationsMetrics
 import http.HttpClientError
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.HttpResponseData
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import java.math.BigDecimal
+import java.time.Clock
 import java.time.LocalDate
 import testutils.testHttpClient
+import testutils.testHttpConfig
 
 private const val BASE_URL = "https://mock.cbr"
 
 class CbrClientTest : FunSpec({
     test("getXmlDaily parses XML response") {
         val registry = SimpleMeterRegistry()
+        val metrics = IntegrationsMetrics(registry)
+        val clock = Clock.systemUTC()
+        val config = testHttpConfig()
         val xml = """
             <?xml version="1.0" encoding="UTF-8"?>
             <ValCurs Date="20.05.2024" name="Foreign Currency Market">
@@ -30,7 +42,7 @@ class CbrClientTest : FunSpec({
             </ValCurs>
         """.trimIndent()
         var callCount = 0
-        val client = testHttpClient { _ ->
+        val (client, cbrClient) = newCbrClient(metrics, clock, config) { _ ->
             callCount++
             respond(
                 content = xml,
@@ -38,7 +50,6 @@ class CbrClientTest : FunSpec({
                 headers = headersOf(HttpHeaders.ContentType to listOf(ContentType.Application.Xml.toString()))
             )
         }
-        val cbrClient = CbrClient(client, BASE_URL, registry)
         try {
             val result = cbrClient.getXmlDaily(LocalDate.parse("2024-05-20"))
             result.isSuccess shouldBe true
@@ -54,13 +65,16 @@ class CbrClientTest : FunSpec({
 
     test("getXmlDaily retries on 429 responses") {
         val registry = SimpleMeterRegistry()
+        val metrics = IntegrationsMetrics(registry)
+        val clock = Clock.systemUTC()
+        val config = testHttpConfig()
         val xml = """
             <ValCurs Date="20.05.2024">
               <Valute><CharCode>USD</CharCode><Nominal>1</Nominal><Value>90,00</Value></Valute>
             </ValCurs>
         """.trimIndent()
         var callCount = 0
-        val client = testHttpClient { _ ->
+        val (client, cbrClient) = newCbrClient(metrics, clock, config) { _ ->
             callCount++
             if (callCount < 3) {
                 respond(
@@ -79,7 +93,6 @@ class CbrClientTest : FunSpec({
                 )
             }
         }
-        val cbrClient = CbrClient(client, BASE_URL, registry)
         try {
             val result = cbrClient.getXmlDaily(null)
             result.isSuccess shouldBe true
@@ -92,13 +105,16 @@ class CbrClientTest : FunSpec({
 
     test("getXmlDaily retries on server errors") {
         val registry = SimpleMeterRegistry()
+        val metrics = IntegrationsMetrics(registry)
+        val clock = Clock.systemUTC()
+        val config = testHttpConfig()
         val xml = """
             <ValCurs Date="20.05.2024">
               <Valute><CharCode>USD</CharCode><Nominal>1</Nominal><Value>90,00</Value></Valute>
             </ValCurs>
         """.trimIndent()
         var callCount = 0
-        val client = testHttpClient { _ ->
+        val (client, cbrClient) = newCbrClient(metrics, clock, config) { _ ->
             callCount++
             if (callCount < 3) {
                 respond(
@@ -114,7 +130,6 @@ class CbrClientTest : FunSpec({
                 )
             }
         }
-        val cbrClient = CbrClient(client, BASE_URL, registry)
         try {
             val result = cbrClient.getXmlDaily(null)
             result.isSuccess shouldBe true
@@ -127,13 +142,16 @@ class CbrClientTest : FunSpec({
 
     test("getXmlDaily caches latest response") {
         val registry = SimpleMeterRegistry()
+        val metrics = IntegrationsMetrics(registry)
+        val clock = Clock.systemUTC()
+        val config = testHttpConfig()
         val xml = """
             <ValCurs Date="20.05.2024">
               <Valute><CharCode>USD</CharCode><Nominal>1</Nominal><Value>90,00</Value></Valute>
             </ValCurs>
         """.trimIndent()
         var callCount = 0
-        val client = testHttpClient { _ ->
+        val (client, cbrClient) = newCbrClient(metrics, clock, config) { _ ->
             callCount++
             respond(
                 content = xml,
@@ -141,7 +159,6 @@ class CbrClientTest : FunSpec({
                 headers = headersOf(HttpHeaders.ContentType to listOf(ContentType.Application.Xml.toString()))
             )
         }
-        val cbrClient = CbrClient(client, BASE_URL, registry)
         try {
             val first = cbrClient.getXmlDaily(null)
             val second = cbrClient.getXmlDaily(null)
@@ -156,19 +173,21 @@ class CbrClientTest : FunSpec({
 
     test("getXmlDaily fails on malformed XML") {
         val registry = SimpleMeterRegistry()
+        val metrics = IntegrationsMetrics(registry)
+        val clock = Clock.systemUTC()
+        val config = testHttpConfig()
         val xml = """
             <ValCurs Date="20.05.2024">
               <Valute><CharCode>USD</CharCode><Nominal>0</Nominal><Value>text</Value></Valute>
             </ValCurs>
         """.trimIndent()
-        val client = testHttpClient { _ ->
+        val (client, cbrClient) = newCbrClient(metrics, clock, config) { _ ->
             respond(
                 content = xml,
                 status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Xml.toString())
+                headers = headersOf(HttpHeaders.ContentType to listOf(ContentType.Application.Xml.toString()))
             )
         }
-        val cbrClient = CbrClient(client, BASE_URL, registry)
         try {
             val result = cbrClient.getXmlDaily(null)
             result.isSuccess shouldBe false
@@ -179,3 +198,15 @@ class CbrClientTest : FunSpec({
         }
     }
 })
+
+private fun newCbrClient(
+    metrics: IntegrationsMetrics,
+    clock: Clock,
+    config: IntegrationsHttpConfig,
+    handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData
+): Pair<HttpClient, CbrClient> {
+    val client = testHttpClient(metrics = metrics, clock = clock, config = config, handler = handler)
+    val breaker = CircuitBreaker("cbr", config.circuitBreaker, metrics, clock)
+    val cbrClient = CbrClient(client, breaker, metrics, clock).apply { setBaseUrl(BASE_URL) }
+    return client to cbrClient
+}

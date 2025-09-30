@@ -36,6 +36,36 @@ bash tools/audit/run_all.sh --only-audit
 
 Copy `.env.example` to `.env` and provide the required values.
 
+## P27 — Integrations hardening
+
+Интеграционные клиенты (MOEX, CoinGecko, CBR) работают через единый `HttpClient` с гибкой конфигурацией в `application.conf`.
+
+```
+integrations.http {
+  userAgent = "newsbot-integrations/1.0"
+  timeoutMs { connect = …, socket = …, request = … }
+  retry {
+    maxAttempts = …
+    baseBackoffMs = …
+    jitterMs = …
+    respectRetryAfter = true|false
+    retryOn = [429, 500, 502, 503, 504]
+  }
+  circuitBreaker {
+    failuresThreshold = …
+    windowSeconds = …
+    openSeconds = …
+    halfOpenMaxCalls = …
+  }
+}
+```
+
+- Таймауты на соединение, чтение и всю заявку задаются в миллисекундах и применяются ко всем интеграциям.
+- Ретраи покрывают HTTP 429/5xx и сетевые ошибки, используют экспоненциальный backoff с джиттером и уважают `Retry-After` (секунды или HTTP-date).
+- Circuit breaker фиксирует окно ошибок, поддерживает `OPEN` → `HALF_OPEN` → `CLOSED`, учитывает параллельные half-open пробы.
+- Метрики Micrometer: `integrations_retry_total`, `integrations_retry_after_honored_total`, `integrations_cb_state`, `integrations_cb_open_total`, `integrations_request_seconds{service, outcome}` доступны по `/metrics`.
+- Клиенты MOEX/CoinGecko/CBR используют общий клиент и локальную реализацию CB — внешние «тяжёлые» библиотеки (resilience4j и др.) не подключаются.
+
 ## P05 — API smoke
 
 Быстрые smoke-команды для проверки ключевых REST-ручек локального стенда (`./gradlew :app:run`). Все примеры используют `curl`

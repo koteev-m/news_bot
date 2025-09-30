@@ -1,14 +1,15 @@
 package moex
 
 import cache.TtlCache
+import http.CircuitBreaker
 import http.HttpClientError
-import http.HttpMetricsRecorder
+import http.HttpClients
 import http.HttpResult
+import http.IntegrationsMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
-import io.micrometer.core.instrument.MeterRegistry
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -25,17 +26,28 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.contentOrNull
+import kotlin.jvm.Volatile
 
 class MoexIssClient(
-    private val httpClient: HttpClient,
-    private val baseUrl: String,
-    meterRegistry: MeterRegistry,
+    private val client: HttpClient,
+    private val cb: CircuitBreaker,
+    private val metrics: IntegrationsMetrics,
     private val clock: Clock = Clock.systemUTC()
 ) {
-    private val metrics = HttpMetricsRecorder(meterRegistry, "moex", javaClass.name)
+    @Volatile
+    private var baseUrl: String = DEFAULT_BASE_URL
     private val securitiesCache = TtlCache<String, MoexSecuritiesResponse>(clock)
     private val candlesCache = TtlCache<String, MoexCandlesResponse>(clock)
     private val statusCache = TtlCache<String, MoexStatusResponse>(clock)
+
+    init {
+        metrics.requestTimer(SERVICE, "success")
+        metrics.requestTimer(SERVICE, "error")
+    }
+
+    fun setBaseUrl(url: String) {
+        baseUrl = normalizeBaseUrl(url)
+    }
 
     suspend fun getSecuritiesTqbr(securities: List<String>): HttpResult<MoexSecuritiesResponse> {
         if (securities.isEmpty()) {
@@ -48,9 +60,7 @@ class MoexIssClient(
         val cacheKey = normalized.sorted().joinToString(",")
         return runCatching {
             securitiesCache.getOrPut(cacheKey, SECURITIES_TTL) {
-                metrics.record("securities") {
-                    requestSecurities(cacheKey)
-                }
+                requestSecurities(cacheKey)
             }
         }
     }
@@ -66,47 +76,63 @@ class MoexIssClient(
         val cacheKey = listOf(normalizedTicker, from.toString(), till.toString()).joinToString(":")
         return runCatching {
             candlesCache.getOrPut(cacheKey, CANDLES_TTL) {
-                metrics.record("candles") {
-                    requestCandles(normalizedTicker, from, till)
-                }
+                requestCandles(normalizedTicker, from, till)
             }
         }
     }
 
     suspend fun getMarketStatus(): HttpResult<MoexStatusResponse> = runCatching {
         statusCache.getOrPut("status", STATUS_TTL) {
-            metrics.record("marketStatus") {
-                requestMarketStatus()
-            }
+            requestMarketStatus()
         }
     }
 
-    private suspend fun requestSecurities(key: String): MoexSecuritiesResponse {
-        val response: MoexSecuritiesRaw = httpClient.get("$baseUrl/iss/engines/stock/markets/shares/boards/TQBR/securities.json") {
-            parameter("securities", key)
-            parameter("iss.meta", "off")
-        }.body()
-        return response.toDomain()
-    }
+    private suspend fun requestSecurities(key: String): MoexSecuritiesResponse =
+        cb.withPermit {
+            HttpClients.measure(SERVICE) {
+                client.get("${baseUrl}$SECURITIES_PATH") {
+                    parameter("securities", key)
+                    parameter("iss.meta", "off")
+                }.body<MoexSecuritiesRaw>().toDomain()
+            }
+        }
 
-    private suspend fun requestCandles(ticker: String, from: LocalDate, till: LocalDate): MoexCandlesResponse {
-        val response: MoexCandlesRaw = httpClient.get("$baseUrl/iss/engines/stock/markets/shares/securities/$ticker/candles.json") {
-            parameter("interval", "24")
-            parameter("from", from.toString())
-            parameter("till", till.toString())
-            parameter("iss.meta", "off")
-        }.body()
-        return response.toDomain()
-    }
+    private suspend fun requestCandles(ticker: String, from: LocalDate, till: LocalDate): MoexCandlesResponse =
+        cb.withPermit {
+            HttpClients.measure(SERVICE) {
+                client.get("${baseUrl}$CANDLES_PREFIX$ticker$CANDLES_SUFFIX") {
+                    parameter("interval", "24")
+                    parameter("from", from.toString())
+                    parameter("till", till.toString())
+                    parameter("iss.meta", "off")
+                }.body<MoexCandlesRaw>().toDomain()
+            }
+        }
 
-    private suspend fun requestMarketStatus(): MoexStatusResponse {
-        val response: MoexStatusRaw = httpClient.get("$baseUrl/iss/engines/stock/markets/shares/marketstatus.json") {
-            parameter("iss.meta", "off")
-        }.body()
-        return response.toDomain()
+    private suspend fun requestMarketStatus(): MoexStatusResponse =
+        cb.withPermit {
+            HttpClients.measure(SERVICE) {
+                client.get("${baseUrl}$MARKET_STATUS_PATH") {
+                    parameter("iss.meta", "off")
+                }.body<MoexStatusRaw>().toDomain()
+            }
+        }
+
+    private fun normalizeBaseUrl(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) {
+            return DEFAULT_BASE_URL
+        }
+        return trimmed.trimEnd('/')
     }
 
     companion object {
+        private const val SERVICE: String = "moex"
+        private const val DEFAULT_BASE_URL: String = "https://iss.moex.com"
+        private const val SECURITIES_PATH: String = "/iss/engines/stock/markets/shares/boards/TQBR/securities.json"
+        private const val CANDLES_PREFIX: String = "/iss/engines/stock/markets/shares/securities/"
+        private const val CANDLES_SUFFIX: String = "/candles.json"
+        private const val MARKET_STATUS_PATH: String = "/iss/engines/stock/markets/shares/marketstatus.json"
         private val MOSCOW_ZONE: ZoneId = ZoneId.of("Europe/Moscow")
         private val MOEX_DATE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         private val MOEX_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")

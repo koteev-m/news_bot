@@ -1,14 +1,15 @@
 package coingecko
 
 import cache.TtlCache
+import http.CircuitBreaker
 import http.HttpClientError
-import http.HttpMetricsRecorder
+import http.HttpClients
 import http.HttpResult
+import http.IntegrationsMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
-import io.micrometer.core.instrument.MeterRegistry
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -25,19 +26,30 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.jvm.Volatile
 
 class CoinGeckoClient(
-    private val httpClient: HttpClient,
-    private val baseUrl: String,
-    meterRegistry: MeterRegistry,
+    private val client: HttpClient,
+    private val cb: CircuitBreaker,
+    private val metrics: IntegrationsMetrics,
     private val clock: Clock = Clock.systemUTC(),
     private val minRequestInterval: Duration = 1.seconds
 ) {
-    private val metrics = HttpMetricsRecorder(meterRegistry, "coingecko", javaClass.name)
+    @Volatile
+    private var baseUrl: String = DEFAULT_BASE_URL
     private val priceCache = TtlCache<String, Map<String, Map<String, BigDecimal>>>(clock)
     private val chartCache = TtlCache<String, MarketChart>(clock)
     private val rateMutex = Mutex()
     private var lastRequestAt: Instant? = null
+
+    init {
+        metrics.requestTimer(SERVICE, "success")
+        metrics.requestTimer(SERVICE, "error")
+    }
+
+    fun setBaseUrl(url: String) {
+        baseUrl = normalizeBaseUrl(url)
+    }
 
     suspend fun getSimplePrice(ids: List<String>, vs: List<String>): HttpResult<Map<String, Map<String, BigDecimal>>> {
         if (ids.isEmpty()) {
@@ -65,10 +77,8 @@ class CoinGeckoClient(
         val cacheKey = "$idsParam|$vsParam"
         return runCatching {
             priceCache.getOrPut(cacheKey, SIMPLE_PRICE_TTL) {
-                metrics.record("simplePrice") {
-                    rateLimited {
-                        requestSimplePrice(idsParam, vsParam)
-                    }
+                rateLimited {
+                    requestSimplePrice(idsParam, vsParam)
                 }
             }
         }
@@ -89,39 +99,43 @@ class CoinGeckoClient(
         val cacheKey = listOf(normalizedId, normalizedVs, days.toString()).joinToString(":")
         return runCatching {
             chartCache.getOrPut(cacheKey, MARKET_CHART_TTL) {
-                metrics.record("marketChart") {
-                    rateLimited {
-                        requestMarketChart(normalizedId, normalizedVs, days)
-                    }
+                rateLimited {
+                    requestMarketChart(normalizedId, normalizedVs, days)
                 }
             }
         }
     }
 
-    private suspend fun requestSimplePrice(ids: String, vs: String): Map<String, Map<String, BigDecimal>> {
-        val payloadElement: JsonElement = httpClient.get("$baseUrl/api/v3/simple/price") {
-            parameter("ids", ids)
-            parameter("vs_currencies", vs)
-        }.body()
-        val payload = payloadElement.asJsonObjectOrNull()
-            ?: throw HttpClientError.DeserializationError("Expected JSON object for simple price response")
-        return payload.entries.associate { (asset, value) ->
-            val priceObject = value as? JsonObject
-                ?: throw HttpClientError.DeserializationError("Expected JSON object for $asset simple price response")
-            val prices = priceObject.entries.associate { (currency, priceElement) ->
-                currency to priceElement.toBigDecimalOrThrow("$asset:$currency")
+    private suspend fun requestSimplePrice(ids: String, vs: String): Map<String, Map<String, BigDecimal>> =
+        cb.withPermit {
+            HttpClients.measure(SERVICE) {
+                val payloadElement: JsonElement = client.get("${baseUrl}$SIMPLE_PRICE_PATH") {
+                    parameter("ids", ids)
+                    parameter("vs_currencies", vs)
+                }.body()
+                val payload = payloadElement.asJsonObjectOrNull()
+                    ?: throw HttpClientError.DeserializationError("Expected JSON object for simple price response")
+                payload.entries.associate { (asset, value) ->
+                    val priceObject = value as? JsonObject
+                        ?: throw HttpClientError.DeserializationError("Expected JSON object for $asset simple price response")
+                    val prices = priceObject.entries.associate { (currency, priceElement) ->
+                        currency to priceElement.toBigDecimalOrThrow("$asset:$currency")
+                    }
+                    asset to prices
+                }
             }
-            asset to prices
         }
-    }
 
-    private suspend fun requestMarketChart(id: String, vs: String, days: Int): MarketChart {
-        val raw: CoinGeckoMarketChartRaw = httpClient.get("$baseUrl/api/v3/coins/$id/market_chart") {
-            parameter("vs_currency", vs)
-            parameter("days", days)
-        }.body()
-        return raw.toDomain()
-    }
+    private suspend fun requestMarketChart(id: String, vs: String, days: Int): MarketChart =
+        cb.withPermit {
+            HttpClients.measure(SERVICE) {
+                val raw: CoinGeckoMarketChartRaw = client.get("${baseUrl}$MARKET_CHART_PREFIX$id$MARKET_CHART_SUFFIX") {
+                    parameter("vs_currency", vs)
+                    parameter("days", days)
+                }.body()
+                raw.toDomain()
+            }
+        }
 
     private suspend fun <T> rateLimited(block: suspend () -> T): T = rateMutex.withLock {
         val now = clock.instant()
@@ -139,7 +153,20 @@ class CoinGeckoClient(
         result
     }
 
+    private fun normalizeBaseUrl(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) {
+            return DEFAULT_BASE_URL
+        }
+        return trimmed.trimEnd('/')
+    }
+
     companion object {
+        private const val SERVICE = "coingecko"
+        private const val DEFAULT_BASE_URL = "https://api.coingecko.com"
+        private const val SIMPLE_PRICE_PATH = "/api/v3/simple/price"
+        private const val MARKET_CHART_PREFIX = "/api/v3/coins/"
+        private const val MARKET_CHART_SUFFIX = "/market_chart"
         private const val MAX_SIMPLE_PRICE_IDS = 50
         private const val MAX_SIMPLE_PRICE_CURRENCIES = 10
         private const val MAX_MARKET_CHART_DAYS = 365

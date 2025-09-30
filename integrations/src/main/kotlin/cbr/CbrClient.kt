@@ -1,16 +1,18 @@
 package cbr
 
 import cache.TtlCache
+import http.CircuitBreaker
 import http.HttpClientError
-import http.HttpMetricsRecorder
+import http.HttpClients
 import http.HttpResult
+import http.IntegrationsMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.request.accept
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
-import io.micrometer.core.instrument.MeterRegistry
+import java.io.IOException
 import java.io.StringReader
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -20,43 +22,55 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import javax.xml.parsers.ParserConfigurationException
 import javax.xml.parsers.DocumentBuilderFactory
-import java.io.IOException
+import javax.xml.parsers.ParserConfigurationException
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
+import kotlin.jvm.Volatile
 
 class CbrClient(
-    private val httpClient: HttpClient,
-    private val baseUrl: String,
-    meterRegistry: MeterRegistry,
+    private val client: HttpClient,
+    private val cb: CircuitBreaker,
+    private val metrics: IntegrationsMetrics,
     private val clock: Clock = Clock.systemUTC()
 ) {
-    private val metrics = HttpMetricsRecorder(meterRegistry, "cbr", javaClass.name)
+    @Volatile
+    private var baseUrl: String = DEFAULT_BASE_URL
     private val cache = TtlCache<String, List<CbrRate>>(clock)
+
+    init {
+        metrics.requestTimer(SERVICE, "success")
+        metrics.requestTimer(SERVICE, "error")
+    }
+
+    fun setBaseUrl(url: String) {
+        baseUrl = normalizeBaseUrl(url)
+    }
 
     suspend fun getXmlDaily(date: LocalDate?): HttpResult<List<CbrRate>> {
         val cacheKey = date?.toString() ?: "latest"
         return runCatching {
             cache.getOrPut(cacheKey, DAILY_TTL) {
-                metrics.record("xmlDaily") {
-                    requestXmlDaily(date)
-                }
+                requestXmlDaily(date)
             }
         }
     }
 
     private suspend fun requestXmlDaily(date: LocalDate?): List<CbrRate> {
-        val response = httpClient.get("$baseUrl/scripts/XML_daily.asp") {
-            accept(ContentType.Application.Xml)
-            if (date != null) {
-                parameter("date_req", date.format(CBR_REQUEST_FORMAT))
+        return cb.withPermit {
+            HttpClients.measure(SERVICE) {
+                val response = client.get("${baseUrl}$XML_DAILY_PATH") {
+                    accept(ContentType.Application.Xml)
+                    if (date != null) {
+                        parameter("date_req", date.format(CBR_REQUEST_FORMAT))
+                    }
+                }.bodyAsText()
+                parseXml(response)
             }
-        }.bodyAsText()
-        return parseXml(response)
+        }
     }
 
     private fun parseXml(xml: String): List<CbrRate> {
@@ -115,7 +129,18 @@ class CbrClient(
         return date.atStartOfDay(MOSCOW_ZONE).toInstant()
     }
 
+    private fun normalizeBaseUrl(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) {
+            return DEFAULT_BASE_URL
+        }
+        return trimmed.trimEnd('/')
+    }
+
     companion object {
+        private const val SERVICE: String = "cbr"
+        private const val DEFAULT_BASE_URL: String = "https://www.cbr.ru"
+        private const val XML_DAILY_PATH: String = "/scripts/XML_daily.asp"
         private val MOSCOW_ZONE: ZoneId = ZoneId.of("Europe/Moscow")
         private val CBR_REQUEST_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
         private val CBR_RESPONSE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
