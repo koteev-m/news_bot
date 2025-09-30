@@ -75,7 +75,7 @@ class WebhookIntegrationTest {
                     val raw = call.receiveText()
                     val update = StarsWebhookHandler.json.decodeFromString(TgUpdate.serializer(), raw)
                     StarsWebhookHandler.handleParsed(call, update, billing)
-                    val botUpdate = com.pengrad.telegrambot.BotUtils.parseUpdate(raw)
+                    val botUpdate = com.pengrad.telegrambot.utility.BotUtils.parseUpdate(raw)
                     when (StarsBotRouter.route(botUpdate)) {
                         Plans -> StarsBotCommands.handlePlans(botUpdate, bot, billing)
                         Buy -> StarsBotCommands.handleBuy(botUpdate, bot, billing)

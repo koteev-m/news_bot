@@ -4,19 +4,18 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 
-class DomainMetrics(val registry: MeterRegistry) {
-    val newsIngestTimer: Timer = registry.timer("news_ingest_seconds")
-    val newsPublishCounter: Counter = registry.counter("news_publish_total")
-    val alertsPushCounter: Counter = registry.counter("alerts_push_total")
-    val alertsBudgetRejectCounter: Counter = registry.counter("alerts_budget_reject_total")
+class DomainMetrics(private val registry: MeterRegistry) {
+    // Billing / Webhook
     val webhookStarsSuccess: Counter = registry.counter("webhook_stars_success_total")
+    val webhookStarsDuplicate: Counter = registry.counter("webhook_stars_duplicate_total")
 
-    inline fun <T> timeIngest(block: () -> T): T {
-        val sample = Timer.start(registry)
-        return try {
-            block()
-        } finally {
-            sample.stop(newsIngestTimer)
-        }
-    }
+    // Alerts
+    val alertsPush: Counter = registry.counter("alerts_push_total")
+    val alertsBudgetReject: Counter = registry.counter("alerts_budget_reject_total")
+
+    // News
+    val newsPublish: Counter = registry.counter("news_publish_total")
+
+    // Optional processing timer for webhook item (already in P26 queue, but available here too)
+    val webhookHandleTimer: Timer = registry.timer("webhook_handle_seconds")
 }

@@ -38,6 +38,15 @@ Copy `.env.example` to `.env` and provide the required values.
 
 ## P27 — Integrations hardening
 
+## P28 — Metrics wiring
+
+- `webhook_stars_success_total` — увеличивается после успешной первичной обработки XTR-платежа в `StarsWebhookHandler` и фоновой очереди `processStarsPayment` (`app/src/main/kotlin/billing/StarsWebhookHandler.kt`, `app/src/main/kotlin/App.kt`).
+- `webhook_stars_duplicate_total` — инкрементируется для идемпотентных повторов в тех же обработчиках, когда `BillingService` сообщает `duplicate=true`.
+- `alerts_push_total` — счётчик успешных пушей в алерт-движке (`alerts/src/main/kotlin/alerts/engine/AlertEngine.kt`).
+- `alerts_budget_reject_total` — фиксирует блокировки анти-шума (budget/quiet/cooldown) в алерт-движке.
+- `news_publish_total` — пополнение канала новостей через `ChannelPublisher` (`news/src/main/kotlin/news/publisher/ChannelPublisher.kt`).
+
+
 Интеграционные клиенты (MOEX, CoinGecko, CBR) работают через единый `HttpClient` с гибкой конфигурацией в `application.conf`.
 
 ```

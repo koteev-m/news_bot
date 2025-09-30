@@ -5,13 +5,15 @@ import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup
 import com.pengrad.telegrambot.model.request.ParseMode
 import com.pengrad.telegrambot.request.SendMessage
 import news.config.NewsConfig
+import news.metrics.NewsMetricsPort
 import news.publisher.store.IdempotencyStore
 import org.slf4j.LoggerFactory
 
 open class ChannelPublisher(
     private val bot: TelegramBot,
     private val cfg: NewsConfig,
-    private val store: IdempotencyStore
+    private val store: IdempotencyStore,
+    private val metrics: NewsMetricsPort = NewsMetricsPort.Noop
 ) {
     private val logger = LoggerFactory.getLogger(ChannelPublisher::class.java)
 
@@ -30,6 +32,7 @@ open class ChannelPublisher(
             val response = bot.execute(request)
             if (response.isOk) {
                 store.mark(clusterKey)
+                metrics.incPublish()
                 true
             } else {
                 logger.warn("telegram send failed for {}", clusterKey)

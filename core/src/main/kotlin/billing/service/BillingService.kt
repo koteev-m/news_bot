@@ -41,12 +41,39 @@ interface BillingService {
     suspend fun getMySubscription(userId: Long): Result<UserSubscription?>
 }
 
+data class ApplyPaymentOutcome(val duplicate: Boolean)
+
+interface BillingServiceWithOutcome : BillingService {
+    suspend fun applySuccessfulPaymentWithOutcome(
+        userId: Long,
+        tier: Tier,
+        amountXtr: Long,
+        providerPaymentId: String?,
+        payload: String?
+    ): Result<ApplyPaymentOutcome>
+}
+
+suspend fun BillingService.applySuccessfulPaymentOutcome(
+    userId: Long,
+    tier: Tier,
+    amountXtr: Long,
+    providerPaymentId: String?,
+    payload: String?
+): Result<ApplyPaymentOutcome> {
+    return if (this is BillingServiceWithOutcome) {
+        applySuccessfulPaymentWithOutcome(userId, tier, amountXtr, providerPaymentId, payload)
+    } else {
+        applySuccessfulPayment(userId, tier, amountXtr, providerPaymentId, payload)
+            .map { ApplyPaymentOutcome(duplicate = false) }
+    }
+}
+
 class BillingServiceImpl(
     private val repo: BillingRepository,
     private val stars: StarsGateway,
     private val defaultDurationDays: Long,
     private val clock: Clock = Clock.systemUTC()
-) : BillingService {
+) : BillingService, BillingServiceWithOutcome {
 
     private val logger = LoggerFactory.getLogger(BillingServiceImpl::class.java)
 
@@ -74,7 +101,18 @@ class BillingServiceImpl(
         amountXtr: Long,
         providerPaymentId: String?,
         payload: String?
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> {
+        return applySuccessfulPaymentWithOutcome(userId, tier, amountXtr, providerPaymentId, payload)
+            .map { }
+    }
+
+    override suspend fun applySuccessfulPaymentWithOutcome(
+        userId: Long,
+        tier: Tier,
+        amountXtr: Long,
+        providerPaymentId: String?,
+        payload: String?
+    ): Result<ApplyPaymentOutcome> = runCatching {
         require(amountXtr >= 0) { "amountXtr must be >= 0" }
 
         val pid = providerPaymentId ?: deterministicChargeId(userId, tier, payload)
@@ -90,7 +128,7 @@ class BillingServiceImpl(
 
         if (!isNew) {
             logger.info("stars-payment reason=duplicate")
-            return@runCatching
+            return@runCatching ApplyPaymentOutcome(duplicate = true)
         }
 
         val expiresAt = now().plus(Duration.ofDays(defaultDurationDays))
@@ -102,6 +140,7 @@ class BillingServiceImpl(
             lastPaymentId = pid
         )
         logger.info("stars-payment reason=applied_ok")
+        ApplyPaymentOutcome(duplicate = false)
     }
 
     override suspend fun getMySubscription(userId: Long): Result<UserSubscription?> =

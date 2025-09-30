@@ -1,13 +1,16 @@
 package billing
 
 import billing.model.Tier
+import billing.service.ApplyPaymentOutcome
 import billing.service.BillingService
+import billing.service.applySuccessfulPaymentOutcome
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import observability.DomainMetrics
 import java.util.UUID
 import org.slf4j.LoggerFactory
 
@@ -41,7 +44,11 @@ object StarsWebhookHandler {
      * Возвращает true, если Update содержит успешный XTR-платёж и он обработан (или идемпотентно пропущен).
      * В любом случае отвечает 200 (быстрый ACK), чтобы Telegram не ретраил.
      */
-    suspend fun handleIfStarsPayment(call: ApplicationCall, billing: BillingService): Boolean {
+    suspend fun handleIfStarsPayment(
+        call: ApplicationCall,
+        billing: BillingService,
+        metrics: DomainMetrics? = null
+    ): Boolean {
         val requestId = requestId()
         val body = runCatching { call.receiveText() }.getOrElse {
             call.respond(HttpStatusCode.OK)
@@ -53,23 +60,25 @@ object StarsWebhookHandler {
             return false
         }
 
-        return handleParsed(call, update, billing, requestId)
+        return handleParsed(call, update, billing, requestId, metrics)
     }
 
     suspend fun handleParsed(
         call: ApplicationCall,
         update: TgUpdate,
-        billing: BillingService
+        billing: BillingService,
+        metrics: DomainMetrics? = null
     ): Boolean {
         val requestId = requestId()
-        return handleParsed(call, update, billing, requestId)
+        return handleParsed(call, update, billing, requestId, metrics)
     }
 
     private suspend fun handleParsed(
         call: ApplicationCall,
         update: TgUpdate,
         billing: BillingService,
-        requestId: String
+        requestId: String,
+        metrics: DomainMetrics?
     ): Boolean {
         val successfulPayment = update.message?.successful_payment
         if (successfulPayment == null) {
@@ -99,7 +108,7 @@ object StarsWebhookHandler {
             return true
         }
 
-        val result = billing.applySuccessfulPayment(
+        val outcomeResult = billing.applySuccessfulPaymentOutcome(
             userId = userId,
             tier = tier,
             amountXtr = successfulPayment.total_amount,
@@ -107,18 +116,29 @@ object StarsWebhookHandler {
             payload = successfulPayment.invoice_payload
         )
 
-        if (result.isSuccess) {
-            logger.info("stars-webhook requestId={} reason=applied_ok", requestId)
-        } else {
-            logger.error(
-                "stars-webhook requestId={} reason=applied_ok status=error",
-                requestId,
-                result.exceptionOrNull()
-            )
-        }
+        outcomeResult.fold(
+            onSuccess = { outcome -> handleSuccess(metrics, requestId, outcome) },
+            onFailure = { error ->
+                logger.error(
+                    "stars-webhook requestId={} reason=applied_ok status=error",
+                    requestId,
+                    error
+                )
+            }
+        )
 
         call.respond(HttpStatusCode.OK)
         return true
+    }
+
+    private fun handleSuccess(metrics: DomainMetrics?, requestId: String, outcome: ApplyPaymentOutcome) {
+        if (outcome.duplicate) {
+            metrics?.webhookStarsDuplicate?.increment()
+            logger.info("stars-webhook requestId={} reason=duplicate", requestId)
+        } else {
+            metrics?.webhookStarsSuccess?.increment()
+            logger.info("stars-webhook requestId={} reason=applied_ok", requestId)
+        }
     }
 
     private fun parsePayload(payload: String?): Pair<Long, Tier>? {

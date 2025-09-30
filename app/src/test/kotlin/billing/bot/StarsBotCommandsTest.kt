@@ -6,7 +6,7 @@ import billing.model.Tier
 import billing.model.UserSubscription
 import billing.model.Xtr
 import billing.service.BillingService
-import com.pengrad.telegrambot.BotUtils
+import com.pengrad.telegrambot.utility.BotUtils
 import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.model.Update
 import com.pengrad.telegrambot.model.request.InlineKeyboardButton
@@ -64,7 +64,7 @@ class StarsBotCommandsTest {
         val buttons: Array<Array<InlineKeyboardButton>> = markup.inlineKeyboard()
         assertEquals(1, buttons.size)
         val row = buttons[0]
-        assertEquals(listOf("buy:PRO", "buy:PRO_PLUS", "buy:VIP"), row.map { it.callbackData() })
+        assertEquals(listOf("buy:PRO", "buy:PRO_PLUS", "buy:VIP"), row.map { it.callbackData!! })
     }
 
     @Test

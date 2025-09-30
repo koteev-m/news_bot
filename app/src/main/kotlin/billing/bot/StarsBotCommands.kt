@@ -8,6 +8,7 @@ import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.model.Update
 import com.pengrad.telegrambot.model.request.InlineKeyboardButton
 import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup
+import com.pengrad.telegrambot.model.LinkPreviewOptions
 import com.pengrad.telegrambot.model.request.ParseMode
 import com.pengrad.telegrambot.request.AnswerCallbackQuery
 import com.pengrad.telegrambot.request.SendMessage
@@ -60,7 +61,7 @@ object StarsBotCommands {
         bot.execute(
             SendMessage(chatId, text)
                 .parseMode(ParseMode.Markdown)
-                .disableWebPagePreview(true)
+                .linkPreviewOptions(com.pengrad.telegrambot.model.LinkPreviewOptions().isDisabled(true))
         )
     }
 
@@ -99,7 +100,7 @@ object StarsBotCommands {
         bot.execute(
             SendMessage(chatId, text)
                 .parseMode(ParseMode.Markdown)
-                .disableWebPagePreview(true)
+                .linkPreviewOptions(com.pengrad.telegrambot.model.LinkPreviewOptions().isDisabled(true))
         )
     }
 
