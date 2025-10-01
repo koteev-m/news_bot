@@ -1,5 +1,6 @@
 package billing
 
+import analytics.AnalyticsPort
 import billing.model.Tier
 import billing.service.ApplyPaymentOutcome
 import billing.service.BillingService
@@ -47,7 +48,8 @@ object StarsWebhookHandler {
     suspend fun handleIfStarsPayment(
         call: ApplicationCall,
         billing: BillingService,
-        metrics: DomainMetrics? = null
+        metrics: DomainMetrics? = null,
+        analytics: AnalyticsPort = AnalyticsPort.Noop
     ): Boolean {
         val requestId = requestId()
         val body = runCatching { call.receiveText() }.getOrElse {
@@ -60,17 +62,18 @@ object StarsWebhookHandler {
             return false
         }
 
-        return handleParsed(call, update, billing, requestId, metrics)
+        return handleParsed(call, update, billing, requestId, metrics, analytics)
     }
 
     suspend fun handleParsed(
         call: ApplicationCall,
         update: TgUpdate,
         billing: BillingService,
-        metrics: DomainMetrics? = null
+        metrics: DomainMetrics? = null,
+        analytics: AnalyticsPort = AnalyticsPort.Noop
     ): Boolean {
         val requestId = requestId()
-        return handleParsed(call, update, billing, requestId, metrics)
+        return handleParsed(call, update, billing, requestId, metrics, analytics)
     }
 
     private suspend fun handleParsed(
@@ -78,7 +81,8 @@ object StarsWebhookHandler {
         update: TgUpdate,
         billing: BillingService,
         requestId: String,
-        metrics: DomainMetrics?
+        metrics: DomainMetrics?,
+        analytics: AnalyticsPort
     ): Boolean {
         val successfulPayment = update.message?.successful_payment
         if (successfulPayment == null) {
@@ -116,16 +120,29 @@ object StarsWebhookHandler {
             payload = successfulPayment.invoice_payload
         )
 
-        outcomeResult.fold(
-            onSuccess = { outcome -> handleSuccess(metrics, requestId, outcome) },
-            onFailure = { error ->
-                logger.error(
-                    "stars-webhook requestId={} reason=applied_ok status=error",
-                    requestId,
-                    error
-                )
-            }
+        val outcome = outcomeResult.getOrElse { error ->
+            logger.error(
+                "stars-webhook requestId={} reason=applied_ok status=error",
+                requestId,
+                error
+            )
+            call.respond(HttpStatusCode.OK)
+            return true
+        }
+
+        val eventType = if (outcome.duplicate) {
+            "stars_payment_duplicate"
+        } else {
+            "stars_payment_succeeded"
+        }
+        analytics.track(
+            type = eventType,
+            userId = userId,
+            source = "webhook",
+            props = mapOf("tier" to tier.name)
         )
+
+        handleSuccess(metrics, requestId, outcome)
 
         call.respond(HttpStatusCode.OK)
         return true

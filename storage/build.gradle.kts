@@ -49,6 +49,7 @@ dependencies {
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.flyway.postgresql)
     testImplementation(libs.coroutines.core)
+    testImplementation("com.h2database:h2:2.2.224")
     testRuntimeOnly(libs.logback.classic)
 }
 

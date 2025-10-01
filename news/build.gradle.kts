@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":core"))
     implementation(libs.coroutines.core)
     implementation("io.ktor:ktor-client-core-jvm:${libs.versions.ktor.get()}")
     implementation("io.ktor:ktor-client-cio:${libs.versions.ktor.get()}")
