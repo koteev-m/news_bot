@@ -114,6 +114,25 @@ bash tools/release/maintenance.sh off
 
 - Заметка: health через /healthz, метрики через /metrics.
 
+## P35 — Security hardening & pen-test
+
+- Edge + app security headers: CSP (`default-src 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, HSTS enabled for production profiles only.
+- Dual-layer global rate-limits: Nginx `limit_req` (120 req/min per IP, burst 40) and Ktor token bucket (per user/IP, 60 req/min, burst 20) with `429` + `Retry-After` responses.
+- Dual-key JWT rotation: primary signs, secondary verifies for seamless rollout. Secrets live in `security.jwtSecretPrimary` / `security.jwtSecretSecondary`.
+
+### OWASP ZAP baseline
+
+- GitHub Actions → **ZAP Baseline Scan** (`.github/workflows/zap-baseline.yml`). Trigger manually via `workflow_dispatch` or wait for the nightly schedule. The workflow targets `${{ secrets.STAGE_BASE_URL }}` and uploads the HTML report as an artifact.
+
+### Rotation helpers
+
+```bash
+bash tools/security/rotate_jwt_secret.sh "<new_primary>"
+bash tools/security/rotate_webhook_secret.sh "<new_secret>"
+```
+
+- Detailed guidance: [docs/SECURITY_HARDENING.md](docs/SECURITY_HARDENING.md) and [docs/ROTATION_RUNBOOK.md](docs/ROTATION_RUNBOOK.md).
+
 ## P27 — Integrations hardening
 
 ## P28 — Metrics wiring
