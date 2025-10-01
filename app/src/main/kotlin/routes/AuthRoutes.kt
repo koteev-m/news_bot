@@ -1,5 +1,6 @@
 package routes
 
+import analytics.AnalyticsPort
 import auth.WebAppVerify
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -13,7 +14,7 @@ import kotlinx.serialization.Serializable
 import security.JwtSupport
 import kotlin.collections.buildMap
 
-fun Route.authRoutes() {
+fun Route.authRoutes(analytics: AnalyticsPort = AnalyticsPort.Noop) {
     post("/api/auth/telegram/verify") {
         val request = runCatching { call.receive<TelegramVerifyRequest>() }.getOrElse {
             call.respond(HttpStatusCode.BadRequest, ErrorResponse("bad_request"))
@@ -70,6 +71,13 @@ fun Route.authRoutes() {
         )
 
         call.respond(response)
+
+        analytics.track(
+            type = "miniapp_auth",
+            userId = userId,
+            source = "api",
+            props = mapOf("auth" to "ok"),
+        )
     }
 }
 

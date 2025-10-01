@@ -1,6 +1,7 @@
 package app
 
 import alerts.metrics.AlertMetricsPort
+import analytics.AnalyticsPort
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
 import billing.TgUpdate
@@ -43,6 +44,7 @@ import observability.WebhookMetrics
 import observability.adapters.AlertMetricsAdapter
 import observability.adapters.NewsMetricsAdapter
 import org.slf4j.LoggerFactory
+import repo.AnalyticsRepository
 import repo.BillingRepositoryImpl
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
@@ -54,6 +56,7 @@ import routes.portfolioPositionsTradesRoutes
 import routes.portfolioRoutes
 import routes.portfolioValuationReportRoutes
 import routes.quotesRoutes
+import routes.redirectRoutes
 import security.installSecurity
 import security.installUploadGuard
 import webhook.OverflowMode
@@ -69,6 +72,7 @@ fun Application.module() {
     installSecurity()
     installUploadGuard()
     installPortfolioModule()
+    val analytics = AnalyticsRepository()
     val featureFlags = FeatureFlagsModule.install(this)
     val services = ensureBillingServices(
         metrics = metrics,
@@ -84,7 +88,7 @@ fun Application.module() {
         scope = this,
         metrics = webhookMetrics
     ) { update ->
-        processStarsPayment(update, services.billingService, metrics)
+        processStarsPayment(update, services.billingService, metrics, analytics)
     }
     webhookQueue.start()
 
@@ -96,7 +100,8 @@ fun Application.module() {
 
     routing {
         healthRoutes()
-        authRoutes()
+        authRoutes(analytics)
+        redirectRoutes(analytics)
         quotesRoutes()
         demoRoutes()
 
@@ -236,7 +241,8 @@ private val webhookLogger = LoggerFactory.getLogger("WebhookProcessor")
 private suspend fun processStarsPayment(
     update: TgUpdate,
     billing: BillingService,
-    metrics: DomainMetrics
+    metrics: DomainMetrics,
+    analytics: AnalyticsPort
 ) {
     val successfulPayment = update.message?.successful_payment ?: return
     if (!successfulPayment.currency.equals("XTR", ignoreCase = true)) {
@@ -261,9 +267,21 @@ private suspend fun processStarsPayment(
     outcomeResult.fold(
         onSuccess = { outcome ->
             if (outcome.duplicate) {
+                analytics.track(
+                    type = "stars_payment_duplicate",
+                    userId = userId,
+                    source = "webhook",
+                    props = mapOf("tier" to tier.name)
+                )
                 metrics.webhookStarsDuplicate.increment()
                 webhookLogger.info("webhook-queue reason=duplicate")
             } else {
+                analytics.track(
+                    type = "stars_payment_succeeded",
+                    userId = userId,
+                    source = "webhook",
+                    props = mapOf("tier" to tier.name)
+                )
                 metrics.webhookStarsSuccess.increment()
                 webhookLogger.info("webhook-queue reason=applied_ok")
             }

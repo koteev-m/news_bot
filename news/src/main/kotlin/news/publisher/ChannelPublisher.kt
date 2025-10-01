@@ -1,5 +1,6 @@
 package news.publisher
 
+import analytics.AnalyticsPort
 import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup
 import com.pengrad.telegrambot.model.request.ParseMode
@@ -13,7 +14,8 @@ open class ChannelPublisher(
     private val bot: TelegramBot,
     private val cfg: NewsConfig,
     private val store: IdempotencyStore,
-    private val metrics: NewsMetricsPort = NewsMetricsPort.Noop
+    private val metrics: NewsMetricsPort = NewsMetricsPort.Noop,
+    private val analytics: AnalyticsPort = AnalyticsPort.Noop,
 ) {
     private val logger = LoggerFactory.getLogger(ChannelPublisher::class.java)
 
@@ -33,6 +35,12 @@ open class ChannelPublisher(
             if (response.isOk) {
                 store.mark(clusterKey)
                 metrics.incPublish()
+                analytics.track(
+                    type = "post_published",
+                    userId = null,
+                    source = "news_publisher",
+                    props = mapOf("cluster_key" to clusterKey),
+                )
                 true
             } else {
                 logger.warn("telegram send failed for {}", clusterKey)
