@@ -21,14 +21,16 @@ fun Application.installSecurity() {
         )
     }
 
-    val cfg = JwtSupport.config(environment)
+    val jwtConfig = JwtSupport.config(environment)
+    val jwtKeys = environment.jwtKeys()
+    val verifier = verifyWithAny(jwtConfig, jwtKeys)
 
     install(Authentication) {
         jwt("auth-jwt") {
-            realm = cfg.realm
-            verifier(JwtSupport.verify(cfg))
-            validate { cred ->
-                if (cred.payload.subject != null) JWTPrincipal(cred.payload) else null
+            realm = jwtConfig.realm
+            verifier(verifier)
+            validate { credentials ->
+                credentials.payload.subject?.takeIf { it.isNotBlank() }?.let { JWTPrincipal(credentials.payload) }
             }
         }
     }
