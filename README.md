@@ -95,6 +95,25 @@ curl -s -X PATCH -H "Authorization: Bearer $JWT" -H "content-type: application/j
 - PATCH доступен только аккаунтам из `admin.adminUserIds`; для поиска `user_id` возьмите значение из Telegram (например, `/my_id` в @userinfobot или payload от Stars-платежей).
 - Ответы компактные JSON без PII, ошибки 401/403/400 покрывают неаутентифицированные/неадминские/битые запросы.
 
+## P34 — Blue/Green & Canary
+
+```bash
+# запуск стека
+docker compose -f deploy/compose/docker-compose.bluegreen.yml up -d
+
+# canary 10% на green
+bash tools/release/switch_traffic.sh GREEN 10
+
+# полный перевод на green
+bash tools/release/switch_traffic.sh GREEN 0
+
+# включить/выключить maintenance
+bash tools/release/maintenance.sh on
+bash tools/release/maintenance.sh off
+```
+
+- Заметка: health через /healthz, метрики через /metrics.
+
 ## P27 — Integrations hardening
 
 ## P28 — Metrics wiring

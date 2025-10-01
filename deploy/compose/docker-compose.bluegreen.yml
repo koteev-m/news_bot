@@ -1,0 +1,112 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: newsbot-bg-postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-newsbot}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_pass}
+      TZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    restart: unless-stopped
+
+  app_blue:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: newsbot-app:latest
+    container_name: newsbot-app-blue
+    env_file:
+      - .env
+    environment:
+      TZ: UTC
+      APP_PORT: 8080
+      APP_PROFILE: ${APP_PROFILE:-prod}
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-newsbot}
+      DATABASE_USER: ${DATABASE_USER:-app}
+      DATABASE_PASS: ${DATABASE_PASS:-app_pass}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-dummy_token}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-dummy_secret}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health/db || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  app_green:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: newsbot-app:latest
+    container_name: newsbot-app-green
+    env_file:
+      - .env
+    environment:
+      TZ: UTC
+      APP_PORT: 8080
+      APP_PROFILE: ${APP_PROFILE:-prod}
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-newsbot}
+      DATABASE_USER: ${DATABASE_USER:-app}
+      DATABASE_PASS: ${DATABASE_PASS:-app_pass}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-dummy_token}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-dummy_secret}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health/db || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: newsbot-nginx-bluegreen
+    depends_on:
+      app_blue:
+        condition: service_healthy
+      app_green:
+        condition: service_healthy
+    ports:
+      - "${NGINX_HTTP_PORT:-8081}:80"
+      - "${NGINX_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./nginx/nginx.bluegreen.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/maintenance.html:/usr/share/nginx/html/maintenance.html:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  dbdata:
