@@ -643,3 +643,25 @@ bash tools/load/run_k6.sh webhook:burst
   - `POST /api/admin/privacy/retention/run` — форсирует немедленную очистку по TTL поверх фонового планировщика.
 - CLI: `tools/privacy/erase_user.sh <user_id> [--dry]`, `tools/privacy/run_retention.sh` (требуют `JWT` и опционально `BASE`).
 - Автосервис запускает retention-раз в 24 часа; ручные вызовы не нарушают расписание и журналируются без PII (`privacy_erasure_log`).
+
+## P39 — Autoscaling & Cost
+
+- Runtime тюн: `Dockerfile` экспортирует `JAVA_TOOL_OPTIONS` с контейнер-осознанным G1 (`MaxRAMPercentage=75`, `InitialRAMPercentage=25`, `MaxMetaspaceSize=256m`, `AlwaysActAsServerClassMachine`, `UseContainerSupport`).
+- App-конфиг: секция `performance.*` в `app/src/main/resources/application.conf` задаёт `workerThreads`, лимиты пула БД (`performance.db.poolMax`, `performance.db.poolMinIdle`), HTTP-пула (`performance.httpClient.maxConnectionsPerRoute`, `performance.httpClient.keepAliveSeconds`) и TTL интеграционных кэшей (`performance.cacheTtlMs.*`).
+- ENV-перезапись: `DB_POOL_MAX`, `DB_POOL_MIN_IDLE` имеют приоритет над HOCON и прокидываются в Hikari.
+- docker-compose (`deploy/compose/docker-compose.yml`) ограничивает `app` по памяти (`mem_limit: 768m`) и CPU (`cpus: "1.5"`).
+- Nginx (`deploy/compose/nginx/nginx.conf`) включает `gzip`, keep-alive (`keepalive_timeout 65s`, `keepalive_requests 1000`) и консервативные таймауты (`client_body_timeout 30s`, `proxy_send_timeout 60s`, `proxy_read_timeout 60s`).
+- HttpClient Ktor CIO использует параметры пула из `performance.httpClient.*`; интеграции (MOEX/CoinGecko/CBR) кешируют ответы по TTL из `performance.cacheTtlMs.*`.
+- Ktor CIO worker threads читаются из `performance.workerThreads` (fall back на `availableProcessors`), прокидываются через `-Dktor.server.cio.workerCount`.
+
+### Smoke-команды
+
+```bash
+# Показать текущие настройки
+grep -E 'performance|JAVA_TOOL_OPTIONS' app/src/main/resources/application.conf Dockerfile
+
+# Локальный health
+curl -sSf http://localhost:8081/healthz
+```
+
+Наблюдение (см. P21): следите за p95 latency и HTTP 5xx rate после изменения лимитов/TTL.

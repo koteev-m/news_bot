@@ -2,8 +2,10 @@ package http
 
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
+import io.ktor.client.engine.HttpClientEngineConfig
 import io.ktor.client.engine.HttpClientEngineFactory
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.cio.CIOEngineConfig
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpRequestRetryEvent
@@ -53,24 +55,49 @@ object HttpClients {
 
     fun build(
         cfg: IntegrationsHttpConfig,
+        pool: HttpPoolConfig,
         metrics: IntegrationsMetrics,
         clock: Clock = Clock.systemUTC(),
         engineFactory: HttpClientEngineFactory<*> = CIO
     ): HttpClient {
         val client = HttpClient(engineFactory) {
-            configure(cfg, metrics, clock)
+            configure(cfg, pool, metrics, clock)
         }
         registerRetryMonitor(client, metrics)
         return client
     }
 
-    internal fun HttpClientConfig<*>.configure(
+    internal fun <T : HttpClientEngineConfig> HttpClientConfig<T>.configure(
         cfg: IntegrationsHttpConfig,
+        pool: HttpPoolConfig,
         metrics: IntegrationsMetrics,
         clock: Clock
     ) {
         metricsRef = metrics
         val retryCfg = cfg.retry
+
+        engine {
+            when (this) {
+                is CIOEngineConfig -> {
+                    val perRoute = pool.maxConnectionsPerRoute.coerceAtLeast(1)
+                    val totalConnections = (perRoute.toLong() * 4L)
+                        .coerceAtMost(Int.MAX_VALUE.toLong())
+                        .coerceAtLeast(4L)
+                        .toInt()
+                    maxConnectionsCount = totalConnections
+                    val keepAliveSeconds = pool.keepAliveSeconds
+                    val keepAliveMillis = if (keepAliveSeconds <= 0L) {
+                        0L
+                    } else {
+                        val safeSeconds = keepAliveSeconds.coerceAtMost(Long.MAX_VALUE / 1000L)
+                        safeSeconds * 1000L
+                    }
+                    this.endpoint.maxConnectionsPerRoute = perRoute
+                    this.endpoint.keepAliveTime = keepAliveMillis
+                    this.endpoint.pipelineMaxSize = 20
+                }
+            }
+        }
 
         expectSuccess = true
 
@@ -225,3 +252,8 @@ internal fun Throwable.toHttpClientError(): HttpClientError = when (this) {
 }
 
 typealias HttpResult<T> = Result<T>
+
+data class HttpPoolConfig(
+    val maxConnectionsPerRoute: Int,
+    val keepAliveSeconds: Long
+)

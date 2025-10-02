@@ -33,6 +33,8 @@ ENV TZ=UTC \
     LANGUAGE=C.UTF-8 \
     LC_ALL=C.UTF-8
 
+ENV JAVA_TOOL_OPTIONS="-XX:+AlwaysActAsServerClassMachine -XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:InitialRAMPercentage=25 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8 -Duser.timezone=UTC"
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*

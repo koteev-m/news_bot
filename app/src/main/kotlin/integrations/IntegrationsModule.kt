@@ -5,6 +5,7 @@ import coingecko.CoinGeckoClient
 import http.CircuitBreaker
 import http.CircuitBreakerCfg
 import http.HttpClients
+import http.HttpPoolConfig
 import http.IntegrationsHttpConfig
 import http.IntegrationsMetrics
 import http.RetryCfg
@@ -39,22 +40,44 @@ object IntegrationsModule {
     fun provide(env: ApplicationEnvironment, registry: MeterRegistry): IntegrationsProvider {
         val integrationsConfig = env.config.config("integrations")
         val httpConfig = env.integrationsHttpConfig()
+        val performanceConfig = env.config.configOrNull("performance")
+        val poolConfig = performanceConfig.httpPoolConfig()
+        val cacheTtlConfig = performanceConfig.cacheTtlConfig()
         val metrics = IntegrationsMetrics(registry)
         val clock = Clock.systemUTC()
-        val httpClient = HttpClients.build(httpConfig, metrics, clock)
+        val httpClient = HttpClients.build(httpConfig, poolConfig, metrics, clock)
         val cbCfg = httpConfig.circuitBreaker
 
         val moexCb = newCircuitBreaker("moex", cbCfg, metrics, clock)
         val coingeckoCb = newCircuitBreaker("coingecko", cbCfg, metrics, clock)
         val cbrCb = newCircuitBreaker("cbr", cbCfg, metrics, clock)
 
-        val moexClient = MoexIssClient(httpClient, moexCb, metrics).apply {
+        val moexClient = MoexIssClient(
+            client = httpClient,
+            cb = moexCb,
+            metrics = metrics,
+            cacheTtlMs = cacheTtlConfig.moex,
+            statusCacheTtlMs = cacheTtlConfig.moex
+        ).apply {
             setBaseUrl(integrationsConfig.baseUrl("moex", "https://iss.moex.com"))
         }
-        val coinGeckoClient = CoinGeckoClient(httpClient, coingeckoCb, metrics).apply {
+        val coinGeckoClient = CoinGeckoClient(
+            client = httpClient,
+            cb = coingeckoCb,
+            metrics = metrics,
+            clock = clock,
+            priceCacheTtlMs = cacheTtlConfig.coingecko,
+            chartCacheTtlMs = cacheTtlConfig.coingecko
+        ).apply {
             setBaseUrl(integrationsConfig.baseUrl("coingecko", "https://api.coingecko.com"))
         }
-        val cbrClient = CbrClient(httpClient, cbrCb, metrics).apply {
+        val cbrClient = CbrClient(
+            client = httpClient,
+            cb = cbrCb,
+            metrics = metrics,
+            cacheTtlMs = cacheTtlConfig.cbr,
+            clock = clock
+        ).apply {
             setBaseUrl(integrationsConfig.baseUrl("cbr", "https://www.cbr.ru"))
         }
 
@@ -132,3 +155,30 @@ private fun ApplicationEnvironment.integrationsHttpConfig(): IntegrationsHttpCon
         )
     )
 }
+
+private data class CacheTtlConfig(
+    val moex: Long,
+    val coingecko: Long,
+    val cbr: Long
+)
+
+private fun ApplicationConfig?.httpPoolConfig(): HttpPoolConfig {
+    val section = this?.configOrNull("httpClient")
+    val maxPerRoute = section?.intOrNull("maxConnectionsPerRoute") ?: 100
+    val keepAliveSeconds = section?.longOrNull("keepAliveSeconds") ?: 30L
+    return HttpPoolConfig(maxConnectionsPerRoute = maxPerRoute, keepAliveSeconds = keepAliveSeconds)
+}
+
+private fun ApplicationConfig?.cacheTtlConfig(): CacheTtlConfig {
+    val section = this?.configOrNull("cacheTtlMs")
+    val moexTtl = section?.longOrNull("moex") ?: 15_000L
+    val coingeckoTtl = section?.longOrNull("coingecko") ?: 15_000L
+    val cbrTtl = section?.longOrNull("cbr") ?: 60_000L
+    return CacheTtlConfig(moex = moexTtl, coingecko = coingeckoTtl, cbr = cbrTtl)
+}
+
+private fun ApplicationConfig.intOrNull(path: String): Int? =
+    propertyOrNull(path)?.getString()?.toIntOrNull()
+
+private fun ApplicationConfig.longOrNull(path: String): Long? =
+    propertyOrNull(path)?.getString()?.toLongOrNull()

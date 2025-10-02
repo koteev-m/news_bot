@@ -1,11 +1,11 @@
 package coingecko
 
-import cache.TtlCache
 import http.CircuitBreaker
 import http.HttpClientError
 import http.HttpClients
 import http.HttpResult
 import http.IntegrationsMetrics
+import http.SimpleCache
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -33,12 +33,14 @@ class CoinGeckoClient(
     private val cb: CircuitBreaker,
     private val metrics: IntegrationsMetrics,
     private val clock: Clock = Clock.systemUTC(),
-    private val minRequestInterval: Duration = 1.seconds
+    private val minRequestInterval: Duration = 1.seconds,
+    private val priceCacheTtlMs: Long = DEFAULT_PRICE_CACHE_TTL_MS,
+    private val chartCacheTtlMs: Long = DEFAULT_CHART_CACHE_TTL_MS
 ) {
     @Volatile
     private var baseUrl: String = DEFAULT_BASE_URL
-    private val priceCache = TtlCache<String, Map<String, Map<String, BigDecimal>>>(clock)
-    private val chartCache = TtlCache<String, MarketChart>(clock)
+    private val priceCache = SimpleCache<String, Map<String, Map<String, BigDecimal>>>(priceCacheTtlMs, clock)
+    private val chartCache = SimpleCache<String, MarketChart>(chartCacheTtlMs, clock)
     private val rateMutex = Mutex()
     private var lastRequestAt: Instant? = null
 
@@ -76,7 +78,7 @@ class CoinGeckoClient(
         val vsParam = normalizedVs.joinToString(",")
         val cacheKey = "$idsParam|$vsParam"
         return runCatching {
-            priceCache.getOrPut(cacheKey, SIMPLE_PRICE_TTL) {
+            priceCache.getOrPut(cacheKey) {
                 rateLimited {
                     requestSimplePrice(idsParam, vsParam)
                 }
@@ -98,7 +100,7 @@ class CoinGeckoClient(
         val normalizedVs = vs.trim().lowercase()
         val cacheKey = listOf(normalizedId, normalizedVs, days.toString()).joinToString(":")
         return runCatching {
-            chartCache.getOrPut(cacheKey, MARKET_CHART_TTL) {
+            chartCache.getOrPut(cacheKey) {
                 rateLimited {
                     requestMarketChart(normalizedId, normalizedVs, days)
                 }
@@ -170,8 +172,8 @@ class CoinGeckoClient(
         private const val MAX_SIMPLE_PRICE_IDS = 50
         private const val MAX_SIMPLE_PRICE_CURRENCIES = 10
         private const val MAX_MARKET_CHART_DAYS = 365
-        private val SIMPLE_PRICE_TTL: Duration = 15.seconds
-        private val MARKET_CHART_TTL: Duration = 30.seconds
+        private const val DEFAULT_PRICE_CACHE_TTL_MS: Long = 15_000
+        private const val DEFAULT_CHART_CACHE_TTL_MS: Long = 30_000
     }
 }
 

@@ -1,11 +1,11 @@
 package cbr
 
-import cache.TtlCache
 import http.CircuitBreaker
 import http.HttpClientError
 import http.HttpClients
 import http.HttpResult
 import http.IntegrationsMetrics
+import http.SimpleCache
 import io.ktor.client.HttpClient
 import io.ktor.client.request.accept
 import io.ktor.client.request.get
@@ -27,19 +27,18 @@ import javax.xml.parsers.ParserConfigurationException
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.days
 import kotlin.jvm.Volatile
 
 class CbrClient(
     private val client: HttpClient,
     private val cb: CircuitBreaker,
     private val metrics: IntegrationsMetrics,
+    private val cacheTtlMs: Long = DEFAULT_CACHE_TTL_MS,
     private val clock: Clock = Clock.systemUTC()
 ) {
     @Volatile
     private var baseUrl: String = DEFAULT_BASE_URL
-    private val cache = TtlCache<String, List<CbrRate>>(clock)
+    private val cache = SimpleCache<String, List<CbrRate>>(cacheTtlMs, clock)
 
     init {
         metrics.requestTimer(SERVICE, "success")
@@ -53,7 +52,7 @@ class CbrClient(
     suspend fun getXmlDaily(date: LocalDate?): HttpResult<List<CbrRate>> {
         val cacheKey = date?.toString() ?: "latest"
         return runCatching {
-            cache.getOrPut(cacheKey, DAILY_TTL) {
+            cache.getOrPut(cacheKey) {
                 requestXmlDaily(date)
             }
         }
@@ -144,7 +143,7 @@ class CbrClient(
         private val MOSCOW_ZONE: ZoneId = ZoneId.of("Europe/Moscow")
         private val CBR_REQUEST_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
         private val CBR_RESPONSE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
-        private val DAILY_TTL: Duration = 1.days
+        private const val DEFAULT_CACHE_TTL_MS: Long = 86_400_000
         private val documentBuilderFactory: DocumentBuilderFactory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = false
             setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
