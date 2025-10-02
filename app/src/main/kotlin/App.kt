@@ -18,9 +18,11 @@ import billing.service.BillingServiceImpl
 import billing.service.applySuccessfulPaymentOutcome
 import com.pengrad.telegrambot.utility.BotUtils
 import di.FeatureFlagsModule
+import di.PrivacyModule
 import di.ensureTelegramBot
 import demo.demoRoutes
 import di.installPortfolioModule
+import features.FeatureFlagsService
 import health.healthRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -49,6 +51,7 @@ import repo.BillingRepositoryImpl
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
 import routes.adminFeaturesRoutes
+import routes.adminPrivacyRoutes
 import routes.authRoutes
 import routes.billingRoutes
 import routes.portfolioImportRoutes
@@ -61,8 +64,6 @@ import security.installSecurity
 import security.installUploadGuard
 import webhook.OverflowMode
 import webhook.WebhookQueue
-
-import features.FeatureFlagsService
 
 fun Application.module() {
     val prometheusRegistry = Observability.install(this)
@@ -79,6 +80,7 @@ fun Application.module() {
         featureFlagsService = featureFlags.service,
         adminUserIds = featureFlags.adminUserIds
     )
+    val privacy = PrivacyModule.install(this, services.adminUserIds)
 
     val queueConfig = webhookQueueConfig()
     val webhookQueue = WebhookQueue(
@@ -157,6 +159,7 @@ fun Application.module() {
             portfolioValuationReportRoutes()
             billingRoutes()
             adminFeaturesRoutes()
+            adminPrivacyRoutes(privacy.service, services.adminUserIds)
         }
     }
 }

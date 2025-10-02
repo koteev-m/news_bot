@@ -41,6 +41,7 @@ dependencies {
     add("flyway", libs.flyway.core)
 
     testImplementation(platform(libs.junit.bom))
+    testImplementation(project(":app"))
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
     testImplementation(platform(libs.testcontainers.bom))
