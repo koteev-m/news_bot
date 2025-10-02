@@ -113,6 +113,23 @@ curl -I "$BASE/go/news?utm_source=channel&utm_medium=cta&utm_campaign=oct&ref=R7
 # → 302 Location: https://t.me/<bot>?start=id=news|src=channel|med=cta|cmp=oct|ref=R7G5K2|cta=promo|ab=<variant>
 ```
 
+## P40 — Go-Live gates & post-deploy
+
+```bash
+# локальные «ворота»
+bash tools/release/preflight.sh
+
+# в CI вручную
+GitHub Actions → release-gates → Run workflow
+
+# пост-деплой верификация
+BASE_URL=https://<host> PROM_URL=http://<prom-host>:9090 WEBHOOK_SECRET=*** TG_USER_ID=*** \
+bash tools/release/postdeploy_verify.sh
+```
+
+- Readiness checklist: [docs/GO_LIVE_READINESS.md](docs/GO_LIVE_READINESS.md)
+- Post-deploy verification steps: [docs/POST_DEPLOY_CHECKS.md](docs/POST_DEPLOY_CHECKS.md)
+
 ## P34 — Blue/Green & Canary
 
 ```bash
