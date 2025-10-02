@@ -1,11 +1,11 @@
 package moex
 
-import cache.TtlCache
 import http.CircuitBreaker
 import http.HttpClientError
 import http.HttpClients
 import http.HttpResult
 import http.IntegrationsMetrics
+import http.SimpleCache
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -23,8 +23,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.contentOrNull
 import kotlin.jvm.Volatile
 
@@ -32,13 +30,15 @@ class MoexIssClient(
     private val client: HttpClient,
     private val cb: CircuitBreaker,
     private val metrics: IntegrationsMetrics,
+    private val cacheTtlMs: Long = DEFAULT_CACHE_TTL_MS,
+    private val statusCacheTtlMs: Long = DEFAULT_STATUS_CACHE_TTL_MS,
     private val clock: Clock = Clock.systemUTC()
 ) {
     @Volatile
     private var baseUrl: String = DEFAULT_BASE_URL
-    private val securitiesCache = TtlCache<String, MoexSecuritiesResponse>(clock)
-    private val candlesCache = TtlCache<String, MoexCandlesResponse>(clock)
-    private val statusCache = TtlCache<String, MoexStatusResponse>(clock)
+    private val securitiesCache = SimpleCache<String, MoexSecuritiesResponse>(cacheTtlMs, clock)
+    private val candlesCache = SimpleCache<String, MoexCandlesResponse>(cacheTtlMs, clock)
+    private val statusCache = SimpleCache<String, MoexStatusResponse>(statusCacheTtlMs, clock)
 
     init {
         metrics.requestTimer(SERVICE, "success")
@@ -59,7 +59,7 @@ class MoexIssClient(
         }
         val cacheKey = normalized.sorted().joinToString(",")
         return runCatching {
-            securitiesCache.getOrPut(cacheKey, SECURITIES_TTL) {
+            securitiesCache.getOrPut(cacheKey) {
                 requestSecurities(cacheKey)
             }
         }
@@ -75,14 +75,14 @@ class MoexIssClient(
         val normalizedTicker = ticker.trim().uppercase()
         val cacheKey = listOf(normalizedTicker, from.toString(), till.toString()).joinToString(":")
         return runCatching {
-            candlesCache.getOrPut(cacheKey, CANDLES_TTL) {
+            candlesCache.getOrPut(cacheKey) {
                 requestCandles(normalizedTicker, from, till)
             }
         }
     }
 
     suspend fun getMarketStatus(): HttpResult<MoexStatusResponse> = runCatching {
-        statusCache.getOrPut("status", STATUS_TTL) {
+        statusCache.getOrPut("status") {
             requestMarketStatus()
         }
     }
@@ -133,12 +133,11 @@ class MoexIssClient(
         private const val CANDLES_PREFIX: String = "/iss/engines/stock/markets/shares/securities/"
         private const val CANDLES_SUFFIX: String = "/candles.json"
         private const val MARKET_STATUS_PATH: String = "/iss/engines/stock/markets/shares/marketstatus.json"
+        private const val DEFAULT_CACHE_TTL_MS: Long = 30_000
+        private const val DEFAULT_STATUS_CACHE_TTL_MS: Long = 10_000
         private val MOSCOW_ZONE: ZoneId = ZoneId.of("Europe/Moscow")
         private val MOEX_DATE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         private val MOEX_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        private val SECURITIES_TTL: Duration = 30.seconds
-        private val CANDLES_TTL: Duration = 30.seconds
-        private val STATUS_TTL: Duration = 10.seconds
     }
 
     private fun parseInstant(value: String): Instant {

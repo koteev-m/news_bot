@@ -3,6 +3,7 @@ package app
 import ab.ExperimentsPort
 import ab.ExperimentsService
 import ab.ExperimentsServiceImpl
+import com.typesafe.config.ConfigFactory
 import news.config.NewsConfig
 import news.config.NewsDefaults
 import repo.ExperimentsRepository
@@ -74,6 +75,9 @@ import security.installSecurity
 import security.installUploadGuard
 import webhook.OverflowMode
 import webhook.WebhookQueue
+
+@Suppress("unused")
+private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
 
 fun Application.module() {
     val prometheusRegistry = Observability.install(this)
@@ -183,6 +187,18 @@ fun Application.module() {
             adminPrivacyRoutes(privacy.service, services.adminUserIds)
         }
     }
+}
+
+private fun configureCioWorkerThreads(): Int {
+    val existing = System.getProperty("ktor.server.cio.workerCount")?.toIntOrNull()
+    if (existing != null && existing > 0) {
+        return existing
+    }
+    val config = ConfigFactory.load()
+    val fromConfig = runCatching { config.getInt("performance.workerThreads") }.getOrNull()
+    val resolved = (fromConfig ?: Runtime.getRuntime().availableProcessors()).coerceAtLeast(1)
+    System.setProperty("ktor.server.cio.workerCount", resolved.toString())
+    return resolved
 }
 
 private fun Application.ensureBillingServices(
