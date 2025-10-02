@@ -1,5 +1,15 @@
 package app
 
+import ab.ExperimentsPort
+import ab.ExperimentsService
+import ab.ExperimentsServiceImpl
+import news.config.NewsConfig
+import news.config.NewsDefaults
+import repo.ExperimentsRepository
+import repo.ReferralsRepository
+import referrals.ReferralsPort
+import routes.adminExperimentsRoutes
+import routes.experimentsRoutes
 import alerts.metrics.AlertMetricsPort
 import analytics.AnalyticsPort
 import billing.StarsGatewayFactory
@@ -73,12 +83,21 @@ fun Application.module() {
     installSecurity()
     installUploadGuard()
     installPortfolioModule()
+    val newsConfig = loadNewsConfig()
     val analytics = AnalyticsRepository()
+    val referrals = ReferralsRepository()
+    val experimentsPort = ExperimentsRepository()
+    val experimentsService = ExperimentsServiceImpl(experimentsPort)
     val featureFlags = FeatureFlagsModule.install(this)
     val services = ensureBillingServices(
         metrics = metrics,
         featureFlagsService = featureFlags.service,
-        adminUserIds = featureFlags.adminUserIds
+        adminUserIds = featureFlags.adminUserIds,
+        analyticsPort = analytics,
+        referralsPort = referrals,
+        experimentsPort = experimentsPort,
+        experimentsService = experimentsService,
+        newsConfig = newsConfig
     )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
 
@@ -103,7 +122,8 @@ fun Application.module() {
     routing {
         healthRoutes()
         authRoutes(analytics)
-        redirectRoutes(analytics)
+        redirectRoutes(analytics, referrals, newsConfig.botDeepLinkBase, newsConfig.maxPayloadBytes)
+        experimentsRoutes(experimentsService)
         quotesRoutes()
         demoRoutes()
 
@@ -158,6 +178,7 @@ fun Application.module() {
             portfolioImportRoutes()
             portfolioValuationReportRoutes()
             billingRoutes()
+            adminExperimentsRoutes(experimentsPort, services.adminUserIds)
             adminFeaturesRoutes()
             adminPrivacyRoutes(privacy.service, services.adminUserIds)
         }
@@ -167,14 +188,26 @@ fun Application.module() {
 private fun Application.ensureBillingServices(
     metrics: DomainMetrics,
     featureFlagsService: FeatureFlagsService,
-    adminUserIds: Set<Long>
+    adminUserIds: Set<Long>,
+    analyticsPort: AnalyticsPort,
+    referralsPort: ReferralsPort,
+    experimentsPort: ExperimentsPort,
+    experimentsService: ExperimentsService,
+    newsConfig: NewsConfig
 ): Services {
     if (attributes.contains(Services.Key)) {
         val existing = attributes[Services.Key]
         val enriched = existing.enrich(metrics, featureFlagsService, adminUserIds)
-        attributes.put(Services.Key, enriched)
-        attributes.put(BillingRouteServicesKey, BillingRouteServices(enriched.billingService))
-        return enriched
+        val updated = enriched.copy(
+            analytics = analyticsPort,
+            referrals = referralsPort,
+            experimentsPort = experimentsPort,
+            experimentsService = experimentsService,
+            newsConfig = newsConfig
+        )
+        attributes.put(Services.Key, updated)
+        attributes.put(BillingRouteServicesKey, BillingRouteServices(updated.billingService))
+        return updated
     }
 
     val telegramBot = ensureTelegramBot()
@@ -191,7 +224,12 @@ private fun Application.ensureBillingServices(
         adminUserIds = adminUserIds,
         metrics = metrics,
         alertMetrics = AlertMetricsAdapter(metrics),
-        newsMetrics = NewsMetricsAdapter(metrics)
+        newsMetrics = NewsMetricsAdapter(metrics),
+        analytics = analyticsPort,
+        referrals = referralsPort,
+        experimentsPort = experimentsPort,
+        experimentsService = experimentsService,
+        newsConfig = newsConfig
     )
     attributes.put(Services.Key, services)
     attributes.put(BillingRouteServicesKey, BillingRouteServices(billingService))
@@ -210,6 +248,19 @@ private fun Services.enrich(
         alertMetrics = alertMetrics ?: AlertMetricsAdapter(metrics),
         newsMetrics = newsMetrics ?: NewsMetricsAdapter(metrics)
     )
+}
+
+private fun Application.loadNewsConfig(): NewsConfig {
+    val defaults = NewsDefaults.defaultConfig
+    val config = environment.config
+    val baseFromConfig = config.propertyOrNull("news.botDeepLinkBase")?.getString()?.trim()
+    val baseFromTelegram = config.propertyOrNull("telegram.botUsername")?.getString()?.trim()?.takeIf { it.isNotEmpty() }?.let { "https://t.me/${it}" }
+    val botBase = baseFromConfig?.takeIf { it.isNotEmpty() } ?: baseFromTelegram ?: defaults.botDeepLinkBase
+    val maxBytes = config.propertyOrNull("news.maxPayloadBytes")?.getString()?.toIntOrNull() ?: defaults.maxPayloadBytes
+    val channelId = config.propertyOrNull("news.channelId")?.getString()?.toLongOrNull()
+        ?: config.propertyOrNull("telegram.channelId")?.getString()?.toLongOrNull()
+        ?: defaults.channelId
+    return defaults.copy(botDeepLinkBase = botBase, maxPayloadBytes = maxBytes, channelId = channelId)
 }
 
 private fun Application.billingDefaultDuration(): Long {
@@ -312,6 +363,11 @@ data class Services(
     val metrics: DomainMetrics? = null,
     val alertMetrics: AlertMetricsPort? = null,
     val newsMetrics: NewsMetricsPort? = null,
+    val analytics: AnalyticsPort = AnalyticsPort.Noop,
+    val referrals: ReferralsPort? = null,
+    val experimentsPort: ExperimentsPort? = null,
+    val experimentsService: ExperimentsService? = null,
+    val newsConfig: NewsConfig? = null,
 ) {
     companion object {
         val Key: AttributeKey<Services> = AttributeKey("AppServices")

@@ -95,6 +95,24 @@ curl -s -X PATCH -H "Authorization: Bearer $JWT" -H "content-type: application/j
 - PATCH доступен только аккаунтам из `admin.adminUserIds`; для поиска `user_id` возьмите значение из Telegram (например, `/my_id` в @userinfobot или payload от Stars-платежей).
 - Ответы компактные JSON без PII, ошибки 401/403/400 покрывают неаутентифицированные/неадминские/битые запросы.
 
+## P38 — Growth & Funnels
+
+Документация: [docs/GROWTH_FUNNELS.md](docs/GROWTH_FUNNELS.md).
+
+```bash
+# Админ: создать/обновить эксперимент
+curl -s -X POST -H "Authorization: Bearer $JWT" -H "content-type: application/json" \
+  -d '{ "key":"cta_copy", "enabled":true, "traffic":{"A":50,"B":50} }' \
+  "$BASE/api/admin/experiments/upsert" -i
+
+# Клиент: получить свои варианты
+curl -s -H "Authorization: Bearer $JWT" "$BASE/api/experiments/assignments" | jq .
+
+# Redirect с UTM/ref/cta
+curl -I "$BASE/go/news?utm_source=channel&utm_medium=cta&utm_campaign=oct&ref=R7G5K2&cta=promo"
+# → 302 Location: https://t.me/<bot>?start=id=news|src=channel|med=cta|cmp=oct|ref=R7G5K2|cta=promo|ab=<variant>
+```
+
 ## P34 — Blue/Green & Canary
 
 ```bash
