@@ -1,7 +1,10 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FileDrop } from "../components/FileDrop";
 import { ColumnMapper, type ColumnMapping, type ColumnKey } from "../components/ColumnMapper";
 import { CsvPreview } from "../components/CsvPreview";
+import { Loading } from "../components/Loading";
+import { useToaster } from "../components/Toaster";
 import { detectDelimiter, parseCsv, sanitizeCsvCell, type CsvDelimiter } from "../lib/csv";
 import { validateMappedRow } from "../lib/csvSchema";
 import { postImportByUrl, postImportCsv, type ImportReport } from "../lib/api";
@@ -35,6 +38,8 @@ interface ValidationIssue {
 }
 
 export function Import(): JSX.Element {
+  const { t } = useTranslation();
+  const toaster = useToaster();
   const [activeTab, setActiveTab] = useState<ImportTab>("file");
   const [portfolioId, setPortfolioId] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -53,10 +58,17 @@ export function Import(): JSX.Element {
 
   const portfolioIdError = useMemo(() => {
     if (!portfolioId) {
-      return "Portfolio ID is required";
+      return t("import.error.portfolioRequired");
     }
-    return UUID_REGEX.test(portfolioId.trim()) ? null : "Expected UUID";
-  }, [portfolioId]);
+    return UUID_REGEX.test(portfolioId.trim()) ? null : t("import.error.portfolioUuid");
+  }, [portfolioId, t]);
+
+  const showError = (message: string, options: { toast?: boolean } = {}) => {
+    setError(message);
+    if (options.toast !== false) {
+      toaster.notifyError(message);
+    }
+  };
 
   const handleFileSelected = async (nextFile: File, _preview?: string[]) => {
     try {
@@ -64,7 +76,7 @@ export function Import(): JSX.Element {
       const detected = detectDelimiter(text);
       const parsed = parseCsv(text, detected);
       if (parsed.headers.length === 0) {
-        setError("CSV file is missing a header row");
+        showError(t("import.error.missingHeader"));
         return;
       }
       setFile(nextFile);
@@ -77,7 +89,7 @@ export function Import(): JSX.Element {
       setError(null);
       setReport(null);
     } catch (cause) {
-      setError((cause as Error).message || "Failed to parse CSV file");
+      showError((cause as Error).message || t("import.error.parsing"));
       setFile(null);
       setHeaders([]);
       setRows([]);
@@ -92,7 +104,7 @@ export function Import(): JSX.Element {
     try {
       const parsed = parseCsv(rawCsv, nextDelimiter);
       if (parsed.headers.length === 0) {
-        setError("CSV header row is empty after re-parsing");
+        showError(t("import.error.missingHeader"));
         return;
       }
       setDelimiter(nextDelimiter);
@@ -102,7 +114,7 @@ export function Import(): JSX.Element {
       setValidationIssues([]);
       setError(null);
     } catch (cause) {
-      setError((cause as Error).message || "Failed to parse CSV with selected delimiter");
+      showError((cause as Error).message || t("import.error.delimiter"));
     }
   };
 
@@ -112,112 +124,91 @@ export function Import(): JSX.Element {
     setError(null);
   };
 
-  const buildCsvPayload = (): { file: File; validationErrors: ValidationIssue[] } => {
+  const buildCsvPayload = (): { file: File; validationErrors: ValidationIssue[] } | null => {
     if (!file || !mapping) {
-      return { file: file as File, validationErrors: [{ line: 0, message: "File and mapping required" }] };
+      showError(t("import.error.missingFile"));
+      return null;
     }
     const headerIndex = new Map<string, number>();
     headers.forEach((header, index) => {
       headerIndex.set(header, index);
     });
-
-    const issues: ValidationIssue[] = [];
-    const outputRows: string[][] = [];
-    rows.forEach((row, rowIndex) => {
-      const inputRecord: Record<string, string | undefined> = {};
-      (Object.keys(mapping) as ColumnKey[]).forEach((key) => {
-        const columnName = mapping[key];
-        if (!columnName) {
+    const validationErrors: ValidationIssue[] = [];
+    const sanitizedRows = rows.map((row, rowIndex) => {
+      const target: Record<string, string> = {};
+      OUTPUT_FIELDS.forEach((field) => {
+        const source = mapping[field];
+        if (!source) {
           return;
         }
-        const columnIndex = headerIndex.get(columnName);
-        const value = columnIndex === undefined ? "" : row[columnIndex] ?? "";
-        inputRecord[key] = value;
+        const index = headerIndex.get(source);
+        target[field] = index !== undefined ? sanitizeCsvCell(row[index] ?? "") : "";
       });
-      const validation = validateMappedRow(inputRecord);
+      const validation = validateMappedRow(target);
       if (!validation.success) {
-        validation.error.issues.forEach((issue) => {
-          issues.push({
-            line: rowIndex + 2,
-            message: issue.path.length > 0 ? `${issue.path.join(".")}: ${issue.message}` : issue.message,
-          });
+        validationErrors.push({
+          line: rowIndex + 1,
+          message: validation.error.issues[0]?.message ?? t("import.validation.none"),
         });
-        return;
       }
-      const normalized = validation.data;
-      const ordered = OUTPUT_FIELDS.map((field) => sanitizeCsvCell(normalized[field] ?? ""));
-      outputRows.push(ordered);
+      return target;
     });
-
-    if (issues.length > 0) {
-      return { file, validationErrors: issues };
+    if (validationErrors.length > 0) {
+      setValidationIssues(validationErrors);
+      return null;
     }
-
-    const headerRow = OUTPUT_FIELDS.join(",");
-    const body = outputRows.map((row) => row.map(escapeCsvValue).join(",")).join("\n");
-    const csvContent = [headerRow, body].filter((segment) => segment.length > 0).join("\n");
+    const csvContent = [
+      OUTPUT_FIELDS.join(delimiter),
+      ...sanitizedRows.map((row) => OUTPUT_FIELDS.map((field) => escapeCsvValue(row[field] ?? "")).join(delimiter)),
+    ].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
-    const exportName = file.name.replace(/\.csv$/i, "");
-    const normalizedFile = new File([blob], `${exportName || "import"}-normalized.csv`, { type: "text/csv" });
-    return { file: normalizedFile, validationErrors: [] };
+    return { file: new File([blob], file.name, { type: "text/csv" }), validationErrors: [] };
   };
 
   const handleUpload = async () => {
-    if (!portfolioId || portfolioIdError) {
-      setError(portfolioIdError ?? "Portfolio ID is required");
+    if (portfolioIdError) {
+      showError(portfolioIdError);
       return;
     }
-    if (!file) {
-      setError("Select a CSV file first");
+    const payload = buildCsvPayload();
+    if (!payload) {
       return;
     }
-    if (!mapping) {
-      setError("Save the column mapping before uploading");
-      return;
-    }
-    const { file: preparedFile, validationErrors } = buildCsvPayload();
-    if (validationErrors.length > 0) {
-      setValidationIssues(validationErrors);
-      setError("Fix validation errors before uploading");
-      return;
-    }
-
     setLoading(true);
     setError(null);
-    setReport(null);
     try {
-      const response = await postImportCsv(portfolioId.trim(), preparedFile);
-      setReport(response);
+      const result = await postImportCsv(portfolioId.trim(), payload.file);
+      setReport(result);
+      toaster.notify(t("import.success.file"));
     } catch (cause) {
-      setError((cause as Error).message);
+      showError((cause as Error).message || t("import.error.api"));
     } finally {
       setLoading(false);
     }
   };
 
   const handleImportByUrl = async () => {
-    if (!portfolioId || portfolioIdError) {
-      setError(portfolioIdError ?? "Portfolio ID is required");
+    if (portfolioIdError) {
+      showError(portfolioIdError);
       return;
     }
-    if (!importUrl.trim()) {
-      setError("Provide HTTPS URL to CSV export");
+    const trimmedUrl = importUrl.trim();
+    if (!trimmedUrl) {
+      showError(t("import.error.api"));
       return;
     }
-    if (!importUrl.trim().toLowerCase().startsWith("https://")) {
-      setError("URL must start with https://");
+    if (!/^https:\/\//i.test(trimmedUrl)) {
+      showError(t("import.error.invalidUrl"), { toast: false });
       return;
     }
-
     setLoading(true);
     setError(null);
-    setReport(null);
-    setValidationIssues([]);
     try {
-      const response = await postImportByUrl(portfolioId.trim(), importUrl.trim());
-      setReport(response);
+      const result = await postImportByUrl(portfolioId.trim(), trimmedUrl);
+      setReport(result);
+      toaster.notify(t("import.success.url"));
     } catch (cause) {
-      setError((cause as Error).message);
+      showError((cause as Error).message || t("import.error.api"));
     } finally {
       setLoading(false);
     }
@@ -226,83 +217,118 @@ export function Import(): JSX.Element {
   return (
     <div className="page">
       <section className="card import-page">
-        <h2>Import trades</h2>
+        <h2>{t("import.title")}</h2>
         <div className="import-page__portfolio">
-          <label htmlFor="import-portfolio-id">Portfolio ID</label>
+          <label htmlFor="import-portfolio-id">{t("import.portfolioId")}</label>
           <input
             id="import-portfolio-id"
             type="text"
             value={portfolioId}
             onChange={(event) => setPortfolioId(event.target.value)}
-            placeholder="00000000-0000-0000-0000-000000000000"
+            placeholder={t("import.portfolioPlaceholder")}
+            aria-describedby="portfolio-help"
+            aria-invalid={Boolean(portfolioIdError)}
           />
-          {portfolioIdError ? <span className="import-page__error">{portfolioIdError}</span> : null}
+          <p id="portfolio-help" className="import-page__hint">
+            {t("import.portfolioHelp")}
+          </p>
+          {portfolioIdError ? (
+            <span className="import-page__error" role="alert">
+              {portfolioIdError}
+            </span>
+          ) : null}
         </div>
-        <div className="import-page__tabs">
+        <div className="import-page__tabs" role="tablist" aria-label={t("import.title")}>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "file"}
             className={activeTab === "file" ? "active" : ""}
             onClick={() => {
               setActiveTab("file");
               setError(null);
             }}
           >
-            File
+            {t("import.tabs.file")}
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "url"}
             className={activeTab === "url" ? "active" : ""}
             onClick={() => {
               setActiveTab("url");
               setError(null);
             }}
           >
-            By URL
+            {t("import.tabs.url")}
           </button>
         </div>
         {activeTab === "file" ? (
-          <div className="import-page__panel">
+          <div className="import-page__panel" role="tabpanel" aria-label={t("import.tabs.file")}>
             <FileDrop onFileSelected={handleFileSelected} maxPreviewLines={3} />
             {hasCsvData ? (
-              <>
+              <Fragment>
                 <CsvPreview headers={headers} rows={rows} delimiter={delimiter} onChangeDelimiter={handleDelimiterChange} />
+                <h3>{t("import.mapping.title")}</h3>
                 <ColumnMapper headers={headers} onSave={handleMappingSave} />
                 {validationIssues.length > 0 ? (
-                  <div className="import-page__validation">
-                    <h4>Validation issues</h4>
+                  <div className="import-page__validation" role="alert" aria-live="assertive">
+                    <h4>{t("import.validation.title")}</h4>
                     <ul>
                       {validationIssues.map((issue) => (
                         <li key={`${issue.line}-${issue.message}`}>
-                          Line {issue.line}: {issue.message}
+                          {t("import.validation.item", { line: issue.line, message: issue.message })}
                         </li>
                       ))}
                     </ul>
                   </div>
                 ) : null}
-                <button type="button" onClick={handleUpload} disabled={loading} className="import-page__submit">
-                  {loading ? "Uploading..." : "Upload CSV"}
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={loading}
+                  className="import-page__submit"
+                  aria-busy={loading}
+                >
+                  {loading ? t("import.file.uploading") : t("import.file.upload")}
                 </button>
-              </>
+              </Fragment>
             ) : (
-              <p className="import-page__hint">Select a CSV file to see preview and configure mapping.</p>
+              <p className="import-page__hint">{t("import.file.hint")}</p>
             )}
           </div>
         ) : (
-          <div className="import-page__panel">
-            <label htmlFor="import-url">CSV export URL</label>
+          <div className="import-page__panel" role="tabpanel" aria-label={t("import.tabs.url")}>
+            <label htmlFor="import-url">{t("import.url.label")}</label>
             <input
               id="import-url"
               type="url"
               value={importUrl}
               onChange={(event) => setImportUrl(event.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/.../export?format=csv"
+              placeholder={t("import.url.placeholder")}
+              aria-describedby="import-url-hint"
             />
-            <button type="button" onClick={handleImportByUrl} disabled={loading} className="import-page__submit">
-              {loading ? "Importing..." : "Import from URL"}
+            <p id="import-url-hint" className="import-page__hint">
+              {t("import.url.hint")}
+            </p>
+            <button
+              type="button"
+              onClick={handleImportByUrl}
+              disabled={loading}
+              className="import-page__submit"
+              aria-busy={loading}
+            >
+              {loading ? t("import.url.importing") : t("import.url.import")}
             </button>
           </div>
         )}
-        {error ? <div className="import-page__error import-page__error--global">{error}</div> : null}
+        {loading && !hasCsvData ? <Loading variant="spinner" labelKey="loading" /> : null}
+        {error ? (
+          <div className="import-page__error import-page__error--global" role="alert" aria-live="assertive">
+            {error}
+          </div>
+        ) : null}
         {report ? <ImportReportView report={report} /> : null}
       </section>
     </div>
@@ -310,21 +336,25 @@ export function Import(): JSX.Element {
 }
 
 function ImportReportView({ report }: { report: ImportReport }): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="import-report">
-      <h3>Import report</h3>
+      <h3>{t("import.report.title")}</h3>
       <ul>
-        <li>Inserted: {report.inserted}</li>
-        <li>Skipped duplicates: {report.skippedDuplicates}</li>
         <li>
-          Failed rows:
-          {report.failed.length === 0 ? (
-            <span> none</span>
+          {t("import.report.inserted")}: {report.inserted}
+        </li>
+        <li>
+          {t("import.report.skipped")}: {report.skippedDuplicates}
+        </li>
+        <li>
+          {t("import.report.failed")}: {report.failed.length === 0 ? (
+            <span> {t("import.report.none")}</span>
           ) : (
             <ul>
               {report.failed.map((item) => (
                 <li key={`${item.line}-${item.error}`}>
-                  Line {item.line}: {item.error}
+                  {t("import.validation.item", { line: item.line, message: item.error })}
                 </li>
               ))}
             </ul>

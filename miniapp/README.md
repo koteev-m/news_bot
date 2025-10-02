@@ -69,3 +69,26 @@ Launching the app directly in a browser without Telegram will display instructio
 [Open Mini App](https://t.me/your_bot_username?startapp=tab%3Ddashboard)
 
 Replace `your_bot_username` with the actual bot name and adjust the `startapp` payload as needed.
+
+## P37 — UX/i18n/a11y
+
+This iteration adds a localized and accessible UI layer for the Telegram Mini App. Key improvements include:
+
+- Dual-language support (English and Russian) with automatic detection from Telegram data or the browser.
+- Loading skeletons and spinners for key pages, consistent error handling with a toast system, and a resilient error boundary.
+- Keyboard-friendly navigation with a skip link, focus-visible styles, and tablist behavior on the bottom navigation.
+- Reduced-motion support and live regions for loading or error states to keep assistive technologies in sync.
+
+### Switching languages
+
+The Settings page now exposes a language selector. Changes persist to `localStorage` and immediately update the interface as well as the `<html lang>` attribute.
+
+### Accessibility checks
+
+Run the dedicated a11y checks with:
+
+```bash
+pnpm test:a11y
+```
+
+Regular unit tests continue to run through `pnpm test`.

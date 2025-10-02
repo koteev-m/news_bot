@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { LanguageSelect } from "../components/LanguageSelect";
 import type { InitDataUnsafe } from "../lib/telegram";
 import type { ThemeMode } from "../lib/session";
 import { clearJwt, clearUIPreferences, setThemePreference } from "../lib/session";
@@ -9,7 +11,8 @@ interface SettingsProps {
 }
 
 export function Settings({ theme, onThemeChange, initDataUnsafe }: SettingsProps): JSX.Element {
-  const username = initDataUnsafe?.user?.username ?? "Unknown";
+  const { t } = useTranslation();
+  const username = initDataUnsafe?.user?.username ?? "-";
 
   const handleThemeChange = (nextTheme: ThemeMode) => {
     setThemePreference(nextTheme);
@@ -25,27 +28,36 @@ export function Settings({ theme, onThemeChange, initDataUnsafe }: SettingsProps
   return (
     <div className="page">
       <section className="card">
-        <h2>Settings</h2>
+        <h2>{t("settings.title")}</h2>
         <div className="settings-item">
-          <label htmlFor="theme-select">Theme</label>
+          <label htmlFor="theme-select">{t("settings.theme")}</label>
           <select
             id="theme-select"
             value={theme}
             onChange={(event) => handleThemeChange(event.target.value as ThemeMode)}
+            aria-describedby="theme-hint"
           >
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
+            <option value="light">{t("settings.theme.light")}</option>
+            <option value="dark">{t("settings.theme.dark")}</option>
           </select>
+          <p id="theme-hint" className="settings-item__hint">
+            {t("settings.themeHint")}
+          </p>
+        </div>
+        <div className="settings-item">
+          <label htmlFor="language-select">{t("settings.language")}</label>
+          <LanguageSelect id="language-select" />
         </div>
         <div className="settings-item">
           <button type="button" onClick={handleClearSession}>
-            Clear session
+            {t("settings.clearSession")}
           </button>
         </div>
-        <div className="settings-item">
-          <span>Telegram user</span>
+        <div className="settings-item" aria-live="polite">
+          <span>{t("settings.telegramUser")}</span>
           <strong>{username}</strong>
         </div>
+        <p role="note">{t("settings.jwtNote")}</p>
       </section>
     </div>
   );
