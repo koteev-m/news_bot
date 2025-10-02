@@ -3,6 +3,7 @@ import { LanguageSelect } from "../components/LanguageSelect";
 import type { InitDataUnsafe } from "../lib/telegram";
 import type { ThemeMode } from "../lib/session";
 import { clearJwt, clearUIPreferences, setThemePreference } from "../lib/session";
+import { useExperiments } from "../lib/experiments";
 
 interface SettingsProps {
   theme: ThemeMode;
@@ -13,6 +14,7 @@ interface SettingsProps {
 export function Settings({ theme, onThemeChange, initDataUnsafe }: SettingsProps): JSX.Element {
   const { t } = useTranslation();
   const username = initDataUnsafe?.user?.username ?? "-";
+  const { assignments, loading, error } = useExperiments();
 
   const handleThemeChange = (nextTheme: ThemeMode) => {
     setThemePreference(nextTheme);
@@ -58,6 +60,39 @@ export function Settings({ theme, onThemeChange, initDataUnsafe }: SettingsProps
           <strong>{username}</strong>
         </div>
         <p role="note">{t("settings.jwtNote")}</p>
+      </section>
+
+      <section className="card">
+        <h3>Experiments (read-only) / Эксперименты (только чтение)</h3>
+        {loading && <p role="status">Loading… / Загрузка…</p>}
+        {error && (
+          <p role="alert" className="error-text">
+            {error.message}
+          </p>
+        )}
+        {!loading && !error && assignments.length === 0 && (
+          <p role="status">No active experiments / Нет активных экспериментов</p>
+        )}
+        {!loading && assignments.length > 0 && (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Key / Ключ</th>
+                  <th scope="col">Variant / Вариант</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.map((assignment) => (
+                  <tr key={assignment.key}>
+                    <td>{assignment.key}</td>
+                    <td>{assignment.variant}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );

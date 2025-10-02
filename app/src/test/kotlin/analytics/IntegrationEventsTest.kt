@@ -38,6 +38,9 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import referrals.ReferralCode
+import referrals.ReferralsPort
+import referrals.UTM
 import routes.authRoutes
 import routes.redirectRoutes
 import security.installSecurity
@@ -47,6 +50,7 @@ class IntegrationEventsTest {
     fun `critical flows emit analytics events`() = testApplication {
         val analytics = RecordingAnalyticsPort()
         val billing = StubBillingService()
+        val referrals = RecordingReferralsPort()
         val botToken = "123456:ABCDEF"
 
         environment {
@@ -65,7 +69,7 @@ class IntegrationEventsTest {
             installSecurity()
             routing {
                 authRoutes(analytics)
-                redirectRoutes(analytics)
+                redirectRoutes(analytics, referrals, "https://t.me/test_bot", 64)
                 post("/telegram/webhook/test") {
                     val raw = call.receiveText()
                     val update = StarsWebhookHandler.json.decodeFromString<TgUpdate>(raw)
@@ -95,7 +99,8 @@ class IntegrationEventsTest {
         }
         val redirectResponse = redirectClient.get("/go/promo")
         assertEquals(HttpStatusCode.Found, redirectResponse.status)
-        assertEquals("https://t.me/promo", redirectResponse.headers[HttpHeaders.Location])
+        val location = redirectResponse.headers[HttpHeaders.Location]
+        assertTrue(location!!.startsWith("https://t.me/test_bot?start="))
 
         billing.enqueueResult(Result.success(ApplyPaymentOutcome(duplicate = false)))
         val update = TgUpdate(
@@ -132,7 +137,7 @@ class IntegrationEventsTest {
 
         val ctaEvent = analytics.events[1]
         assertNull(ctaEvent.userId)
-        assertEquals(mapOf("id" to "promo"), ctaEvent.props)
+        assertEquals(mapOf("id" to "promo", "utm_source" to "", "utm_medium" to "", "utm_campaign" to "", "ref" to "", "cta" to ""), ctaEvent.props)
 
         val successEvent = analytics.events[2]
         assertEquals(billing.userStub.id, successEvent.userId)
@@ -235,4 +240,14 @@ class IntegrationEventsTest {
         override suspend fun getMySubscription(userId: Long): Result<UserSubscription?> =
             throw UnsupportedOperationException("not used")
     }
+}
+
+private class RecordingReferralsPort : ReferralsPort {
+    override suspend fun create(ownerUserId: Long, code: String): ReferralCode = ReferralCode(code, ownerUserId)
+
+    override suspend fun find(code: String): ReferralCode? = null
+
+    override suspend fun recordVisit(code: String, tgUserId: Long?, utm: UTM) { }
+
+    override suspend fun attachUser(code: String, tgUserId: Long) { }
 }

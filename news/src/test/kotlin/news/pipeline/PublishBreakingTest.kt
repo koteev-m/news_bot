@@ -1,5 +1,9 @@
 package news.pipeline
 
+import ab.Assignment
+import ab.ExperimentsService
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup
 import com.pengrad.telegrambot.request.BaseRequest
@@ -64,6 +68,41 @@ class PublishBreakingTest {
         assertTrue(rows.flatten().all { it.url!!.startsWith("https://t.me/test_bot?start=") })
     }
 
+    @Test
+    fun `publish attaches ab variant when experiments available`() = runTest {
+        val publisher = RecordingPublisher(config)
+        val experiments = FakeExperimentsService()
+        val useCase = PublishBreaking(config, publisher, experiments)
+        val article = Article(
+            id = "id-1",
+            url = "https://example.com/news",
+            domain = "example.com",
+            title = "BTC spikes",
+            summary = "+5%",
+            publishedAt = Instant.parse("2024-06-02T00:00:00Z"),
+            language = "en",
+            tickers = setOf("BTC"),
+            entities = emptySet()
+        )
+        val cluster = Cluster(
+            clusterKey = "cluster-key-2",
+            canonical = article,
+            articles = listOf(article),
+            topics = setOf("Crypto"),
+            createdAt = article.publishedAt
+        )
+
+        val result = useCase.publish(cluster, "BTC")
+        assertTrue(result)
+        assertEquals(listOf(cluster.clusterKey), publisher.publishedKeys)
+        val markup = publisher.lastMarkup
+        assertNotNull(markup)
+        val allUrls = markup.inlineKeyboard().flatten().mapNotNull { it.url }
+        val payloads = allUrls.map { startPayload(it) }
+        assertTrue(payloads.all { it.contains("ab=TEST") })
+        assertTrue(experiments.assignedUsers.contains(config.channelId))
+    }
+
     private class RecordingPublisher(config: NewsConfig) : ChannelPublisher(NoopTelegramBot(), config, InMemoryIdempotencyStore()) {
         val publishedKeys = mutableListOf<String>()
         var lastText: String? = null
@@ -82,4 +121,20 @@ class PublishBreakingTest {
             throw UnsupportedOperationException("not used in tests")
         }
     }
+
+    private class FakeExperimentsService : ExperimentsService {
+        val assignedUsers = mutableListOf<Long>()
+
+        override suspend fun assign(userId: Long, key: String): Assignment {
+            assignedUsers += userId
+            return Assignment(userId = userId, key = key, variant = "TEST")
+        }
+
+        override suspend fun activeAssignments(userId: Long): List<Assignment> = listOf(assign(userId, "cta_copy"))
+    }
 }
+
+private fun startPayload(url: String): String {
+        val encoded = url.substringAfter("start=")
+        return URLDecoder.decode(encoded, StandardCharsets.UTF_8)
+    }
