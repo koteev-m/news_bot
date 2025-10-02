@@ -49,6 +49,12 @@ class WebhookIntegrationTest {
                 put("security.audience", "test-audience")
                 put("security.realm", "test-realm")
                 put("security.accessTtlMinutes", "60")
+                put("privacy.retention.analyticsDays", "90")
+                put("privacy.retention.alertsDays", "30")
+                put("privacy.retention.botStartsDays", "30")
+                put("privacy.erasure.enabled", "true")
+                put("privacy.erasure.dryRun", "false")
+                put("privacy.erasure.batchSize", "5000")
             }
         }
 

@@ -616,3 +616,12 @@ bash tools/load/run_k6.sh webhook:burst
 Раннер и скрипты проверяют `APP_PROFILE`. При значении `prod` выполнение прерывается, что защищает боевой контур. Для коротких проверок (например, в CI) можно задать `K6_SCENARIO=smoke K6_SHORT_RUN=true K6_DRY_RUN=true` — сценарии выполнятся в dry-run без реальных запросов.
 
 В каталоге `deploy/load/jmeter/` расположен план `portfolio_plan.jmx`. Откройте его в JMeter GUI, задайте переменные (`BASE_URL`, `JWT`, `PORTFOLIO_ID`) и запустите Thread Group. Для non-GUI режима сохраните план и выполните `jmeter -n -t deploy/load/jmeter/portfolio_plan.jmx -l results.jtl`.
+
+## P36 — Data retention & privacy
+
+- Политика и полный инвентарь PII: [docs/PRIVACY_PII_INVENTORY.md](docs/PRIVACY_PII_INVENTORY.md).
+- Админ API (JWT + `admin.adminUserIds`):
+  - `POST /api/admin/privacy/erase` — dry-run (`{"dryRun":true}`) перед реальным удалением; ответ — `ErasureReport` с удалёнными/анонимизированными таблицами.
+  - `POST /api/admin/privacy/retention/run` — форсирует немедленную очистку по TTL поверх фонового планировщика.
+- CLI: `tools/privacy/erase_user.sh <user_id> [--dry]`, `tools/privacy/run_retention.sh` (требуют `JWT` и опционально `BASE`).
+- Автосервис запускает retention-раз в 24 часа; ручные вызовы не нарушают расписание и журналируются без PII (`privacy_erasure_log`).
