@@ -1,0 +1,55 @@
+labels:
+  - name: theme/monetization
+    color: f39c12
+    description: Monetization & billing initiatives
+  - name: theme/miniapp
+    color: 3498db
+    description: Mini App UX, performance, i18n
+  - name: theme/alerts
+    color: 9b59b6
+    description: Alerts & digest improvements
+  - name: theme/data
+    color: 1abc9c
+    description: Analytics, dashboards, experimentation
+  - name: epic
+    color: 2c3e50
+    description: Epic-level tracking issue
+  - name: feature
+    color: 34495e
+    description: Individual feature or deliverable
+  - name: ux
+    color: e67e22
+    description: UX polish and research tasks
+  - name: a11y
+    color: 8e44ad
+    description: Accessibility work
+  - name: growth
+    color: 16a085
+    description: Growth and funnel experiments
+  - name: experiment
+    color: c0392b
+    description: Experiment configuration & analysis
+  - name: risk/high
+    color: e74c3c
+    description: High severity risk or blocker
+  - name: risk/medium
+    color: f1c40f
+    description: Medium severity risk
+  - name: risk/low
+    color: 2ecc71
+    description: Low severity risk
+  - name: blocked
+    color: 7f8c8d
+    description: Waiting on dependency
+  - name: ready
+    color: 27ae60
+    description: Ready for implementation
+  - name: in-progress
+    color: 2980b9
+    description: Currently being worked on
+  - name: qa
+    color: 8e44ad
+    description: In QA validation
+  - name: release
+    color: d35400
+    description: Included in release scope

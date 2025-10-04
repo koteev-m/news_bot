@@ -745,3 +745,23 @@ node tools/synthetics/report_to_junit.js synthetics_report.json synthetics_junit
 - Настройка профилей для UptimeRobot/Pingdom описана в [docs/SYNTHETICS_UPTIME.md](docs/SYNTHETICS_UPTIME.md).
 - Минимальные проверки: `GET /healthz`, `GET /health/db`, `GET /api/quotes/closeOrLast?...`, `POST /telegram/webhook` с `X-Telegram-Bot-Api-Secret-Token`.
 - Любой обязательный чек ≠200 или более одного сбоя из четырёх сигнализирует on-call.
+
+## P45 — Roadmap 2.0 (2025Q4)
+
+- [Quarterly Roadmap](docs/roadmap/2025Q4_ROADMAP.md)
+- [Paid Features Plan](docs/roadmap/2025Q4_PAID_FEATURES_PLAN.md)
+- [Mini App UX/i18n/a11y Plan](docs/roadmap/2025Q4_MINIAPP_UX_PLAN.md)
+- [OKR & KPI](docs/roadmap/2025Q4_OKR_KPI.md)
+- [Release Calendar](docs/roadmap/2025Q4_RELEASE_CALENDAR.md)
+- [Experiments Plan](docs/roadmap/2025Q4_EXPERIMENTS_PLAN.md)
+- [Growth README](docs/GROWTH_README.md)
+- Templates: [Feature Spec](docs/templates/FEATURE_SPEC_TEMPLATE.md), [Experiment Brief](docs/templates/EXPERIMENT_BRIEF_TEMPLATE.md)
+- Issue templates: [Epic](.github/ISSUE_TEMPLATE/epic.md), [Feature](.github/ISSUE_TEMPLATE/feature_request.md)
+- Labels config: [.github/labels.yml](.github/labels.yml)
+
+Применить лейблы в репозитории:
+
+```bash
+gh auth login
+bash tools/roadmap/apply_labels.sh
+```
