@@ -706,3 +706,23 @@ curl -sSf http://localhost:8081/healthz
 ```
 
 Наблюдение (см. P21): следите за p95 latency и HTTP 5xx rate после изменения лимитов/TTL.
+
+## P43 — Synthetics & Uptime
+
+### Локальный запуск / Local run
+```bash
+cp deploy/synthetics/.env.example deploy/synthetics/.env
+export $(grep -v '^#' deploy/synthetics/.env | xargs)
+bash tools/synthetics/check_endpoints.sh
+node tools/synthetics/report_to_junit.js synthetics_report.json synthetics_junit.xml
+```
+
+### GitHub Actions
+- Workflow **Uptime Synthetics** запускается каждые 15 минут (`cron: */15 * * * *`) и вручную через Actions → *Uptime Synthetics* → **Run workflow**.
+- Артефакты: `synthetics_report.json`, `synthetics_junit.xml` (QA/Release checks).
+- Переменные (`BASE_URL`, `WEBHOOK_SECRET`, `TG_USER_ID`) берём только из GitHub Secrets.
+
+### Внешние мониторы / External monitors
+- Настройка профилей для UptimeRobot/Pingdom описана в [docs/SYNTHETICS_UPTIME.md](docs/SYNTHETICS_UPTIME.md).
+- Минимальные проверки: `GET /healthz`, `GET /health/db`, `GET /api/quotes/closeOrLast?...`, `POST /telegram/webhook` с `X-Telegram-Bot-Api-Secret-Token`.
+- Любой обязательный чек ≠200 или более одного сбоя из четырёх сигнализирует on-call.
