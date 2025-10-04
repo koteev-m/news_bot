@@ -168,6 +168,12 @@ bash tools/security/rotate_webhook_secret.sh "<new_secret>"
 
 - Detailed guidance: [docs/SECURITY_HARDENING.md](docs/SECURITY_HARDENING.md) and [docs/ROTATION_RUNBOOK.md](docs/ROTATION_RUNBOOK.md).
 
+## P41 — Billing reconciliation
+
+- Документация: [docs/BILLING_RECONCILIATION.md](docs/BILLING_RECONCILIATION.md).
+- Локальный запуск: `./gradlew :app:runRecon` (предварительно задать `DATABASE_URL`).
+- CI: GitHub Actions → **billing-recon** → скачать артефакт `billing-recon-result`.
+
 ## P27 — Integrations hardening
 
 ## P28 — Metrics wiring

@@ -7,6 +7,8 @@ import billing.model.UserSubscription
 import billing.model.Xtr
 import billing.port.BillingRepository
 import billing.port.StarsGateway
+import billing.recon.BillingLedgerPort
+import billing.recon.LedgerEntry
 import billing.service.BillingService
 import billing.service.BillingServiceImpl
 import java.time.Clock
@@ -212,7 +214,8 @@ class BillingServiceTest {
     }
 
     private fun createService(repo: FakeRepo, stars: FakeStarsGateway): BillingService {
-        return BillingServiceImpl(repo, stars, defaultDurationDays = 30, clock = clock)
+        val ledger = FakeLedger()
+        return BillingServiceImpl(repo, stars, ledger, defaultDurationDays = 30, clock = clock)
     }
 
     private class FakeRepo(private val defaultStartedAt: Instant) : BillingRepository {
@@ -260,6 +263,13 @@ class BillingServiceTest {
             }
             payments += PaymentRecord(userId, tier, amountXtr, pid, payload, status)
             return true
+        }
+    }
+
+    private class FakeLedger : BillingLedgerPort {
+        val entries = mutableListOf<LedgerEntry>()
+        override suspend fun append(entry: LedgerEntry) {
+            entries += entry
         }
     }
 
