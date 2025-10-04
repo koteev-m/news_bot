@@ -149,6 +149,25 @@ bash tools/release/maintenance.sh off
 
 - Заметка: health через /healthz, метрики через /metrics.
 
+## P44 — Cost observability
+
+### Поднятие мониторинга с cAdvisor
+```bash
+cd deploy/monitoring
+cp .env.example .env
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+### Дашборд
+- Grafana → NewsBot / Cost Observability.
+
+### Ежедневный отчёт
+- GitHub Actions → Cost Daily (cron 04:05 UTC).
+- Локально:
+  ```bash
+  PROM_URL=http://localhost:9090 bash tools/cost/estimate_daily.sh
+  ```
+
 ## P35 — Security hardening & pen-test
 
 - Edge + app security headers: CSP (`default-src 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, HSTS enabled for production profiles only.

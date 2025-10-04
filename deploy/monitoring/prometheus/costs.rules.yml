@@ -1,0 +1,43 @@
+groups:
+  - name: cost.rules
+    rules:
+      # Map service label from cAdvisor to 'service'
+      - record: container_cpu_seconds_rate_by_service
+        expr: |
+          sum by (service) (
+            label_replace(
+              rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service!=""}[5m]),
+              "service", "$1", "container_label_com_docker_compose_service", "(.*)"
+            )
+          )
+
+      - record: container_mem_bytes_avg_by_service
+        expr: |
+          avg_over_time(
+            sum by (service) (
+              label_replace(
+                container_memory_usage_bytes{container_label_com_docker_compose_service!=""},
+                "service", "$1", "container_label_com_docker_compose_service", "(.*)"
+              )
+            )[5m]
+          )
+
+      # HTTP RPS from app
+      - record: app_rps
+        expr: sum by (uri) (rate(http_server_requests_seconds_count{job="app"}[5m]))
+
+      # CPU per RPS (rough profile) — join across all URIs
+      - record: cpu_seconds_per_request
+        expr: |
+          container_cpu_seconds_rate_by_service{service="newsbot-app"}
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{job="app"}[5m])), 1)
+
+      # Cost model (constants — adjust to your cloud price)
+      # Example: CPU vCPU-hour USD and RAM GB-hour USD
+      - record: service_cpu_cost_usd_per_hour
+        expr: container_cpu_seconds_rate_by_service * 0.015
+      - record: service_mem_cost_usd_per_hour
+        expr: (container_mem_bytes_avg_by_service / 1e9) * 0.0065
+      - record: service_total_cost_usd_per_hour
+        expr: service_cpu_cost_usd_per_hour + service_mem_cost_usd_per_hour
