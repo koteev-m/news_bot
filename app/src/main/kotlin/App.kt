@@ -3,6 +3,9 @@ package app
 import ab.ExperimentsPort
 import ab.ExperimentsService
 import ab.ExperimentsServiceImpl
+import chaos.ChaosConfig
+import chaos.ChaosMetrics
+import chaos.maybeInjectChaos
 import com.typesafe.config.ConfigFactory
 import news.config.NewsConfig
 import news.config.NewsDefaults
@@ -39,8 +42,10 @@ import health.healthRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
+import io.ktor.server.request.path
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
@@ -62,6 +67,8 @@ import repo.AnalyticsRepository
 import repo.BillingRepositoryImpl
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
+import routes.ChaosState
+import routes.adminChaosRoutes
 import routes.adminFeaturesRoutes
 import routes.adminPrivacyRoutes
 import routes.authRoutes
@@ -84,6 +91,7 @@ fun Application.module() {
     val prometheusRegistry = Observability.install(this)
     val metrics = DomainMetrics(prometheusRegistry)
     val webhookMetrics = WebhookMetrics.create(prometheusRegistry)
+    val appConfig = environment.config
 
     installSecurity()
     installUploadGuard()
@@ -106,6 +114,26 @@ fun Application.module() {
     )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
 
+    val appProfile = (System.getenv("APP_PROFILE") ?: "dev").lowercase()
+    val environmentAllowed = appProfile == "dev" || appProfile == "staging"
+    val featuresChaos = appConfig.propertyOrNull("features.chaos")?.getString()?.toBoolean() ?: false
+    val chaosEnabledConfig = appConfig.propertyOrNull("chaos.enabled")?.getString()?.toBoolean() ?: false
+    val chaosConfig = ChaosConfig(
+        enabled = chaosEnabledConfig,
+        latencyMs = appConfig.propertyOrNull("chaos.latencyMs")?.getString()?.toLongOrNull() ?: 0L,
+        jitterMs = appConfig.propertyOrNull("chaos.jitterMs")?.getString()?.toLongOrNull() ?: 0L,
+        errorRate = appConfig.propertyOrNull("chaos.errorRate")?.getString()?.toDoubleOrNull() ?: 0.0,
+        pathPrefix = appConfig.propertyOrNull("chaos.pathPrefix")?.getString() ?: "/api",
+        method = appConfig.propertyOrNull("chaos.method")?.getString()?.ifBlank { "ANY" } ?: "ANY",
+        percent = appConfig.propertyOrNull("chaos.percent")?.getString()?.toIntOrNull() ?: 100
+    )
+    val chaosState = ChaosState(
+        featuresEnabled = featuresChaos,
+        environmentAllowed = environmentAllowed,
+        initial = chaosConfig
+    )
+    val chaosMetrics = ChaosMetrics(prometheusRegistry)
+
     val queueConfig = webhookQueueConfig()
     val webhookQueue = WebhookQueue(
         capacity = queueConfig.capacity,
@@ -117,6 +145,16 @@ fun Application.module() {
         processStarsPayment(update, services.billingService, metrics, analytics)
     }
     webhookQueue.start()
+
+    intercept(ApplicationCallPipeline.Plugins) {
+        val path = call.request.path()
+        if (path == "/healthz" || path.startsWith("/metrics") || path.startsWith("/api/admin/chaos")) {
+            return@intercept
+        }
+        if (maybeInjectChaos(call, chaosState.cfg, chaosMetrics)) {
+            finish()
+        }
+    }
 
     environment.monitor.subscribe(ApplicationStopped) {
         runBlocking {
@@ -185,6 +223,7 @@ fun Application.module() {
             billingRoutes()
             adminExperimentsRoutes(experimentsPort, services.adminUserIds)
             adminFeaturesRoutes()
+            adminChaosRoutes(chaosState, services.adminUserIds)
             adminPrivacyRoutes(privacy.service, services.adminUserIds)
         }
     }

@@ -174,6 +174,24 @@ bash tools/security/rotate_webhook_secret.sh "<new_secret>"
 - Локальный запуск: `./gradlew :app:runRecon` (предварительно задать `DATABASE_URL`).
 - CI: GitHub Actions → **billing-recon** → скачать артефакт `billing-recon-result`.
 
+## P42 — Chaos & Latency injection (staging/dev only)
+
+### Enable (admin)
+```bash
+# read
+curl -s -H "Authorization: Bearer $JWT" $BASE/api/admin/chaos | jq .
+# patch
+curl -s -X PATCH -H "Authorization: Bearer $JWT" -H "content-type: application/json" \
+  -d '{ "enabled": true, "latencyMs": 200, "jitterMs": 150, "errorRate": 0.1, "pathPrefix": "/api", "method": "ANY", "percent": 50 }' \
+  $BASE/api/admin/chaos -i
+
+k6 chaos smoke
+
+BASE_URL=https://stage.example.com JWT=$JWT k6 run deploy/load/k6/chaos_smoke.js
+
+Chaos включается только при APP_PROFILE in {dev,staging} и features.chaos=true в HOCON. В проде выключено.
+```
+
 ## P27 — Integrations hardening
 
 ## P28 — Metrics wiring
