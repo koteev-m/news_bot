@@ -1,0 +1,42 @@
+name: Uptime Synthetics
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  synthetics:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ secrets.STAGE_BASE_URL }}
+      WEBHOOK_SECRET: ${{ secrets.STAGE_WEBHOOK_SECRET }}
+      TG_USER_ID: ${{ secrets.STAGE_TG_USER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Ensure scripts are executable
+        run: |
+          chmod +x tools/synthetics/check_endpoints.sh
+          chmod +x tools/synthetics/report_to_junit.js
+      - name: Node setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+      - name: Run synthetic checks
+        run: bash tools/synthetics/check_endpoints.sh
+      - name: Convert report to JUnit
+        run: node tools/synthetics/report_to_junit.js synthetics_report.json synthetics_junit.xml
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetics-${{ github.run_id }}
+          path: |
+            synthetics_report.json
+            synthetics_junit.xml
+          if-no-files-found: error
