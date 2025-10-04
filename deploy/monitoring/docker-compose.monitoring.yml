@@ -1,64 +1,60 @@
 version: "3.9"
 
+networks:
+  compose_default:
+    external: true
+
 services:
   prometheus:
-    image: prom/prometheus:v2.54.0
-    restart: unless-stopped
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.retention.time=15d"
-      - "--storage.tsdb.wal-compression"
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.rules.yml:/etc/prometheus/alerts.rules.yml:ro
+      - ./prometheus/costs.rules.yml:/etc/prometheus/costs.rules.yml:ro
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
     ports:
       - "9090:9090"
+    networks: [compose_default]
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-    networks:
-      - compose_default
+      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  grafana:
+    image: grafana/grafana:10.4.4
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./grafana/provisioning/datasources/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./grafana/dashboards/cost-observability.json:/etc/grafana/provisioning/dashboards/cost-observability.json:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks: [compose_default]
 
   alertmanager:
-    image: prom/alertmanager:v0.26.0
-    restart: unless-stopped
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
       - "9093:9093"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/healthy"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-    networks:
-      - compose_default
+    networks: [compose_default]
 
-  grafana:
-    image: grafana/grafana:10.4.3
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: cadvisor
+    privileged: true
     volumes:
-      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
     ports:
-      - "3000:3000"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-    depends_on:
-      prometheus:
-        condition: service_healthy
-    networks:
-      - compose_default
-
-networks:
-  compose_default:
-    external: true
+      - "8082:8080"
+    networks: [compose_default]

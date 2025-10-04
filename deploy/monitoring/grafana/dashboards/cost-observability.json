@@ -1,0 +1,45 @@
+{
+  "title": "NewsBot / Cost Observability",
+  "uid": "cost-observability",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Service CPU seconds rate",
+      "targets": [
+        { "expr": "container_cpu_seconds_rate_by_service", "legendFormat": "{{service}}" }
+      ],
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Service memory (GB)",
+      "targets": [
+        { "expr": "container_mem_bytes_avg_by_service / 1e9", "legendFormat": "{{service}}" }
+      ],
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Service cost (USD/hour)",
+      "targets": [
+        { "expr": "service_total_cost_usd_per_hour", "legendFormat": "{{service}}" }
+      ],
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 }
+    },
+    {
+      "type": "stat",
+      "title": "App CPU seconds per request",
+      "targets": [
+        { "expr": "cpu_seconds_per_request" }
+      ],
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 }
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

@@ -1,0 +1,28 @@
+name: Cost Daily
+
+on:
+  schedule:
+    - cron: "5 4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  cost:
+    runs-on: ubuntu-latest
+    env:
+      PROM_URL: ${{ secrets.STAGE_PROM_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Estimate daily cost
+        run: bash tools/cost/estimate_daily.sh
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-daily-${{ github.run_id }}
+          path: cost_daily.txt
+          retention-days: 7
