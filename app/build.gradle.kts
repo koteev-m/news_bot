@@ -42,3 +42,11 @@ dependencies {
 application {
     mainClass.set("app.ApplicationKt")
 }
+
+tasks.register<JavaExec>("runRecon") {
+    group = "application"
+    description = "Runs billing reconciliation job"
+    mainClass.set("billing.recon.ReconciliationRunnerKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    dependsOn(tasks.named("classes"))
+}

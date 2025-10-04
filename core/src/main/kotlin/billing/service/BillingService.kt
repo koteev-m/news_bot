@@ -6,6 +6,8 @@ import billing.model.Tier
 import billing.model.UserSubscription
 import billing.port.BillingRepository
 import billing.port.StarsGateway
+import billing.recon.BillingLedgerPort
+import billing.recon.LedgerEntry
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Clock
@@ -71,6 +73,7 @@ suspend fun BillingService.applySuccessfulPaymentOutcome(
 class BillingServiceImpl(
     private val repo: BillingRepository,
     private val stars: StarsGateway,
+    private val ledger: BillingLedgerPort,
     private val defaultDurationDays: Long,
     private val clock: Clock = Clock.systemUTC()
 ) : BillingService, BillingServiceWithOutcome {
@@ -126,7 +129,10 @@ class BillingServiceImpl(
             status = SubStatus.ACTIVE
         )
 
+        val payloadHash = ledgerPayloadHash(userId, tier, pid)
+
         if (!isNew) {
+            ledger.append(LedgerEntry(userId, tier.name, "DUPLICATE", pid, payloadHash))
             logger.info("stars-payment reason=duplicate")
             return@runCatching ApplyPaymentOutcome(duplicate = true)
         }
@@ -139,6 +145,7 @@ class BillingServiceImpl(
             expiresAt = expiresAt,
             lastPaymentId = pid
         )
+        ledger.append(LedgerEntry(userId, tier.name, "APPLY", pid, payloadHash))
         logger.info("stars-payment reason=applied_ok")
         ApplyPaymentOutcome(duplicate = false)
     }
@@ -155,6 +162,18 @@ class BillingServiceImpl(
 
     private fun deterministicChargeId(userId: Long, tier: Tier, payload: String?): String {
         val source = "xtr:$userId:${tier.name}:${payload ?: ""}"
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(source.toByteArray(StandardCharsets.UTF_8))
+        val hex = buildString(digest.size * 2) {
+            for (byte in digest) {
+                append(String.format("%02x", byte))
+            }
+        }
+        return hex.take(64)
+    }
+
+    private fun ledgerPayloadHash(userId: Long, tier: Tier, providerPaymentId: String): String {
+        val source = "xtr:$userId:${tier.name}:$providerPaymentId"
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(source.toByteArray(StandardCharsets.UTF_8))
         val hex = buildString(digest.size * 2) {

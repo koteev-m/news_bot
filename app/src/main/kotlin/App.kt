@@ -26,6 +26,7 @@ import billing.bot.StarsBotRouter.BotRoute.Status
 import billing.bot.StarsBotRouter.BotRoute.Unknown
 import billing.service.BillingService
 import billing.service.BillingServiceImpl
+import repo.BillingLedgerRepository
 import billing.service.applySuccessfulPaymentOutcome
 import com.pengrad.telegrambot.utility.BotUtils
 import di.FeatureFlagsModule
@@ -231,6 +232,7 @@ private fun Application.ensureBillingServices(
     val billingService = BillingServiceImpl(
         repo = BillingRepositoryImpl(),
         stars = StarsGatewayFactory.fromConfig(environment),
+        ledger = BillingLedgerRepository(),
         defaultDurationDays = billingDefaultDuration(),
     )
     val services = Services(
