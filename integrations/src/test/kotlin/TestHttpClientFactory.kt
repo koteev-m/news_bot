@@ -1,13 +1,12 @@
 package testutils
 
 import http.CircuitBreakerCfg
-import http.HttpClients
 import http.IntegrationsHttpConfig
 import http.IntegrationsMetrics
 import http.RetryCfg
+import http.TestHttpFixtures
 import http.TimeoutMs
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
@@ -19,16 +18,9 @@ fun testHttpClient(
     config: IntegrationsHttpConfig = testHttpConfig(),
     handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData
 ): HttpClient {
-    val client = HttpClient(MockEngine) {
-        HttpClients.run {
-            configure(config, metrics, clock)
-        }
-        engine {
-            addHandler(handler)
-        }
+    return TestHttpFixtures.client(config, metrics, clock) {
+        addHandler { request -> handler(this, request) }
     }
-    HttpClients.registerRetryMonitor(client, metrics)
-    return client
 }
 
 fun testHttpConfig(

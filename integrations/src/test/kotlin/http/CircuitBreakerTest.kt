@@ -6,10 +6,10 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
-import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Test
 
 class CircuitBreakerTest {
     @Test
