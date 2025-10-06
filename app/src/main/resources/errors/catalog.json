@@ -1,0 +1,77 @@
+{
+  "BAD_REQUEST": {
+    "http": 400,
+    "message_en": "Invalid request. Please check the data and try again.",
+    "message_ru": "Некорректный запрос. Проверьте данные и повторите попытку."
+  },
+  "UNAUTHORIZED": {
+    "http": 401,
+    "message_en": "Your session has expired. Please restart the Mini App.",
+    "message_ru": "Сессия истекла. Пожалуйста, перезапустите Mini App."
+  },
+  "FORBIDDEN": {
+    "http": 403,
+    "message_en": "This action requires a higher plan.",
+    "message_ru": "Эта функция доступна на более высоком тарифе."
+  },
+  "NOT_FOUND": {
+    "http": 404,
+    "message_en": "Requested resource was not found.",
+    "message_ru": "Запрошенный ресурс не найден."
+  },
+  "UNPROCESSABLE": {
+    "http": 422,
+    "message_en": "We could not process this request.",
+    "message_ru": "Не удалось обработать запрос."
+  },
+  "RATE_LIMITED": {
+    "http": 429,
+    "message_en": "Too many requests. Please try again later.",
+    "message_ru": "Слишком много запросов. Попробуйте позже."
+  },
+  "PAYLOAD_TOO_LARGE": {
+    "http": 413,
+    "message_en": "Uploaded file is too large.",
+    "message_ru": "Загруженный файл слишком большой."
+  },
+  "UNSUPPORTED_MEDIA": {
+    "http": 415,
+    "message_en": "Unsupported file format.",
+    "message_ru": "Неподдерживаемый формат файла."
+  },
+  "INTERNAL": {
+    "http": 500,
+    "message_en": "Unexpected error. Please try again later.",
+    "message_ru": "Непредвиденная ошибка. Попробуйте ещё раз позже."
+  },
+  "CSV_MAPPING_ERROR": {
+    "http": 422,
+    "message_en": "CSV mapping failed. Check the column configuration.",
+    "message_ru": "Ошибка сопоставления CSV. Проверьте настройки колонок."
+  },
+  "SELL_EXCEEDS_POSITION": {
+    "http": 422,
+    "message_en": "Sell quantity exceeds your current position.",
+    "message_ru": "Объём продажи превышает текущую позицию."
+  },
+  "IMPORT_BY_URL_DISABLED": {
+    "http": 503,
+    "message_en": "Import by URL is temporarily unavailable.",
+    "message_ru": "Импорт по ссылке временно недоступен."
+  },
+  "CHAOS_INJECTED": {
+    "http": 503,
+    "message_en": "Chaos testing triggered an error. Please retry.",
+    "message_ru": "Хаос-тестирование вызвало ошибку. Повторите попытку."
+  },
+  "BILLING_DUPLICATE": {
+    "http": 409,
+    "message_en": "Payment was already processed.",
+    "message_ru": "Платёж уже был обработан."
+  },
+  "BILLING_APPLY_FAILED": {
+    "http": 502,
+    "message_en": "We could not apply the payment. Please contact support.",
+    "message_ru": "Не удалось применить платёж. Пожалуйста, обратитесь в поддержку."
+  }
+}

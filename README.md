@@ -174,6 +174,22 @@ curl -I "$BASE/go/news?utm_source=channel&utm_medium=cta&utm_campaign=oct&ref=R7
 # → 302 Location: https://t.me/<bot>?start=id=news|src=channel|med=cta|cmp=oct|ref=R7G5K2|cta=promo|ab=<variant>
 ```
 
+## P47 — Error catalog & user-facing messages
+
+- Каталог ошибок: [docs/ERROR_CATALOG.md](docs/ERROR_CATALOG.md), runtime-файл `app/src/main/resources/errors/catalog.json`.
+- Ktor возвращает единый JSON, пример:
+
+  ```json
+  {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests",
+    "details": [],
+    "traceId": "3e0f8f3b4a2040e0"
+  }
+  ```
+
+- Сервер мапит исключения в `AppException` + `StatusPages`, клиент (Mini App) локализует сообщения из `miniapp/src/i18n/errors.*.json` и форматирует детали через `miniapp/src/lib/errorMessages.ts`.
+
 ## P40 — Go-Live gates & post-deploy
 
 ```bash
