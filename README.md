@@ -36,6 +36,31 @@ bash tools/audit/run_all.sh --only-audit
 
 Copy `.env.example` to `.env` and provide the required values.
 
+## Flyway migrations (local/CI)
+
+### Local via Docker Compose
+
+```bash
+bash tools/db/up_db_only.sh
+./gradlew :storage:flywayMigrateIfDb -PwithDb=true --console=plain
+```
+
+### Local with manual parameters
+
+```bash
+./gradlew :storage:flywayMigrateIfDb -PwithDb=true \
+  -Pflyway.url=jdbc:postgresql://localhost:5432/newsbot \
+  -Pflyway.user=app -Pflyway.password=app_pass -Pflyway.schemas=public \
+  --console=plain
+```
+
+### Continuous Integration
+
+- GitHub Actions → **DB Migrate** (`.github/workflows/db-migrate.yml`).
+- Workflow запускает Postgres 16 как сервис и прогоняет `:storage:flywayMigrateIfDb`.
+
+> Примечание: обычный `./gradlew build` не обращается к БД; миграции выполняются только через охраняемую задачу `flywayMigrateIfDb`.
+
 ## P30 — Secrets & ENV
 
 - Store local secrets in `.env` files (root or service-specific) that are ignored by Git. Use GitHub Secrets for CI/CD (`STAGE_*` for load tests) and Vault/SOPS for production delivery.
