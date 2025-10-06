@@ -18,6 +18,7 @@ import routes.adminSupportRoutes
 import routes.experimentsRoutes
 import alerts.metrics.AlertMetricsPort
 import analytics.AnalyticsPort
+import errors.installStatusPages
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
 import billing.TgUpdate
@@ -101,6 +102,7 @@ fun Application.module() {
 
     installSecurity()
     installUploadGuard()
+    installStatusPages()
     installPortfolioModule()
     val newsConfig = loadNewsConfig()
     val analytics = AnalyticsRepository()

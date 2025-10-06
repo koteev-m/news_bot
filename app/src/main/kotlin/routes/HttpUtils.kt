@@ -1,110 +1,55 @@
 package routes
 
-import io.ktor.http.HttpStatusCode
+import errors.AppException
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.response.respond
-import kotlinx.serialization.Serializable
-import kotlin.jvm.JvmName
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
-import routes.dto.ValidationError
 import java.sql.SQLException
 
-@Serializable
-data class ApiErrorResponse(
-    val error: String,
-    val message: String? = null,
-    val details: List<ValidationError> = emptyList(),
-)
+fun ApplicationCall.respondBadRequest(details: List<String>): Nothing = throw AppException.BadRequest(details)
 
-@Serializable
-data class HttpErrorResponse(
-    val error: String,
-    val reason: String? = null,
-    val details: List<String>? = null,
-    val limit: Long? = null,
-)
+fun ApplicationCall.respondUnauthorized(): Nothing = throw AppException.Unauthorized()
 
-@JvmName("respondBadRequestWithStrings")
-suspend fun ApplicationCall.respondBadRequest(details: List<String>) {
-    respond(HttpStatusCode.BadRequest, HttpErrorResponse(error = "bad_request", details = details))
+fun ApplicationCall.respondNotFound(reason: String? = null): Nothing {
+    val details = reason?.let { listOf(it) } ?: emptyList()
+    throw AppException.NotFound(details)
 }
 
-suspend fun ApplicationCall.respondBadRequest(details: List<ValidationError>) {
-    val messages = details.map { validation ->
-        val field = validation.field?.let { "$it: " } ?: ""
-        "$field${validation.message}"
-    }
-    respondBadRequest(messages)
-}
+fun ApplicationCall.respondUnsupportedMediaType(): Nothing = throw AppException.UnsupportedMedia()
 
-suspend fun ApplicationCall.respondUnauthorized() {
-    respond(HttpStatusCode.Unauthorized, HttpErrorResponse(error = "unauthorized"))
-}
+fun ApplicationCall.respondPayloadTooLarge(limit: Long): Nothing = throw AppException.PayloadTooLarge(limit)
 
-suspend fun ApplicationCall.respondConflict(reason: String) {
-    respond(HttpStatusCode.Conflict, HttpErrorResponse(error = "conflict", reason = reason))
-}
+fun ApplicationCall.respondTooManyRequests(retryAfterSeconds: Long): Nothing = throw AppException.RateLimited(retryAfterSeconds)
 
-suspend fun ApplicationCall.respondNotFound(reason: String?) {
-    respond(HttpStatusCode.NotFound, HttpErrorResponse(error = "not_found", reason = reason))
-}
+fun ApplicationCall.respondServiceUnavailable(): Nothing = throw AppException.ImportByUrlDisabled()
 
-suspend fun ApplicationCall.respondUnsupportedMediaType() {
-    respond(HttpStatusCode.UnsupportedMediaType, HttpErrorResponse(error = "unsupported_media_type"))
-}
+fun ApplicationCall.respondInternal(): Nothing = throw AppException.Internal()
 
-suspend fun ApplicationCall.respondPayloadTooLarge(limit: Long) {
-    respond(HttpStatusCode.PayloadTooLarge, HttpErrorResponse(error = "payload_too_large", limit = limit))
-}
-
-suspend fun ApplicationCall.respondTooManyRequests(retryAfterSeconds: Long) {
-    response.headers.append("Retry-After", retryAfterSeconds.toString(), safeOnly = false)
-    respond(HttpStatusCode.TooManyRequests, mapOf("error" to "rate_limited"))
-}
-
-suspend fun ApplicationCall.respondServiceUnavailable(reason: String = "by_url_disabled") {
-    respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to reason))
-}
-
-suspend fun ApplicationCall.respondInternal() {
-    respond(HttpStatusCode.InternalServerError, HttpErrorResponse(error = "internal"))
-}
-
-suspend fun ApplicationCall.handleDomainError(cause: Throwable) {
-    when (cause) {
-        is IllegalArgumentException -> {
-            respondBadRequest(listOf(cause.message ?: "invalid_request"))
-            return
-        }
-        is PortfolioException -> {
-            handlePortfolioException(cause)
-            return
+fun ApplicationCall.handleDomainError(cause: Throwable): Nothing {
+    val exception = when (cause) {
+        is IllegalArgumentException -> AppException.BadRequest(listOfNotNull(cause.message))
+        is PortfolioException -> mapPortfolioException(cause)
+        else -> when {
+            cause.matchesName(ALREADY_EXISTS_NAMES) || cause.isUniqueViolation() ->
+                AppException.Unprocessable()
+            cause.matchesName(NOT_FOUND_NAMES) -> AppException.NotFound()
+            else -> {
+                application.environment.log.error("Unhandled error", cause)
+                AppException.Internal(cause = cause)
+            }
         }
     }
-
-    when {
-        cause.matchesName(ALREADY_EXISTS_NAMES) || cause.isUniqueViolation() -> {
-            respondConflict(cause.message ?: "conflict")
-        }
-        cause.matchesName(NOT_FOUND_NAMES) -> {
-            respondNotFound(cause.message)
-        }
-        else -> {
-            application.environment.log.error("Unhandled error", cause)
-            respondInternal()
-        }
-    }
+    throw exception
 }
 
-private suspend fun ApplicationCall.handlePortfolioException(exception: PortfolioException) {
-    when (val error = exception.error) {
-        is PortfolioError.Validation -> respondBadRequest(listOf(error.message))
-        is PortfolioError.NotFound -> respondNotFound(error.message)
+private fun ApplicationCall.mapPortfolioException(exception: PortfolioException): AppException {
+    return when (val error = exception.error) {
+        is PortfolioError.Validation -> AppException.Unprocessable(listOf(error.message), exception)
+        is PortfolioError.NotFound -> AppException.NotFound(listOf(error.message))
         is PortfolioError.External -> {
             application.environment.log.error("Portfolio service error", exception)
-            respondInternal()
+            AppException.Internal(cause = exception)
         }
     }
 }
