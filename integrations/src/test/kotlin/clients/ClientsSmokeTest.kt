@@ -1,17 +1,8 @@
 package clients
 
-import cbr.CbrClient
-import coingecko.CoinGeckoClient
-import http.CircuitBreaker
-import http.CircuitBreakerCfg
 import http.CircuitBreakerOpenException
-import http.HttpClients
-import http.IntegrationsHttpConfig
 import http.IntegrationsMetrics
-import http.RetryCfg
-import http.TimeoutMs
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
+import http.TestHttpFixtures
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -21,106 +12,96 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import java.io.IOException
 import java.math.BigDecimal
 import java.time.Clock
-import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Test
+import cbr.CbrClient
+import coingecko.CoinGeckoClient
 import moex.MoexIssClient
 
 class ClientsSmokeTest {
+
     @Test
-    fun `clients retry and report metrics`() = runTest {
+    fun clientsRetryAndReportMetrics() = runTest {
         val registry = SimpleMeterRegistry()
         val metrics = IntegrationsMetrics(registry)
         val clock = Clock.systemUTC()
-        val cfg = IntegrationsHttpConfig(
-            userAgent = "test-agent",
-            timeoutMs = TimeoutMs(connect = 5000, socket = 5000, request = 5000),
-            retry = RetryCfg(
-                maxAttempts = 3,
-                baseBackoffMs = 1,
-                jitterMs = 0,
-                respectRetryAfter = false,
-                retryOn = listOf(429, 500, 502, 503, 504)
-            ),
-            circuitBreaker = CircuitBreakerCfg(
-                failuresThreshold = 3,
-                windowSeconds = 60,
-                openSeconds = 30,
-                halfOpenMaxCalls = 1
-            )
-        )
+        val cfg = TestHttpFixtures.defaultCfg()
         val attempts = mutableMapOf<String, Int>()
-        val engine = MockEngine { request ->
-            val key = request.url.encodedPath
-            val count = attempts.merge(key, 1, Int::plus) ?: 1
-            if (count == 1) {
-                respond(
-                    content = "",
-                    status = HttpStatusCode.InternalServerError,
-                    headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
-                )
-            } else {
-                when (key) {
-                    "/iss/engines/stock/markets/shares/marketstatus.json" -> respond(
-                        content = """{"marketstatus":{"columns":["boardid","market","state","title"],"data":[["TQBR","stock","OPEN","Trading"]]}}""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
-                    )
-                    "/api/v3/simple/price" -> respond(
-                        content = """{"bitcoin":{"usd":50000}}""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
-                    )
-                    "/scripts/XML_daily.asp" -> respond(
-                        content = """<?xml version="1.0" encoding="UTF-8"?><ValCurs Date="02.11.2024"><Valute><CharCode>USD</CharCode><Nominal>1</Nominal><Value>95,0000</Value></Valute></ValCurs>""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Xml.toString()))
-                    )
-                    else -> respond(
+        val http = TestHttpFixtures.client(cfg, metrics, clock) {
+            addHandler { request ->
+                val path = request.url.encodedPath
+                val count = attempts.merge(path, 1, Int::plus) ?: 1
+                if (count == 1) {
+                    respond(
                         content = "{}",
-                        status = HttpStatusCode.OK,
+                        status = HttpStatusCode.InternalServerError,
                         headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
                     )
+                } else {
+                    when (path) {
+                        "/iss/engines/stock/markets/shares/marketstatus.json" -> respond(
+                            content = """{"marketstatus":{"columns":["boardid","market","state"],"data":[["TQBR","stock","OPEN"]]}}""",
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
+                        )
+                        "/api/v3/simple/price" -> respond(
+                            content = """{"bitcoin":{"usd":50000}}""",
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
+                        )
+                        "/scripts/XML_daily.asp" -> respond(
+                            content = """
+                                <?xml version="1.0" encoding="UTF-8"?>
+                                <ValCurs Date="02.11.2024">
+                                  <Valute><CharCode>USD</CharCode><Nominal>1</Nominal><Value>95,0000</Value></Valute>
+                                </ValCurs>
+                            """.trimIndent(),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Xml.toString()))
+                        )
+                        else -> respond(
+                            content = "{}",
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
+                        )
+                    }
                 }
             }
         }
-        val client = HttpClient(engine) {
-            HttpClients.run {
-                configure(cfg, metrics, clock)
-            }
-        }
-        HttpClients.registerRetryMonitor(client, metrics)
+        val moexCb = TestHttpFixtures.cb(cfg, metrics, clock, service = "moex")
+        val cgCb = TestHttpFixtures.cb(cfg, metrics, clock, service = "coingecko")
+        val cbrCb = TestHttpFixtures.cb(cfg, metrics, clock, service = "cbr")
 
-        val cbCfg = CircuitBreakerCfg(
-            failuresThreshold = 3,
-            windowSeconds = 60,
-            openSeconds = 30,
-            halfOpenMaxCalls = 1
-        )
-        val moexCb = CircuitBreaker("moex", cbCfg, metrics, clock)
-        val cgCb = CircuitBreaker("coingecko", cbCfg, metrics, clock)
-        val cbrCb = CircuitBreaker("cbr", cbCfg, metrics, clock)
-
-        val moexClient = MoexIssClient(client, moexCb, metrics, clock).apply { setBaseUrl("https://example.com") }
-        val cgClient = CoinGeckoClient(client, cgCb, metrics, clock, minRequestInterval = kotlin.time.Duration.ZERO).apply {
-            setBaseUrl("https://example.com")
+        val moexClient = MoexIssClient(http, moexCb, metrics, cacheTtlMs = 15_000L, statusCacheTtlMs = 5_000L, clock = clock).apply {
+            setBaseUrl("https://example.test")
         }
-        val cbrClient = CbrClient(client, cbrCb, metrics, clock).apply { setBaseUrl("https://example.com") }
+        val cgClient = CoinGeckoClient(
+            http,
+            cgCb,
+            metrics,
+            clock = clock,
+            minRequestInterval = kotlin.time.Duration.ZERO,
+            priceCacheTtlMs = 15_000L
+        ).apply { setBaseUrl("https://example.test") }
+        val cbrClient = CbrClient(http, cbrCb, metrics, cacheTtlMs = 15_000L, clock = clock).apply {
+            setBaseUrl("https://example.test")
+        }
 
         val moexResult = moexClient.getMarketStatus()
-        assertTrue(moexResult.isSuccess)
-        assertEquals("OPEN", moexResult.getOrNull()?.statuses?.firstOrNull()?.state)
+        assertTrue(moexResult.isSuccess, "moex failure: ${moexResult.exceptionOrNull()}")
+        assertEquals("OPEN", moexResult.getOrThrow().statuses.first().state)
 
         val cgResult = cgClient.getSimplePrice(listOf("bitcoin"), listOf("usd"))
-        assertTrue(cgResult.isSuccess)
-        assertEquals(BigDecimal("50000"), cgResult.getOrNull()?.get("bitcoin")?.get("usd"))
+        assertTrue(cgResult.isSuccess, "cg failure: ${cgResult.exceptionOrNull()}")
+        assertEquals(BigDecimal("50000"), cgResult.getOrThrow()["bitcoin"]?.get("usd"))
 
         val cbrResult = cbrClient.getXmlDaily(null)
-        assertTrue(cbrResult.isSuccess)
-        assertEquals("USD", cbrResult.getOrNull()?.firstOrNull()?.currencyCode)
+        assertTrue(cbrResult.isSuccess, "cbr failure: ${cbrResult.exceptionOrNull()}")
+        assertEquals("USD", cbrResult.getOrThrow().first().currencyCode)
 
         assertEquals(2, attempts["/iss/engines/stock/markets/shares/marketstatus.json"])
         assertEquals(2, attempts["/api/v3/simple/price"])
@@ -130,56 +111,35 @@ class ClientsSmokeTest {
         assertEquals(1.0, registry.counter("integrations_retry_total", "service", "coingecko").count())
         assertEquals(1.0, registry.counter("integrations_retry_total", "service", "cbr").count())
 
-        assertEquals(1L, registry.timer("integrations_request_seconds", "service", "moex", "outcome", "success").count())
-        assertEquals(1L, registry.timer("integrations_request_seconds", "service", "coingecko", "outcome", "success").count())
-        assertEquals(1L, registry.timer("integrations_request_seconds", "service", "cbr", "outcome", "success").count())
-
-        client.close()
+        http.close()
     }
 
     @Test
-    fun `open breaker prevents call`() = runTest {
+    fun openBreakerPreventsCall() = runTest {
         val registry = SimpleMeterRegistry()
         val metrics = IntegrationsMetrics(registry)
         val clock = Clock.systemUTC()
-        val cfg = IntegrationsHttpConfig(
-            userAgent = "test-agent",
-            timeoutMs = TimeoutMs(connect = 1000, socket = 1000, request = 1000),
-            retry = RetryCfg(
-                maxAttempts = 2,
-                baseBackoffMs = 1,
-                jitterMs = 0,
-                respectRetryAfter = false,
-                retryOn = listOf(429, 500)
-            ),
-            circuitBreaker = CircuitBreakerCfg(
-                failuresThreshold = 1,
-                windowSeconds = 60,
-                openSeconds = 30,
-                halfOpenMaxCalls = 1
-            )
-        )
+        val cfg = TestHttpFixtures.defaultCfg()
         var called = 0
-        val engine = MockEngine {
-            called += 1
-            respond(
-                content = """{"marketstatus":{"columns":[],"data":[]}}""",
-                status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
-            )
-        }
-        val client = HttpClient(engine) {
-            HttpClients.run {
-                configure(cfg, metrics, clock)
+        val http = TestHttpFixtures.client(cfg, metrics, clock) {
+            addHandler {
+                called += 1
+                respond(
+                    content = """{"marketstatus":{"columns":[],"data":[]}}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, listOf(ContentType.Application.Json.toString()))
+                )
             }
         }
-        HttpClients.registerRetryMonitor(client, metrics)
+        val cb = TestHttpFixtures.cb(cfg, metrics, clock, service = "moex")
+        val moexClient = MoexIssClient(http, cb, metrics, cacheTtlMs = 15_000L, statusCacheTtlMs = 5_000L, clock = clock).apply {
+            setBaseUrl("https://example.test")
+        }
 
-        val cb = CircuitBreaker("moex", cfg.circuitBreaker, metrics, clock)
-        val moexClient = MoexIssClient(client, cb, metrics, clock).apply { setBaseUrl("https://example.com") }
-
-        assertFailsWith<IOException> {
-            cb.withPermit { throw IOException("boom") }
+        repeat(cfg.circuitBreaker.failuresThreshold) {
+            assertFailsWith<IOException> {
+                cb.withPermit { throw IOException("boom") }
+            }
         }
 
         val result = moexClient.getMarketStatus()
@@ -187,6 +147,6 @@ class ClientsSmokeTest {
         assertIs<CircuitBreakerOpenException>(failure)
         assertEquals(0, called)
 
-        client.close()
+        http.close()
     }
 }

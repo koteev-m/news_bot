@@ -36,6 +36,67 @@ bash tools/audit/run_all.sh --only-audit
 
 Copy `.env.example` to `.env` and provide the required values.
 
+## Lint (strict / format)
+
+- Строгий режим (как в CI):
+  ```bash
+  bash tools/lint/strict.sh
+  # или
+  ./gradlew ktlintCheck detekt -PstrictLint=true
+  ```
+- Автоформатирование:
+  ```bash
+  bash tools/lint/format.sh
+  # или
+  ./gradlew ktlintFormat
+  ```
+
+По умолчанию `./gradlew build` не падает из-за замечаний detekt/ktlint: строгий режим включается флагом `-PstrictLint=true` (или `STRICT_LINT=true` в ENV) и применяется в CI шаге **Lint**.
+
+## Flyway migrations (local/CI)
+
+### Local via Docker Compose
+
+```bash
+bash tools/db/up_db_only.sh
+./gradlew :storage:flywayMigrateIfDb -PwithDb=true --console=plain
+```
+
+### Local with manual parameters
+
+```bash
+./gradlew :storage:flywayMigrateIfDb -PwithDb=true \
+  -Pflyway.url=jdbc:postgresql://localhost:5432/newsbot \
+  -Pflyway.user=app -Pflyway.password=app_pass -Pflyway.schemas=public \
+  --console=plain
+```
+
+### Continuous Integration
+
+- GitHub Actions → **DB Migrate** (`.github/workflows/db-migrate.yml`).
+- Workflow запускает Postgres 16 как сервис и прогоняет `:storage:flywayMigrateIfDb`.
+
+> Примечание: обычный `./gradlew build` не обращается к БД; миграции выполняются только через охраняемую задачу `flywayMigrateIfDb`.
+
+### Integrations tests — updated for P27
+
+Тесты модуля `:integrations` используют фикстуры `http/TestHttpFixtures.kt`:
+- `TestHttpFixtures.client(cfg, metrics, clock) { ... }` создаёт `HttpClient(MockEngine)` через `HttpClients.configure(...)`, подключая те же плагины/метрики, что и боевой код.
+- `TestHttpFixtures.metrics()` возвращает `IntegrationsMetrics(SimpleMeterRegistry())`.
+- `TestHttpFixtures.cb(cfg, metrics, clock)` выдаёт `CircuitBreaker` с теми же параметрами, что и прод.
+
+Клиенты интеграций инициализируются с актуальными сигнатурами P27:
+
+```kotlin
+val cfg = TestHttpFixtures.defaultCfg()
+val metrics = TestHttpFixtures.metrics()
+val http = TestHttpFixtures.client(cfg, metrics) { addHandler { respond(...) } }
+val cb = TestHttpFixtures.cb(cfg, metrics)
+val client = XxxClient(http, cb, metrics, cacheTtlMs = 15_000L)
+```
+
+Четвёртый аргумент конструкторов — TTL кэша в миллисекундах (`Long`).
+
 ## P30 — Secrets & ENV
 
 - Store local secrets in `.env` files (root or service-specific) that are ignored by Git. Use GitHub Secrets for CI/CD (`STAGE_*` for load tests) and Vault/SOPS for production delivery.

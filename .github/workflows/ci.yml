@@ -82,8 +82,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - name: Lint (ktlint + detekt)
-        run: ./gradlew --no-daemon --stacktrace ktlintCheck detekt
+      - name: Lint (ktlint + detekt strict)
+        run: ./gradlew --no-daemon --stacktrace ktlintCheck detekt -PstrictLint=true
       - name: Build (Gradle)
         uses: gradle/gradle-build-action@v3
         with:

@@ -11,6 +11,11 @@ plugins {
     alias(libs.plugins.detekt.gradle) apply false
 }
 
+val strictLint: Boolean by lazy {
+    (project.findProperty("strictLint")?.toString()?.toBoolean() == true) ||
+        (System.getenv("STRICT_LINT")?.toBoolean() == true)
+}
+
 subprojects {
     repositories {
         mavenCentral()
@@ -50,7 +55,7 @@ subprojects {
 
             extensions.configure(KtlintExtension::class.java) {
                 android.set(false)
-                ignoreFailures.set(false)
+                ignoreFailures.set(!strictLint)
                 reporters {
                     reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
                     reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.CHECKSTYLE)
@@ -62,6 +67,7 @@ subprojects {
             }
 
             extensions.configure(DetektExtension::class.java) {
+                ignoreFailures = !strictLint
                 buildUponDefaultConfig = true
                 allRules = false
                 autoCorrect = false
