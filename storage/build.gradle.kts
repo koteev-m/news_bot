@@ -1,4 +1,5 @@
 import org.flywaydb.gradle.FlywayExtension
+import org.flywaydb.gradle.task.AbstractFlywayTask
 
 buildscript {
     repositories {
@@ -12,6 +13,8 @@ buildscript {
 }
 
 apply(plugin = "org.flywaydb.flyway")
+
+val withDb = project.findProperty("withDb")?.toString()?.toBoolean() == true || System.getenv("DATABASE_URL")?.isNotBlank() == true
 
 repositories {
     mavenCentral()
@@ -54,13 +57,44 @@ dependencies {
     testRuntimeOnly(libs.logback.classic)
 }
 
-configure<FlywayExtension> {
-    url = System.getenv("DATABASE_URL") ?: "jdbc:postgresql://localhost:5432/newsbot"
-    user = System.getenv("DATABASE_USER") ?: "app"
-    password = System.getenv("DATABASE_PASS") ?: "app_pass"
-    schemas = arrayOf(System.getenv("DATABASE_SCHEMA") ?: "public")
-    locations = arrayOf("filesystem:src/main/resources/db/migration")
-    configurations = arrayOf("flyway")
+if (withDb) {
+    val flywayUrl = (project.findProperty("flyway.url") as? String)?.takeIf { it.isNotBlank() }
+        ?: System.getenv("DATABASE_URL")
+        ?: "jdbc:postgresql://localhost:5432/newsbot"
+    val flywayUser = (project.findProperty("flyway.user") as? String)?.takeIf { it.isNotBlank() }
+        ?: System.getenv("DATABASE_USER")
+        ?: "app"
+    val flywayPassword = (project.findProperty("flyway.password") as? String)?.takeIf { it.isNotBlank() }
+        ?: System.getenv("DATABASE_PASS")
+        ?: "app_pass"
+    val flywaySchemasRaw = (project.findProperty("flyway.schemas") as? String)?.takeIf { it.isNotBlank() }
+        ?: System.getenv("DATABASE_SCHEMA")
+        ?: "public"
+    val flywaySchemas = flywaySchemasRaw.split(",")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toTypedArray()
+
+    configure<FlywayExtension> {
+        url = flywayUrl
+        user = flywayUser
+        password = flywayPassword
+        schemas = flywaySchemas
+        locations = arrayOf("filesystem:src/main/resources/db/migration")
+        configurations = arrayOf("flyway")
+    }
+
+    tasks.register("flywayMigrateIfDb") {
+        dependsOn("flywayMigrate")
+    }
+} else {
+    tasks.register("flywayMigrateIfDb") {
+        doLast { println("Flyway skipped: no DB (use -PwithDb=true or set DATABASE_URL)") }
+    }
+}
+
+tasks.withType<AbstractFlywayTask>().configureEach {
+    onlyIf { withDb }
 }
 
 tasks.test {
