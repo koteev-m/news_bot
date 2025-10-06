@@ -168,6 +168,17 @@ docker compose -f docker-compose.monitoring.yml up -d
   PROM_URL=http://localhost:9090 bash tools/cost/estimate_daily.sh
   ```
 
+## P46 — Support & Help Center
+
+Документация: [docs/SUPPORT_HELP_CENTER.md](docs/SUPPORT_HELP_CENTER.md).
+
+```bash
+curl -s "$BASE/api/support/faq/en" | jq .
+curl -s -X POST -H "content-type: application/json" \
+  "$BASE/api/support/feedback" \
+  -d '{"category":"idea","subject":"Hi","message":"Great!"}'
+```
+
 ## P35 — Security hardening & pen-test
 
 - Edge + app security headers: CSP (`default-src 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, HSTS enabled for production profiles only.

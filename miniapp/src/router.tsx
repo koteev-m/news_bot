@@ -6,6 +6,8 @@ import { Import } from "./pages/Import";
 import { Calendar } from "./pages/Calendar";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
+import { Help } from "./pages/Help";
+import { Feedback } from "./pages/Feedback";
 import type { ThemeMode } from "./lib/session";
 import type { InitDataUnsafe } from "./lib/telegram";
 
@@ -29,6 +31,8 @@ export function AppRoutes({ settingsProps }: AppRoutesProps): JSX.Element {
       <Route path="/calendar" element={<Calendar />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/settings" element={<Settings {...settingsProps} />} />
+      <Route path="/help" element={<Help />} />
+      <Route path="/feedback" element={<Feedback />} />
     </Routes>
   );
 }

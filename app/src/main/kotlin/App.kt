@@ -10,9 +10,11 @@ import com.typesafe.config.ConfigFactory
 import news.config.NewsConfig
 import news.config.NewsDefaults
 import repo.ExperimentsRepository
+import repo.SupportRepository
 import repo.ReferralsRepository
 import referrals.ReferralsPort
 import routes.adminExperimentsRoutes
+import routes.adminSupportRoutes
 import routes.experimentsRoutes
 import alerts.metrics.AlertMetricsPort
 import analytics.AnalyticsPort
@@ -79,8 +81,12 @@ import routes.portfolioRoutes
 import routes.portfolioValuationReportRoutes
 import routes.quotesRoutes
 import routes.redirectRoutes
+import routes.supportRoutes
 import security.installSecurity
 import security.installUploadGuard
+import security.RateLimitConfig
+import security.SupportRateLimit
+import java.time.Clock
 import webhook.OverflowMode
 import webhook.WebhookQueue
 
@@ -113,6 +119,12 @@ fun Application.module() {
         newsConfig = newsConfig
     )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
+    val supportRepository = SupportRepository()
+    val supportRateLimitConfig = RateLimitConfig(
+        capacity = appConfig.propertyOrNull("support.rateLimit.capacity")?.getString()?.toIntOrNull() ?: 5,
+        refillPerMinute = appConfig.propertyOrNull("support.rateLimit.refillPerMinute")?.getString()?.toIntOrNull() ?: 5
+    )
+    val supportRateLimiter = SupportRateLimit.get(supportRateLimitConfig, Clock.systemUTC())
 
     val appProfile = (System.getenv("APP_PROFILE") ?: "dev").lowercase()
     val environmentAllowed = appProfile == "dev" || appProfile == "staging"
@@ -166,6 +178,7 @@ fun Application.module() {
         healthRoutes()
         authRoutes(analytics)
         redirectRoutes(analytics, referrals, newsConfig.botDeepLinkBase, newsConfig.maxPayloadBytes)
+        supportRoutes(supportRepository, services.analytics, supportRateLimiter)
         experimentsRoutes(experimentsService)
         quotesRoutes()
         demoRoutes()
@@ -225,6 +238,7 @@ fun Application.module() {
             adminFeaturesRoutes()
             adminChaosRoutes(chaosState, services.adminUserIds)
             adminPrivacyRoutes(privacy.service, services.adminUserIds)
+            adminSupportRoutes(supportRepository, services.adminUserIds)
         }
     }
 }
