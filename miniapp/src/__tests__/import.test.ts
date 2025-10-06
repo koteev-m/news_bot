@@ -3,10 +3,13 @@ import type { Mock } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
+import { I18nextProvider } from "react-i18next";
 import { detectDelimiter, parseCsv, sanitizeCsvCell } from "../lib/csv";
 import { ColumnMapper } from "../components/ColumnMapper";
 import { Import } from "../pages/Import";
 import * as api from "../lib/api";
+import { ToasterProvider } from "../components/Toaster";
+import { i18n } from "../i18n";
 
 vi.mock("../lib/api", async () => {
   const actual = await vi.importActual<typeof import("../lib/api")>("../lib/api");
@@ -89,6 +92,15 @@ describe("Import page", () => {
   const postImportCsvMock = api.postImportCsv as unknown as Mock;
   const postImportByUrlMock = api.postImportByUrl as unknown as Mock;
 
+  const renderImport = () =>
+    render(
+      createElement(
+        I18nextProvider,
+        { i18n },
+        createElement(ToasterProvider, undefined, createElement(Import)),
+      ),
+    );
+
   beforeEach(() => {
     postImportCsvMock.mockReset();
     postImportByUrlMock.mockReset();
@@ -96,14 +108,14 @@ describe("Import page", () => {
   });
 
   it("validates https URL before importing", async () => {
-    render(createElement(Import));
+    renderImport();
     const portfolioInput = screen.getByLabelText("Portfolio ID");
     fireEvent.change(portfolioInput, { target: { value: "00000000-0000-0000-0000-000000000001" } });
     fireEvent.click(screen.getByText("By URL"));
     const urlInput = screen.getByLabelText("CSV export URL");
     fireEvent.change(urlInput, { target: { value: "http://example.com/data.csv" } });
     fireEvent.click(screen.getByText("Import from URL"));
-    expect(await screen.findByText("URL must start with https://")).toBeInTheDocument();
+    expect(await screen.findByText(/URL must start with https:\/\//i)).toBeInTheDocument();
     expect(postImportByUrlMock).not.toHaveBeenCalled();
   });
 
@@ -113,7 +125,7 @@ describe("Import page", () => {
       "trade-1,2024-03-16 10:00:00,SBER,MOEX,TQBR,,BUY,10,150,RUB,0,RUB,,,BrokerCo,First trade";
     postImportCsvMock.mockResolvedValue({ inserted: 1, skippedDuplicates: 0, failed: [] });
 
-    render(createElement(Import));
+    renderImport();
 
     const portfolioInput = screen.getByLabelText("Portfolio ID");
     fireEvent.change(portfolioInput, { target: { value: "00000000-0000-0000-0000-000000000001" } });
