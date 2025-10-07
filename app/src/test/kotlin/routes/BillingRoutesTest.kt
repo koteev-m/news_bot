@@ -35,8 +35,10 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import errors.installErrorPages
 
 class BillingRoutesTest {
+    private val json = Json { ignoreUnknownKeys = true }
 
     @Test
     fun `GET plans returns sorted plans`() = testApplication {
@@ -53,7 +55,7 @@ class BillingRoutesTest {
         val response = client.get("/api/billing/plans")
 
         assertEquals(HttpStatusCode.OK, response.status)
-        val payload = Json.parseToJsonElement(response.bodyAsText())
+        val payload = json.parseToJsonElement(response.bodyAsText())
         assertTrue(payload is JsonArray)
         val tiers = payload.jsonArray.map { element -> element.jsonObject["tier"]!!.jsonPrimitive.content }
         assertEquals(listOf("VIP", "PRO"), tiers)
@@ -82,8 +84,8 @@ class BillingRoutesTest {
         }
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText())
-        assertEquals("bad_request", body.jsonObject["error"]?.jsonPrimitive?.content)
+        val payload = HttpErrorResponse(response.bodyAsText())
+        assertEquals("bad_request", payload.error)
     }
 
     @Test
@@ -100,7 +102,7 @@ class BillingRoutesTest {
         }
 
         assertEquals(HttpStatusCode.Created, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText())
+        val body = json.parseToJsonElement(response.bodyAsText())
         assertEquals("https://t.me/pay/invoice", body.jsonObject["invoiceLink"]?.jsonPrimitive?.content)
     }
 
@@ -165,7 +167,7 @@ class BillingRoutesTest {
         }
 
         assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText())
+        val body = json.parseToJsonElement(response.bodyAsText())
         assertEquals("PRO_PLUS", body.jsonObject["tier"]?.jsonPrimitive?.content)
         assertEquals("ACTIVE", body.jsonObject["status"]?.jsonPrimitive?.content)
     }
@@ -182,7 +184,7 @@ class BillingRoutesTest {
         }
 
         assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText())
+        val body = json.parseToJsonElement(response.bodyAsText())
         assertEquals("FREE", body.jsonObject["tier"]?.jsonPrimitive?.content)
         assertEquals("NONE", body.jsonObject["status"]?.jsonPrimitive?.content)
     }
@@ -201,6 +203,7 @@ class BillingRoutesTest {
 
     private fun ApplicationTestBuilder.configure(service: BillingService) {
         application {
+            installErrorPages()
             install(ContentNegotiation) { json() }
             install(testAuthPlugin)
             attributes.put(BillingRouteServicesKey, BillingRouteServices(service))

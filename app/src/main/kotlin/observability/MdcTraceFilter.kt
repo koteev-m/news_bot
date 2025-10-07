@@ -3,8 +3,7 @@ package observability
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
-import io.ktor.server.request.callId
-import kotlinx.coroutines.withContext
+import io.ktor.server.plugins.callid.callId
 import org.slf4j.MDC
 import java.util.UUID
 

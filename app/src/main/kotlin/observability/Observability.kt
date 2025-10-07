@@ -14,6 +14,7 @@ import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.request.header
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
+import io.ktor.server.response.ApplicationSendPipeline
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -72,7 +73,7 @@ object Observability {
             }
         }
 
-        app.sendPipeline.intercept(io.ktor.server.application.ApplicationSendPipeline.Before) {
+        app.sendPipeline.intercept(ApplicationSendPipeline.Before) {
             val requestId = call.callId ?: call.attributes.getOrNull(traceIdKey)
             val traceId = call.attributes.getOrNull(traceIdKey) ?: requestId
             requestId?.let { call.response.headers.append(HttpHeaders.XRequestId, it, safeOnly = false) }

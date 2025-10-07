@@ -37,6 +37,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import errors.installErrorPages
 
 class AdminFeaturesRoutesTest {
 
@@ -142,6 +143,7 @@ class AdminFeaturesRoutesTest {
 
     private fun ApplicationTestBuilder.configure(service: FeatureFlagsService) {
         application {
+            installErrorPages()
             install(ContentNegotiation) { json() }
             install(testAuthPlugin)
             attributes.put(

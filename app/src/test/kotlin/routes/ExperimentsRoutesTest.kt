@@ -25,6 +25,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import errors.installErrorPages
 
 class ExperimentsRoutesTest {
     @Test
@@ -32,6 +33,7 @@ class ExperimentsRoutesTest {
         val port = StubExperimentsPort()
         val service = ExperimentsServiceImpl(port)
         application {
+            installErrorPages()
             install(ContentNegotiation) {
                 json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
             }
@@ -51,6 +53,7 @@ class ExperimentsRoutesTest {
         val expected = runBlocking { service.assign(userId, "cta_copy") }.variant
 
         application {
+            installErrorPages()
             install(ContentNegotiation) {
                 json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
             }

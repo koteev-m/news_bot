@@ -27,6 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import errors.installErrorPages
 import portfolio.errors.DomainResult
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
@@ -88,7 +89,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("portfolioId", ignoreCase = true) } == true)
     }
@@ -104,7 +105,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("date", ignoreCase = true) } == true)
     }
@@ -120,7 +121,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("date", ignoreCase = true) } == true)
     }
@@ -136,7 +137,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("portfolioId", ignoreCase = true) } == true)
     }
@@ -152,7 +153,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("from", ignoreCase = true) } == true)
     }
@@ -168,7 +169,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("to", ignoreCase = true) } == true)
     }
@@ -184,7 +185,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("from", ignoreCase = true) } == true)
     }
@@ -279,7 +280,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.NotFound, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("not_found", payload.error)
     }
 
@@ -297,7 +298,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.NotFound, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("not_found", payload.error)
     }
 
@@ -313,7 +314,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("internal", payload.error)
     }
 
@@ -329,7 +330,7 @@ class PortfolioValuationReportRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("internal", payload.error)
     }
 
@@ -343,6 +344,7 @@ class PortfolioValuationReportRoutesTest {
     }
 
     private fun Application.configureTestApp(services: PortfolioValuationReportServices) {
+        installErrorPages()
         install(ContentNegotiation) {
             json(json)
         }

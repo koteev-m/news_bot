@@ -1,0 +1,12 @@
+{
+  "paywall.title.A": "Откройте доступ к Pro",
+  "paywall.subtitle.A": "Умные алерты, быстрые данные, мощная аналитика",
+  "paywall.cta.A": "Перейти на Pro",
+  "paywall.title.B": "Pro — инвестируйте умнее",
+  "paywall.subtitle.B": "Всё, чтобы быть на шаг впереди",
+  "paywall.cta.B": "Начать с Pro",
+  "paywall.plan.PRO": "Pro",
+  "paywall.plan.PRO_PLUS": "Pro+",
+  "paywall.plan.VIP": "VIP",
+  "paywall.price.xtr": "{{xtr}} Stars / месяц"
+}

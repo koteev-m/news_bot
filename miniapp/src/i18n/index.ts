@@ -3,6 +3,8 @@ import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import enCommon from "../locales/en/common.json";
 import ruCommon from "../locales/ru/common.json";
+import enPaywall from "./paywall.en.json";
+import ruPaywall from "./paywall.ru.json";
 
 type SupportedLocale = "en" | "ru";
 
@@ -11,10 +13,10 @@ const FALLBACK_LOCALE: SupportedLocale = "en";
 
 const resources = {
   en: {
-    common: enCommon,
+    common: { ...enCommon, ...enPaywall },
   },
   ru: {
-    common: ruCommon,
+    common: { ...ruCommon, ...ruPaywall },
   },
 } as const;
 

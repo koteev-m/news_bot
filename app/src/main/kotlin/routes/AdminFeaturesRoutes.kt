@@ -47,6 +47,9 @@ fun Route.adminFeaturesRoutes() {
             } catch (_: SerializationException) {
                 call.respondBadRequest(listOf("invalid_json"))
                 return@patch
+            } catch (_: Exception) {
+                call.respondBadRequest(listOf("invalid_json"))
+                return@patch
             }
 
             val service: FeatureFlagsService = services.featureFlags

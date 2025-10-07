@@ -16,9 +16,11 @@ import referrals.ReferralsPort
 import routes.adminExperimentsRoutes
 import routes.adminSupportRoutes
 import routes.experimentsRoutes
+import pricing.PricingPortAdapter
+import pricing.PricingService
 import alerts.metrics.AlertMetricsPort
 import analytics.AnalyticsPort
-import errors.installStatusPages
+import errors.installErrorPages
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
 import billing.TgUpdate
@@ -70,6 +72,7 @@ import observability.installTracing
 import org.slf4j.LoggerFactory
 import repo.AnalyticsRepository
 import repo.BillingRepositoryImpl
+import repo.PricingRepository
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
 import routes.ChaosState
@@ -77,6 +80,7 @@ import routes.adminChaosRoutes
 import routes.adminFeaturesRoutes
 import routes.adminPrivacyRoutes
 import routes.authRoutes
+import routes.adminPricingRoutes
 import routes.billingRoutes
 import routes.portfolioImportRoutes
 import routes.portfolioPositionsTradesRoutes
@@ -85,6 +89,7 @@ import routes.portfolioValuationReportRoutes
 import routes.quotesRoutes
 import routes.redirectRoutes
 import routes.supportRoutes
+import routes.pricingRoutes
 import security.installSecurity
 import security.installUploadGuard
 import security.RateLimitConfig
@@ -106,7 +111,7 @@ fun Application.module() {
 
     installSecurity()
     installUploadGuard()
-    installStatusPages()
+    installErrorPages()
     installPortfolioModule()
     val newsConfig = loadNewsConfig()
     val analytics = AnalyticsRepository()
@@ -126,6 +131,8 @@ fun Application.module() {
     )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
     val supportRepository = SupportRepository()
+    val pricingRepository = PricingRepository()
+    val pricingService = PricingService(PricingPortAdapter(pricingRepository))
     val supportRateLimitConfig = RateLimitConfig(
         capacity = appConfig.propertyOrNull("support.rateLimit.capacity")?.getString()?.toIntOrNull() ?: 5,
         refillPerMinute = appConfig.propertyOrNull("support.rateLimit.refillPerMinute")?.getString()?.toIntOrNull() ?: 5
@@ -185,6 +192,7 @@ fun Application.module() {
         authRoutes(analytics)
         redirectRoutes(analytics, referrals, newsConfig.botDeepLinkBase, newsConfig.maxPayloadBytes)
         supportRoutes(supportRepository, services.analytics, supportRateLimiter)
+        pricingRoutes(experimentsService, pricingService, services.analytics)
         experimentsRoutes(experimentsService)
         quotesRoutes()
         demoRoutes()
@@ -244,6 +252,7 @@ fun Application.module() {
             adminFeaturesRoutes()
             adminChaosRoutes(chaosState, services.adminUserIds)
             adminPrivacyRoutes(privacy.service, services.adminUserIds)
+            adminPricingRoutes(pricingRepository, services.adminUserIds)
             adminSupportRoutes(supportRepository, services.adminUserIds)
         }
     }

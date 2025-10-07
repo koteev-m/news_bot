@@ -28,6 +28,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import errors.installErrorPages
 import portfolio.service.CsvImportService
 import routes.ImportByUrlRateLimiterHolder
 import routes.ImportByUrlSettings
@@ -104,7 +105,7 @@ class CsvSheetsImportRoutesTest {
             ),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("portfolioId", ignoreCase = true) } == true)
     }
@@ -123,7 +124,7 @@ class CsvSheetsImportRoutesTest {
             ),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("file part", ignoreCase = true) } == true)
     }
@@ -140,7 +141,7 @@ class CsvSheetsImportRoutesTest {
             parts = listOf(multipartFile("file", "image.png", "image/png", ByteArray(8) { 1 })),
         )
         assertEquals(HttpStatusCode.UnsupportedMediaType, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("unsupported_media_type", payload.error)
     }
 
@@ -165,7 +166,7 @@ class CsvSheetsImportRoutesTest {
             ),
         )
         assertEquals(HttpStatusCode.PayloadTooLarge, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("payload_too_large", payload.error)
         assertEquals(64, payload.limit)
     }
@@ -247,7 +248,7 @@ class CsvSheetsImportRoutesTest {
             body = """{"url":"http://example.com/data.csv"}""",
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
     }
 
@@ -263,7 +264,7 @@ class CsvSheetsImportRoutesTest {
             body = """{"url":"   "}""",
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
     }
 
@@ -281,7 +282,7 @@ class CsvSheetsImportRoutesTest {
             body = """{"url":"https://example.com/big.csv"}""",
         )
         assertEquals(HttpStatusCode.PayloadTooLarge, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("payload_too_large", payload.error)
         assertEquals(256, payload.limit)
     }
@@ -298,11 +299,12 @@ class CsvSheetsImportRoutesTest {
             parts = listOf(multipartFile("file", "trades.csv", "text/csv", "ext_id,datetime\n".toByteArray())),
         )
         assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("internal", payload.error)
     }
 
     private fun Application.configureTestApp(deps: PortfolioImportDeps) {
+        installErrorPages()
         install(ContentNegotiation) {
             json(json)
         }
