@@ -1,11 +1,10 @@
 package observability
 
 import io.ktor.server.application.Application
-import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.PipelineCall
 import io.ktor.server.application.call
 import io.ktor.server.request.httpMethod
-import io.ktor.server.request.origin
 import io.ktor.server.request.path
 import io.ktor.server.response.header
 import io.opentelemetry.api.GlobalOpenTelemetry
@@ -101,17 +100,16 @@ object Tracing {
 private val serviceNameKey: AttributeKey<String> = AttributeKey.stringKey("service.name")
 private val httpRequestMethodKey: AttributeKey<String> = AttributeKey.stringKey("http.request.method")
 private val urlPathKey: AttributeKey<String> = AttributeKey.stringKey("url.path")
-private val urlSchemeKey: AttributeKey<String> = AttributeKey.stringKey("url.scheme")
 private val httpResponseStatusKey: AttributeKey<Long> = AttributeKey.longKey("http.response.status_code")
 
-private object ApplicationCallGetter : TextMapGetter<ApplicationCall> {
-    override fun keys(carrier: ApplicationCall?): Iterable<String> = carrier?.request?.headers?.names() ?: emptyList()
+private object ApplicationCallGetter : TextMapGetter<PipelineCall> {
+    override fun keys(carrier: PipelineCall?): Iterable<String> = carrier?.request?.headers?.names() ?: emptyList()
 
-    override fun get(carrier: ApplicationCall?, key: String): String? = carrier?.request?.headers?.get(key)
+    override fun get(carrier: PipelineCall?, key: String): String? = carrier?.request?.headers?.get(key)
 }
 
-suspend fun PipelineContext<Unit, ApplicationCall>.withServerSpan(
-    block: suspend PipelineContext<Unit, ApplicationCall>.(Span) -> Unit = { proceed() }
+suspend fun PipelineContext<Unit, PipelineCall>.withServerSpan(
+    block: suspend PipelineContext<Unit, PipelineCall>.(Span) -> Unit = { proceed() }
 ) {
     val tracer = Tracing.tracer()
     val request = call.request
@@ -125,7 +123,6 @@ suspend fun PipelineContext<Unit, ApplicationCall>.withServerSpan(
         .setParent(parent)
         .setAttribute(httpRequestMethodKey, request.httpMethod.value)
         .setAttribute(urlPathKey, request.path())
-        .setAttribute(urlSchemeKey, request.origin.scheme)
         .startSpan()
     val scope: Scope = span.makeCurrent()
     val traceId = span.spanContext.traceId
@@ -152,9 +149,8 @@ suspend fun PipelineContext<Unit, ApplicationCall>.withServerSpan(
 
 fun Application.installTracing() {
     val cfg = Tracing.readConfig(this)
-    Tracing.initOpenTelemetry(cfg)
-    if (!cfg.enabled) {
-        return
+    if (cfg.enabled) {
+        Tracing.initOpenTelemetry(cfg)
     }
     intercept(ApplicationCallPipeline.Plugins) {
         withServerSpan()

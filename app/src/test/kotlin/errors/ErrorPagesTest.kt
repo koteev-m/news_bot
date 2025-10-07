@@ -5,8 +5,10 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.plugins.callid.CallId
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
@@ -24,8 +26,9 @@ class ErrorPagesTest {
     @Test
     fun `AppException is rendered with catalog message`() = testApplication {
         application {
+            install(ContentNegotiation) { json() }
             install(CallId) { retrieve { call -> call.request.headers[HttpHeaders.XRequestId] } }
-            installStatusPages()
+            installErrorPages()
             routing {
                 get("/bad-request") {
                     throw AppException.BadRequest(listOf("name is required"))
@@ -52,7 +55,8 @@ class ErrorPagesTest {
     @Test
     fun `rate limited errors append retry header`() = testApplication {
         application {
-            installStatusPages()
+            install(ContentNegotiation) { json() }
+            installErrorPages()
             routing {
                 get("/rate-limited") {
                     throw AppException.RateLimited(retryAfterSeconds = 60)
@@ -71,7 +75,8 @@ class ErrorPagesTest {
     @Test
     fun `unexpected errors fallback to internal`() = testApplication {
         application {
-            installStatusPages()
+            install(ContentNegotiation) { json() }
+            installErrorPages()
             routing {
                 get("/boom") {
                     error("boom")

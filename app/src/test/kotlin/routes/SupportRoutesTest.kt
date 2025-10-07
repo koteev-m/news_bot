@@ -21,6 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import errors.installErrorPages
 import repo.FaqItem
 import repo.SupportRepository
 import repo.SupportTicket
@@ -42,6 +43,7 @@ class SupportRoutesTest {
         val limiter = RateLimiter(RateLimitConfig(5, 5), Clock.systemUTC())
 
         application {
+            installErrorPages()
             install(ContentNegotiation) { json() }
             routing {
                 supportRoutes(repo, analytics, limiter)
@@ -60,6 +62,7 @@ class SupportRoutesTest {
         val limiter = RateLimiter(RateLimitConfig(capacity = 1, refillPerMinute = 1), Clock.fixed(Instant.EPOCH, java.time.ZoneOffset.UTC))
 
         application {
+            installErrorPages()
             install(ContentNegotiation) { json() }
             routing {
                 supportRoutes(repo, analytics, limiter)
@@ -89,6 +92,7 @@ class SupportRoutesTest {
         val limiter = RateLimiter(RateLimitConfig(5, 5), Clock.systemUTC())
 
         application {
+            installErrorPages()
             install(ContentNegotiation) { json() }
             routing {
                 supportRoutes(repo, analytics, limiter)

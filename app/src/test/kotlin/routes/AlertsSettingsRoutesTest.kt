@@ -37,6 +37,7 @@ import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import errors.installErrorPages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -137,6 +138,7 @@ class AlertsSettingsRoutesTest {
             val billingService = FakeBillingService(billingTier)
 
             application {
+                installErrorPages()
                 installSecurity()
                 attributes.put(
                     Services.Key,

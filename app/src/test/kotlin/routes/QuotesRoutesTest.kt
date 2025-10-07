@@ -18,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import errors.installErrorPages
 import portfolio.errors.DomainResult
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
@@ -41,7 +42,7 @@ class QuotesRoutesTest {
         val response = client.get("/api/quotes/closeOrLast")
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
+        val payload = HttpErrorResponse(response.bodyAsText())
         assertEquals("bad_request", payload.error)
         assertEquals(listOf("instrumentId invalid"), payload.details)
         assertTrue(fixture.provider.closeCalls.isEmpty())
@@ -55,7 +56,7 @@ class QuotesRoutesTest {
         val response = client.get("/api/quotes/closeOrLast?instrumentId=0")
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
+        val payload = HttpErrorResponse(response.bodyAsText())
         assertEquals("bad_request", payload.error)
         assertEquals(listOf("instrumentId invalid"), payload.details)
         assertTrue(fixture.provider.closeCalls.isEmpty())
@@ -69,7 +70,7 @@ class QuotesRoutesTest {
         val response = client.get("/api/quotes/closeOrLast?instrumentId=42&date=2024-02-30")
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
+        val payload = HttpErrorResponse(response.bodyAsText())
         assertEquals("bad_request", payload.error)
         assertEquals(listOf("date invalid"), payload.details)
         assertTrue(fixture.provider.closeCalls.isEmpty())
@@ -126,7 +127,7 @@ class QuotesRoutesTest {
         val response = client.get("/api/quotes/closeOrLast?instrumentId=99&date=2024-01-05")
 
         assertEquals(HttpStatusCode.NotFound, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
+        val payload = HttpErrorResponse(response.bodyAsText())
         assertEquals("not_found", payload.error)
         assertEquals("price_not_available", payload.reason)
     }
@@ -143,7 +144,7 @@ class QuotesRoutesTest {
         val response = client.get("/api/quotes/closeOrLast?instrumentId=21&date=2024-04-01")
 
         assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
+        val payload = HttpErrorResponse(response.bodyAsText())
         assertEquals("internal", payload.error)
     }
 
@@ -159,12 +160,13 @@ class QuotesRoutesTest {
         val response = client.get("/api/quotes/closeOrLast?instrumentId=34&date=2024-05-20")
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.bodyAsText())
+        val payload = HttpErrorResponse(response.bodyAsText())
         assertEquals("bad_request", payload.error)
         assertEquals(listOf("instrument invalid"), payload.details)
     }
 
     private fun Application.configureTestApp(pricingService: PricingService) {
+        installErrorPages()
         install(ContentNegotiation) {
             json(json)
         }

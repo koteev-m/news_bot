@@ -122,6 +122,27 @@ I_UNDERSTAND=1 APP_PROFILE=staging \
 bash tools/db/restore.sh --dump backups/20250101_023000/db.dump --target-url postgres://user:pass@host:5432/db
 ```
 
+## P51 — Paywall & pricing experiments
+
+- `GET /api/pricing/offers` — выдаёт варианты копирайта и цен согласно активным экспериментам.
+- Admin upserts:
+  ```bash
+  curl -s -X POST -H "Authorization: Bearer $JWT" -H "content-type: application/json" \
+    -d '{ "key":"price_bundle","variant":"B","tier":"PRO","priceXtr":900 }' \
+    "$BASE/api/admin/pricing/override" -i
+  ```
+- Mini App: страница Paywall рендерит офферы по `copyVariant`/`priceVariant`, отправляет `paywall_cta_click`, RU/EN тексты в `miniapp/src/i18n/paywall.*.json`.
+
+### Mini App — install
+Используйте `pnpm`:
+```bash
+corepack enable
+corepack prepare pnpm@latest --activate
+pnpm install
+```
+
+`npm install` не поддерживается в этом проекте и может падать из-за несовместимых lock-файлов.
+
 - Полный план: [docs/DR_PLAN.md](docs/DR_PLAN.md).
 - Ночной CI-бэкап: [.github/workflows/db-backup.yml](.github/workflows/db-backup.yml) — артефакты доступны 7 дней на странице Actions (Releases → Artifacts).
 - Скрипты `tools/db/backup.sh` и `tools/db/restore.sh` с защитой `APP_PROFILE=prod` предназначены для локальных/staging работ.

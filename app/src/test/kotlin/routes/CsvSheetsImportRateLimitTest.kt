@@ -32,8 +32,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import errors.installErrorPages
 import portfolio.service.CsvImportService
 import routes.ImportByUrlRateLimiterHolder
 import routes.PortfolioImportDeps
@@ -85,8 +84,8 @@ class CsvSheetsImportRateLimitTest {
         }
 
         assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
-        val payload = json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertEquals("by_url_disabled", payload["error"]?.jsonPrimitive?.content)
+        val payload = HttpErrorResponse(response.bodyAsText())
+        assertEquals("import_by_url_disabled", payload.error)
     }
 
     @Test
@@ -128,8 +127,8 @@ class CsvSheetsImportRateLimitTest {
         val retryHeader = third.headers[HttpHeaders.RetryAfter]
         assertNotNull(retryHeader)
         assertTrue(retryHeader.toLong() >= 1)
-        val limitedPayload = json.parseToJsonElement(third.bodyAsText()).jsonObject
-        assertEquals("rate_limited", limitedPayload["error"]?.jsonPrimitive?.content)
+        val limitedPayload = HttpErrorResponse(third.bodyAsText())
+        assertEquals("rate_limited", limitedPayload.error)
 
         clock.advance(Duration.ofSeconds(30))
 
@@ -159,6 +158,7 @@ class CsvSheetsImportRateLimitTest {
     }
 
     private fun Application.configureTestApp(deps: PortfolioImportDeps, clock: MutableClock) {
+        installErrorPages()
         install(ContentNegotiation) {
             json(json)
         }

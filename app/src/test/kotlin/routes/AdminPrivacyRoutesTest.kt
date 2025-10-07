@@ -24,6 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import errors.installErrorPages
 import privacy.ErasureReport
 import privacy.PrivacyService
 import privacy.RetentionReport
@@ -99,6 +100,7 @@ class AdminPrivacyRoutesTest {
 
     private fun ApplicationTestBuilder.configure(service: PrivacyService) {
         application {
+            installErrorPages()
             install(ContentNegotiation) { json() }
             install(io.ktor.server.auth.Authentication) {
                 jwt("auth-jwt") {

@@ -3,6 +3,7 @@ package routes
 import db.DatabaseFactory
 import di.portfolioModule
 import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.Serializable
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
@@ -31,6 +32,13 @@ import security.userIdOrNull
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
 
+@Serializable
+data class ApiErrorResponse(
+    val error: String,
+    val message: String,
+    val details: List<ValidationError> = emptyList()
+)
+
 fun Route.portfolioRoutes() {
     route("/api/portfolio") {
         get {
@@ -47,7 +55,7 @@ fun Route.portfolioRoutes() {
             val request = try {
                 call.receive<CreatePortfolioRequest>()
             } catch (_: Throwable) {
-                call.respondBadRequest(listOf(ValidationError(field = "body", message = "Invalid JSON payload")))
+                call.respondBadRequest(listOf("Invalid JSON payload"))
                 return@post
             }
 

@@ -1,0 +1,12 @@
+{
+  "paywall.title.A": "Unlock Pro benefits",
+  "paywall.subtitle.A": "Smarter alerts, faster data, powerful analytics",
+  "paywall.cta.A": "Upgrade now",
+  "paywall.title.B": "Go Pro — invest smarter",
+  "paywall.subtitle.B": "Everything you need to stay ahead",
+  "paywall.cta.B": "Start your Pro journey",
+  "paywall.plan.PRO": "Pro",
+  "paywall.plan.PRO_PLUS": "Pro+",
+  "paywall.plan.VIP": "VIP",
+  "paywall.price.xtr": "{{xtr}} Stars / month"
+}

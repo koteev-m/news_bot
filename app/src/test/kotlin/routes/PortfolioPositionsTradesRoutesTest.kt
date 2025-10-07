@@ -27,6 +27,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import errors.installErrorPages
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
 import portfolio.model.Money
@@ -79,7 +80,7 @@ class PortfolioPositionsTradesRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("bad_request", payload.error)
         assertTrue(payload.details?.any { it.contains("portfolioId", ignoreCase = true) } == true)
     }
@@ -100,7 +101,7 @@ class PortfolioPositionsTradesRoutesTest {
 
         val reversed = request("/api/portfolio/$portfolioId/trades?from=2024-05-10&to=2024-05-01")
         assertEquals(HttpStatusCode.BadRequest, reversed.status)
-        val reversedPayload = json.decodeFromString<HttpErrorResponse>(reversed.body)
+        val reversedPayload = HttpErrorResponse(reversed.body)
         assertTrue(reversedPayload.details?.any { it.contains("from must be on or before to") } == true)
 
         assertEquals(HttpStatusCode.BadRequest, request("/api/portfolio/$portfolioId/trades?side=HOLD").status)
@@ -202,7 +203,7 @@ class PortfolioPositionsTradesRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.NotFound, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("not_found", payload.error)
         assertEquals("No portfolio", payload.reason)
     }
@@ -220,11 +221,12 @@ class PortfolioPositionsTradesRoutesTest {
             headers = authHeader(token),
         )
         assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val payload = json.decodeFromString<HttpErrorResponse>(response.body)
+        val payload = HttpErrorResponse(response.body)
         assertEquals("internal", payload.error)
     }
 
     private fun Application.configureTestApp(deps: PortfolioPositionsTradesDeps) {
+        installErrorPages()
         install(ContentNegotiation) {
             json(
                 Json {
