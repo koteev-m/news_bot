@@ -2,6 +2,7 @@ package observability
 
 import io.ktor.http.HttpHeaders
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.application.install
@@ -10,16 +11,19 @@ import io.ktor.server.plugins.callid.CallId
 import io.ktor.server.plugins.callid.callId
 import io.ktor.server.plugins.callid.callIdMdc
 import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.request.header
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.util.AttributeKey
+import io.ktor.util.Attributes
 import io.micrometer.core.instrument.config.MeterFilter
 import io.micrometer.prometheus.PrometheusConfig
 import io.micrometer.prometheus.PrometheusMeterRegistry
 import java.util.UUID
+import kotlinx.coroutines.withContext
 import org.slf4j.event.Level
 
 object Observability {
@@ -32,9 +36,9 @@ object Observability {
         })
 
         app.install(CallId) {
-            retrieve { call -> call.request.headers[HttpHeaders.XRequestId] }
-            retrieve { call -> call.request.headers["traceparent"] }
-            generate { generateCallId() }
+            header(HttpHeaders.XRequestId)
+            header("traceparent")
+            generate { UUID.randomUUID().toString() }
             verify { it.length in 8..64 }
         }
 
@@ -42,7 +46,7 @@ object Observability {
             level = Level.INFO
             callIdMdc("requestId")
             mdc("traceId") { call ->
-                if (call.attributes.contains(traceIdKey)) call.attributes[traceIdKey] else null
+                call.attributes.getOrNull(traceIdKey)
             }
             filter { call ->
                 call.request.path().startsWith("/metrics").not()
@@ -60,26 +64,19 @@ object Observability {
             registry = prometheus
         }
 
-        app.intercept(ApplicationCallPipeline.Setup) {
-            val traceParent = call.request.headers["traceparent"]
-            val traceId = traceParent?.let { parseTraceParent(it) }
-            if (traceId != null) {
-                call.attributes.put(traceIdKey, traceId)
+        app.intercept(ApplicationCallPipeline.Plugins) {
+            val traceId = resolveTraceId(call)
+            call.attributes.put(traceIdKey, traceId)
+            withContext(TraceContext(traceId)) {
+                proceed()
             }
         }
 
-        app.intercept(ApplicationCallPipeline.Call) {
-            if (!call.attributes.contains(traceIdKey)) {
-                call.callId?.let { call.attributes.put(traceIdKey, it) }
-            }
-            proceed()
-            call.callId?.let { requestId ->
-                call.response.headers.append(HttpHeaders.XRequestId, requestId)
-            }
-            if (call.attributes.contains(traceIdKey)) {
-                val traceId = call.attributes[traceIdKey]
-                call.response.headers.append("Trace-Id", traceId)
-            }
+        app.sendPipeline.intercept(io.ktor.server.application.ApplicationSendPipeline.Before) {
+            val requestId = call.callId ?: call.attributes.getOrNull(traceIdKey)
+            val traceId = call.attributes.getOrNull(traceIdKey) ?: requestId
+            requestId?.let { call.response.headers.append(HttpHeaders.XRequestId, it, safeOnly = false) }
+            traceId?.let { call.response.headers.append("Trace-Id", it, safeOnly = false) }
         }
 
         app.routing {
@@ -91,6 +88,13 @@ object Observability {
         return prometheus
     }
 
+    private fun resolveTraceId(call: ApplicationCall): String {
+        val callId = call.callId
+        val traceHeader = call.request.header("Trace-Id")?.takeIf { it.isNotBlank() }
+        val traceParentId = call.request.header("traceparent")?.let { parseTraceParent(it) }
+        return callId ?: traceHeader ?: traceParentId ?: UUID.randomUUID().toString()
+    }
+
     private fun parseTraceParent(value: String): String? {
         val parts = value.split('-')
         if (parts.size < 3) {
@@ -99,6 +103,6 @@ object Observability {
         val traceId = parts[1]
         return traceId.takeIf { it.length in 8..64 }
     }
-
-    private fun generateCallId(): String = UUID.randomUUID().toString().replace("-", "")
 }
+
+private fun <T : Any> Attributes.getOrNull(key: AttributeKey<T>): T? = if (contains(key)) get(key) else null

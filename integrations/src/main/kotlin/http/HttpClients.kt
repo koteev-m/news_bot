@@ -135,6 +135,8 @@ object HttpClients {
                 computeDelayMillis(this, attempt, retryCfg, metrics, clock)
             }
         }
+
+        install(TracePropagation)
     }
 
     internal fun registerRetryMonitor(client: HttpClient, metrics: IntegrationsMetrics) {

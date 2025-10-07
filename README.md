@@ -190,6 +190,18 @@ curl -I "$BASE/go/news?utm_source=channel&utm_medium=cta&utm_campaign=oct&ref=R7
 
 - Сервер мапит исключения в `AppException` + `StatusPages`, клиент (Mini App) локализует сообщения из `miniapp/src/i18n/errors.*.json` и форматирует детали через `miniapp/src/lib/errorMessages.ts`.
 
+## P48 — Trace IDs end-to-end
+
+- Nginx проставляет `X-Request-Id` и прокидывает в Ktor.
+- Ktor добавляет `X-Request-Id`/`Trace-Id` в ответы и прокидывает идентификатор в корутины (`TraceContext`) и MDC.
+- Интеграционные клиенты автоматически пересылают `X-Request-Id`/`Trace-Id` в исходящие запросы.
+- k6 пример: `deploy/load/k6/with_request_id.js`.
+
+Проверка:
+```bash
+curl -sI -H 'X-Request-Id: test-123' $BASE/healthz
+```
+
 ## P40 — Go-Live gates & post-deploy
 
 ```bash
