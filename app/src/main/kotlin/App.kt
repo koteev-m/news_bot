@@ -66,6 +66,7 @@ import observability.WebhookMetrics
 import observability.adapters.AlertMetricsAdapter
 import observability.adapters.NewsMetricsAdapter
 import observability.installMdcTrace
+import observability.installTracing
 import org.slf4j.LoggerFactory
 import repo.AnalyticsRepository
 import repo.BillingRepositoryImpl
@@ -98,6 +99,7 @@ private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
 fun Application.module() {
     val prometheusRegistry = Observability.install(this)
     installMdcTrace()
+    installTracing()
     val metrics = DomainMetrics(prometheusRegistry)
     val webhookMetrics = WebhookMetrics.create(prometheusRegistry)
     val appConfig = environment.config
