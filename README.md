@@ -860,3 +860,14 @@ node tools/synthetics/report_to_junit.js synthetics_report.json synthetics_junit
 - Настройка профилей для UptimeRobot/Pingdom описана в [docs/SYNTHETICS_UPTIME.md](docs/SYNTHETICS_UPTIME.md).
 - Минимальные проверки: `GET /healthz`, `GET /health/db`, `GET /api/quotes/closeOrLast?...`, `POST /telegram/webhook` с `X-Telegram-Bot-Api-Secret-Token`.
 - Любой обязательный чек ≠200 или более одного сбоя из четырёх сигнализирует on-call.
+
+## P50 — OpenTelemetry traces (OTLP → Tempo/Jaeger)
+
+- Включение / Enablement: `TRACING_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317`, `OTEL_SERVICE_NAME=newsbot-app`.
+- Серверные и клиентские спаны с W3C tracecontext+baggage; просмотр в Tempo (порт 3200) или Jaeger (если используется OTLP).
+
+Tests:
+```bash
+./gradlew :app:test --tests "observability.TracingInMemoryTest"
+./gradlew :integrations:test --tests "http.ClientTracingPropagatesTest"
+```

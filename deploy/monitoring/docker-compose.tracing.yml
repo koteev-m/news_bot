@@ -1,0 +1,30 @@
+version: "3.9"
+
+networks:
+  compose_default:
+    external: true
+
+services:
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: tempo
+    command: [ "-config.file=/etc/tempo/config.yaml" ]
+    volumes:
+      - ./tempo/config.yaml:/etc/tempo/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "3200:3200"
+    networks: [compose_default]
+
+  grafana:
+    image: grafana/grafana:10.4.4
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+    networks: [compose_default]
+    volumes:
+      - ./grafana/provisioning/datasources/tempo.yml:/etc/grafana/provisioning/datasources/tempo.yml:ro

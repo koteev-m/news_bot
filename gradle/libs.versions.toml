@@ -18,6 +18,8 @@ logstashEncoder = "7.4"
 ktlintGradle = "12.1.0"
 detekt = "1.23.6"
 pengrad = "9.2.0"
+otel = "1.40.0"
+otelAlpha = "1.40.0-alpha"
 
 
 [libraries]
@@ -62,6 +64,14 @@ testcontainers-junit = { module = "org.testcontainers:junit-jupiter" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 logback-logstash = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashEncoder" }
 pengrad-bot = { module = "com.github.pengrad:java-telegram-bot-api", version.ref = "pengrad" }
+opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api", version.ref = "otel" }
+opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk", version.ref = "otel" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp", version.ref = "otel" }
+opentelemetry-semconv = { module = "io.opentelemetry.semconv:opentelemetry-semconv", version.ref = "otelAlpha" }
+opentelemetry-context = { module = "io.opentelemetry:opentelemetry-context", version.ref = "otel" }
+
+# test
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing", version.ref = "otel" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

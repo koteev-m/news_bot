@@ -21,6 +21,10 @@ dependencies {
     implementation(libs.micrometer.registry.prometheus)
     implementation(libs.java.jwt)
     implementation(libs.logback.logstash)
+    implementation(libs.opentelemetry.api)
+    implementation(libs.opentelemetry.sdk)
+    implementation(libs.opentelemetry.exporter.otlp)
+    implementation(libs.opentelemetry.context)
     implementation(project(":core"))
     implementation(project(":storage"))
     implementation(project(":integrations"))
@@ -38,6 +42,7 @@ dependencies {
     testImplementation("io.ktor:ktor-client-mock:$ktorVersion")
     testImplementation("org.junit.platform:junit-platform-suite:1.11.3")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")
+    testImplementation(libs.opentelemetry.sdk.testing)
 }
 
 application {

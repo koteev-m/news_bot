@@ -136,6 +136,7 @@ object HttpClients {
             }
         }
 
+        install(ClientTracing)
         install(TracePropagation)
     }
 

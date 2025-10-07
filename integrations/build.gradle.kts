@@ -25,6 +25,8 @@ dependencies {
     implementation("io.ktor:ktor-client-encoding:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation(libs.serialization.json)
+    implementation(libs.opentelemetry.api)
+    implementation(libs.opentelemetry.context)
     api(libs.micrometer.core)
     api("io.micrometer:micrometer-registry-prometheus:$micrometerVersion")
 
@@ -35,4 +37,6 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
     testImplementation(libs.micrometer.core)
+    testImplementation(libs.opentelemetry.sdk)
+    testImplementation(libs.opentelemetry.sdk.testing)
 }
