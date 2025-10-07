@@ -202,6 +202,21 @@ curl -I "$BASE/go/news?utm_source=channel&utm_medium=cta&utm_campaign=oct&ref=R7
 curl -sI -H 'X-Request-Id: test-123' $BASE/healthz
 ```
 
+## P49 — Structured logging (JSON) & shipping
+
+- Приложение печатает JSON-логи (Logback + logstash-encoder), поле `traceId` берётся из MDC (`requestId`).
+- Nginx пишет JSON access-log и прокидывает `X-Request-Id`/`Trace-Id` в upstream.
+- Мониторинг Loki/Promtail можно поднять из `deploy/monitoring/`.
+
+Примеры:
+```bash
+# локально посмотреть заголовки с trace id
+curl -sI -H 'X-Request-Id: test-123' $BASE/healthz
+
+# в Grafana Loki искать по request id
+{job="app"} |= "test-123"
+```
+
 ## P40 — Go-Live gates & post-deploy
 
 ```bash

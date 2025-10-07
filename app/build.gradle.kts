@@ -20,6 +20,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation(libs.micrometer.registry.prometheus)
     implementation(libs.java.jwt)
+    implementation(libs.logback.logstash)
     implementation(project(":core"))
     implementation(project(":storage"))
     implementation(project(":integrations"))
