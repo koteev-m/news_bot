@@ -12,15 +12,8 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.rules.yml:/etc/prometheus/alerts.rules.yml:ro
       - ./prometheus/costs.rules.yml:/etc/prometheus/costs.rules.yml:ro
-    command: ["--config.file=/etc/prometheus/prometheus.yml"]
-    ports:
-      - "9090:9090"
+    ports: ["9090:9090"]
     networks: [compose_default]
-    healthcheck:
-      test: ["CMD-SHELL","wget -qO- http://127.0.0.1:9090/-/healthy || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
 
   grafana:
     image: grafana/grafana:10.4.4
@@ -30,31 +23,22 @@ services:
     volumes:
       - ./grafana/provisioning/datasources/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
       - ./grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
-      - ./grafana/dashboards/cost-observability.json:/etc/grafana/provisioning/dashboards/cost-observability.json:ro
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
     networks: [compose_default]
 
-  alertmanager:
-    image: prom/alertmanager:v0.27.0
-    container_name: alertmanager
-    volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-    ports:
-      - "9093:9093"
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports: ["3100:3100"]
     networks: [compose_default]
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.2
-    container_name: cadvisor
-    privileged: true
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: promtail
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    ports:
-      - "8082:8080"
+      - ./promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yml
     networks: [compose_default]
