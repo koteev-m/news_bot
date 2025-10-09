@@ -78,6 +78,16 @@ bash tools/db/up_db_only.sh
 
 > Примечание: обычный `./gradlew build` не обращается к БД; миграции выполняются только через охраняемую задачу `flywayMigrateIfDb`.
 
+## P52 — API contract & docs
+
+- Контракт: `docs/api/openapi.yaml`
+- Документация: `GET /docs/api` (ReDoc)
+- CI: workflow **API Contract** → lint + diff (no-breaking). Чтобы запустить локально:
+  ```bash
+  npm i -g @redocly/cli@1.16.0
+  redocly lint docs/api/openapi.yaml
+  ```
+
 ### Integrations tests — updated for P27
 
 Тесты модуля `:integrations` используют фикстуры `http/TestHttpFixtures.kt`:

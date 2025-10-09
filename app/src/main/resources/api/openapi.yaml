@@ -1,0 +1,211 @@
+openapi: 3.0.3
+info:
+  title: NewsBot API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+paths:
+  /health/db:
+    get:
+      summary: DB health
+      responses:
+        '200': { description: OK }
+  /api/auth/telegram/verify:
+    post:
+      summary: Verify Telegram WebApp initData and issue JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [initData]
+              properties: { initData: { type: string } }
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expiresAt]
+                properties:
+                  token: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  user:
+                    type: object
+                    properties: { id: { type: integer, format: int64 } }
+        '400': { $ref: '#/components/responses/ApiError' }
+        '401': { $ref: '#/components/responses/ApiError' }
+  /api/portfolio:
+    get:
+      summary: List portfolios
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: Portfolios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, baseCurrency, valuationMethod]
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+                    baseCurrency: { type: string }
+                    valuationMethod: { type: string, enum: [FIFO, AVERAGE] }
+        '401': { $ref: '#/components/responses/ApiError' }
+    post:
+      summary: Create portfolio
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, baseCurrency]
+              properties:
+                name: { type: string }
+                baseCurrency: { type: string }
+                valuationMethod: { type: string, enum: [FIFO, AVERAGE] }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties: { id: { type: string, format: uuid } }
+        '400': { $ref: '#/components/responses/ApiError' }
+        '401': { $ref: '#/components/responses/ApiError' }
+        '409': { $ref: '#/components/responses/ApiError' }
+  /api/portfolio/{id}/trades/import/csv:
+    post:
+      summary: Import trades from CSV
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Import report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inserted, skippedDuplicates, failed]
+                properties:
+                  inserted: { type: integer }
+                  skippedDuplicates: { type: integer }
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      required: [line, error]
+                      properties:
+                        line: { type: integer }
+                        error: { type: string }
+        '400': { $ref: '#/components/responses/ApiError' }
+        '401': { $ref: '#/components/responses/ApiError' }
+        '413': { $ref: '#/components/responses/ApiError' }
+        '415': { $ref: '#/components/responses/ApiError' }
+  /api/quotes/closeOrLast:
+    get:
+      summary: Return close or last price
+      parameters:
+        - in: query
+          name: instrumentId
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Price
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [amount, ccy]
+                properties:
+                  amount: { type: string, description: "decimal string" }
+                  ccy: { type: string }
+        '400': { $ref: '#/components/responses/ApiError' }
+        '404': { $ref: '#/components/responses/ApiError' }
+  /api/billing/stars/invoice:
+    post:
+      summary: Create invoice link (Stars)
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tier]
+              properties:
+                tier: { type: string, enum: [FREE, PRO, PRO_PLUS, VIP] }
+      responses:
+        '201':
+          description: Invoice link
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invoiceLink]
+                properties:
+                  invoiceLink: { type: string }
+        '400': { $ref: '#/components/responses/ApiError' }
+        '401': { $ref: '#/components/responses/ApiError' }
+  /api/alerts/settings:
+    get:
+      summary: Read effective alerts settings
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: Settings
+          content:
+            application/json:
+              schema:
+                type: object
+        '401': { $ref: '#/components/responses/ApiError' }
+        '403': { $ref: '#/components/responses/ApiError' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    ApiError:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details:
+          type: array
+          items: { type: string }
+        traceId: { type: string }

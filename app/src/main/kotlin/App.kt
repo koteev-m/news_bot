@@ -7,6 +7,7 @@ import chaos.ChaosConfig
 import chaos.ChaosMetrics
 import chaos.maybeInjectChaos
 import com.typesafe.config.ConfigFactory
+import docs.apiDocsRoutes
 import news.config.NewsConfig
 import news.config.NewsDefaults
 import repo.ExperimentsRepository
@@ -188,6 +189,7 @@ fun Application.module() {
     }
 
     routing {
+        apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)
         redirectRoutes(analytics, referrals, newsConfig.botDeepLinkBase, newsConfig.maxPayloadBytes)
