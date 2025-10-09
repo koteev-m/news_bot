@@ -1,0 +1,64 @@
+name: Promote RC → GA (100%)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., v1.3.0)"
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  deployments: write
+
+env:
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+  APP_PROFILE: production
+  BASE_URL: ${{ secrets.PROD_BASE_URL }}
+  PROM_URL: ${{ secrets.PROD_PROM_URL }}
+  WEBHOOK_SECRET: ${{ secrets.PROD_WEBHOOK_SECRET }}
+  TG_USER_ID: ${{ secrets.PROD_TG_USER_ID }}
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ env.BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, lfs: true }
+
+      - name: Docker login
+        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Pull RC image and tag as GA
+        env: { VERSION: ${{ inputs.version }} }
+        run: |
+          docker pull "${REGISTRY_IMAGE}:${VERSION}"
+          docker tag "${REGISTRY_IMAGE}:${VERSION}" "${REGISTRY_IMAGE}:latest"
+          docker push "${REGISTRY_IMAGE}:latest"
+
+      - name: Switch traffic 100% → GREEN (promote)
+        run: bash tools/release/promote.sh
+
+      - name: Post-deploy verify (production)
+        run: |
+          bash tools/release/postdeploy_verify.sh | tee verify_ga.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload verify artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ga-verify-${{ inputs.version }}
+          path: verify_ga.txt
