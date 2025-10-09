@@ -953,3 +953,14 @@ Tests:
 ./gradlew :app:test --tests "observability.TracingInMemoryTest"
 ./gradlew :integrations:test --tests "http.ClientTracingPropagatesTest"
 ```
+
+## P56 — Security gates (CodeQL + Dependabot + Trivy)
+
+- **SAST**: CodeQL — `.github/workflows/codeql.yml` (Kotlin/Java + JS/TS).
+- **SCA**: Dependabot — `.github/dependabot.yml` (Gradle/npm/GA/Docker).
+- **Image & FS scan**: Trivy — `.github/workflows/trivy.yml` (FS/Image/Config → SARIF).
+
+Локально:
+```bash
+bash tools/security/trivy_local.sh
+```
