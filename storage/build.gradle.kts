@@ -53,7 +53,7 @@ dependencies {
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.flyway.postgresql)
     testImplementation(libs.coroutines.core)
-    testImplementation("com.h2database:h2:2.2.224")
+    testImplementation("com.h2database:h2:2.4.240")
     testRuntimeOnly(libs.logback.classic)
 }
 
