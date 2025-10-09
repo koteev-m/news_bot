@@ -26,7 +26,6 @@ jobs:
             detect
             --redact
             --verbose
-            --exit-code 0
             --config .gitleaks.toml
             --report-format sarif
             --report-path gitleaks.sarif
