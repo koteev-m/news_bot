@@ -1,0 +1,45 @@
+name: Sentry Sourcemaps
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release version (e.g., 2025.10.11)"
+        required: true
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    if: ${{ secrets.SENTRY_AUTH_TOKEN && secrets.SENTRY_ORG && secrets.SENTRY_PROJECT }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Enable corepack & pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
+      - name: Build with sourcemaps
+        working-directory: miniapp
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build:with-sourcemaps
+
+      - name: Upload sourcemaps
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        with:
+          environment: production
+          version: ${{ github.event.inputs.release || github.ref_name }}
+          sourcemaps: "miniapp/dist"
+          set_commits: "auto"

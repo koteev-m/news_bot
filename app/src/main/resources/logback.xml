@@ -1,6 +1,4 @@
 <configuration>
-  <timestamp key="bySecond" datePattern="yyyy-MM-dd'T'HH:mm:ss.SSSX" />
-
   <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
     <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
       <providers>
@@ -11,12 +9,12 @@
         <pattern>
           <pattern>
             {
-              "level": "%level",
-              "logger": "%logger{36}",
-              "thread": "%thread",
-              "traceId": "%X{requestId}",
-              "message": "%replace(%msg){'(?i)\\b(bearer\\s+[A-Za-z0-9._-]+|x-telegram-bot-api-secret-token:[^,\\s]+|initData=[^&\\s]+|token=[A-Za-z0-9:_-]{20,})','***'}",
-              "exception": "%replace(%ex){'\\r\\n','  '}"
+              "level":"%level",
+              "logger":"%logger{36}",
+              "thread":"%thread",
+              "traceId":"%X{requestId}",
+              "message":"%replace(%msg){'(?i)\\b(bearer\\s+[A-Za-z0-9._-]+|x-telegram-bot-api-secret-token:[^,\\s]+|initData=[^&\\s]+|token=[A-Za-z0-9:_-]{20,})','***'}",
+              "exception":"%replace(%ex){'\\r\\n','  '}"
             }
           </pattern>
         </pattern>
@@ -25,10 +23,17 @@
     </encoder>
   </appender>
 
+  <appender name="SENTRY" class="io.sentry.logback.SentryAppender">
+    <enabled>true</enabled>
+    <minimumEventLevel>ERROR</minimumEventLevel>
+    <minimumBreadcrumbLevel>WARN</minimumBreadcrumbLevel>
+  </appender>
+
   <logger name="io.micrometer" level="WARN"/>
   <logger name="org.flywaydb" level="INFO"/>
 
   <root level="INFO">
     <appender-ref ref="JSON"/>
+    <appender-ref ref="SENTRY"/>
   </root>
 </configuration>

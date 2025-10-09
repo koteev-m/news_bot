@@ -26,6 +26,8 @@ dependencies {
     implementation(libs.opentelemetry.sdk)
     implementation(libs.opentelemetry.exporter.otlp)
     implementation(libs.opentelemetry.context)
+    implementation(libs.sentry.core)
+    implementation(libs.sentry.logback)
     implementation(project(":core"))
     implementation(project(":storage"))
     implementation(project(":integrations"))
