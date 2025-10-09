@@ -1,3 +1,4 @@
+import { initSentry } from "./sentry";
 import "./i18n";
 import "./styles.css";
 import "./styles.a11y.css";
@@ -13,6 +14,8 @@ import { getInitData, getInitDataUnsafe, getWebApp, ready, expand } from "./lib/
 import type { InitDataUnsafe } from "./lib/telegram";
 import { loadUIPreferences } from "./lib/session";
 import type { ThemeMode } from "./lib/session";
+
+initSentry();
 
 getInitialLocaleValue();
 

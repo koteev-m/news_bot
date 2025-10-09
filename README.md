@@ -100,6 +100,30 @@ bash tools/db/up_db_only.sh
   ```
 - CI workflow: `.github/workflows/frontend-quality.yml` — выполняется на PR, выкладывает артефакты LHCI.
 
+## P54 — Error tracking & release health
+
+### Backend
+- ENV:
+  ```bash
+  export SENTRY_DSN=<dsn>
+  export SENTRY_ENV=staging
+  export SENTRY_RELEASE=2025.10.11
+  ```
+- Включено через `installSentry()` и `SentryAppender` (`logback.xml`).
+
+### Frontend (Mini App)
+- Добавьте в `miniapp/.env`:
+
+  ```env
+  VITE_SENTRY_DSN=...
+  VITE_SENTRY_ENV=staging
+  VITE_SENTRY_RELEASE=2025.10.11
+  ```
+
+- Соберите `pnpm build` (или `build:with-sourcemaps`) и, при наличии секретов, загрузите source maps через workflow **Sentry Sourcemaps**.
+
+PII не отправляются, traceId/RequestId привязаны к событиям для корреляции с логами и трассами.
+
 ### Integrations tests — updated for P27
 
 Тесты модуля `:integrations` используют фикстуры `http/TestHttpFixtures.kt`:
