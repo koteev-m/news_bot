@@ -20,7 +20,7 @@ detekt = "1.23.6"
 pengrad = "9.2.0"
 otel = "1.40.0"
 otelAlpha = "1.40.0-alpha"
-sentry = "7.13.0"
+sentry = "8.23.0"
 
 
 [libraries]
