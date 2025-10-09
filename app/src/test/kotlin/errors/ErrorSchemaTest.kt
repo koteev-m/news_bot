@@ -2,6 +2,7 @@ package errors
 
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
