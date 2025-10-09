@@ -1,0 +1,67 @@
+image:
+  repository: ghcr.io/ORG/REPO
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: "300m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+env:
+  APP_PROFILE: "staging"
+  TELEGRAM_CHANNEL_ID: "-1000000000000"
+  # остальные небезопасные переменные
+  MOEX_BASE_URL: "https://iss.moex.com"
+  COINGECKO_API_BASE: "https://api.coingecko.com"
+  CBR_XML_URL: "https://www.cbr.ru/scripts/XML_daily.asp"
+
+secretEnv:
+  TELEGRAM_BOT_TOKEN: ""
+  TELEGRAM_WEBHOOK_SECRET: ""
+  JWT_SECRET_PRIMARY: ""
+  JWT_SECRET_SECONDARY: ""
+  DATABASE_URL: ""
+  DATABASE_USER: ""
+  DATABASE_PASS: ""
+  SENTRY_DSN: ""
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: "newsbot.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: newsbot-tls
+      hosts: ["newsbot.example.com"]
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/path: /metrics
+  prometheus.io/port: "8080"
+
+extraVolumes: []
+extraVolumeMounts: []

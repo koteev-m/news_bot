@@ -1,0 +1,29 @@
+name: Deploy Prod (Helm)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (e.g., latest)"
+        required: true
+        default: "latest"
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install newsbot helm/newsbot \
+            --namespace newsbot-prod --create-namespace \
+            --set image.tag=${{ inputs.image_tag }} \
+            --values helm/newsbot/values.yaml
