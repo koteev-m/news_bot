@@ -964,3 +964,27 @@ Tests:
 ```bash
 bash tools/security/trivy_local.sh
 ```
+
+## P57 — Secrets hygiene (Gitleaks) & Commit policy
+
+### Secrets
+- CI: `.github/workflows/gitleaks.yml` (SARIF → Code scanning).
+- Local scan:
+  ```bash
+  bash tools/security/gitleaks_local.sh
+  ```
+
+### Commit policy
+- Conventional Commits enforced via `tools/git-hooks/commit-msg`.
+- Install hooks:
+  ```bash
+  ./gradlew installGitHooks
+  ```
+- Pre-commit runs conflict check, gitleaks (staged), and fast ktlint/detekt.
+
+Examples:
+
+```
+feat(miniapp): add paywall page with A/B copy
+fix(alerts): handle cooldown hysteresis properly
+```

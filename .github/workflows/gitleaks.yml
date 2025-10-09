@@ -1,0 +1,38 @@
+name: Gitleaks (Secrets Scan)
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, lfs: true }
+
+      - name: Run Gitleaks (SARIF)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: >-
+            detect
+            --redact
+            --verbose
+            --exit-code 0
+            --config .gitleaks.toml
+            --report-format sarif
+            --report-path gitleaks.sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
