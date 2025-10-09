@@ -14,10 +14,34 @@ import { getInitData, getInitDataUnsafe, getWebApp, ready, expand } from "./lib/
 import type { InitDataUnsafe } from "./lib/telegram";
 import { loadUIPreferences } from "./lib/session";
 import type { ThemeMode } from "./lib/session";
+import { initWebVitals } from "./lib/webvitals";
 
 initSentry();
 
 getInitialLocaleValue();
+
+function postVital(name: string, value: number, page?: string, navType?: string) {
+  const base = import.meta.env.VITE_API_BASE as string | undefined;
+  if (!base) {
+    return;
+  }
+  const body = JSON.stringify([{ name, value, page, navType }]);
+  const url = `${base}/vitals`;
+  if (navigator.sendBeacon) {
+    const blob = new Blob([body], { type: "application/json" });
+    navigator.sendBeacon(url, blob);
+    return;
+  }
+  fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body
+  }).catch(() => {
+    /* noop */
+  });
+}
+
+initWebVitals(postVital);
 
 function applyReducedMotion(matches: boolean): void {
   document.documentElement.classList.toggle("reduce-motion", matches);

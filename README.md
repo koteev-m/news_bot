@@ -124,6 +124,21 @@ bash tools/db/up_db_only.sh
 
 PII не отправляются, traceId/RequestId привязаны к событиям для корреляции с логами и трассами.
 
+## P55 — Performance Budgets & Web Vitals
+
+- **LHCI budgets**: `miniapp/lighthouse-budgets.json`, конфиг `miniapp/lighthouserc.json`.
+  ```bash
+  (cd miniapp && pnpm build && npx @lhci/cli@0.13.0 autorun)
+  ```
+- Web Vitals:
+  - Клиент: `miniapp/src/lib/webvitals.ts` + инициализация в `miniapp/src/main.tsx`.
+  - Сервер: маршрут `POST /vitals` → метрики Prometheus `web_vitals_*`.
+  - Проверка:
+    ```bash
+    curl -s -X POST "$BASE/vitals" -H 'content-type: application/json' \
+      -d '{"name":"TTFB","value":120}'
+    ```
+
 ### Integrations tests — updated for P27
 
 Тесты модуля `:integrations` используют фикстуры `http/TestHttpFixtures.kt`:

@@ -1,0 +1,42 @@
+name: Frontend Performance Budgets
+
+on:
+  pull_request:
+    paths:
+      - 'miniapp/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  perf-budgets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Enable corepack & pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
+      - name: Install deps
+        working-directory: miniapp
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: miniapp
+        run: pnpm build
+
+      - name: Lighthouse budgets per page
+        working-directory: miniapp
+        run: npx @lhci/cli@0.13.0 autorun
+
+      - name: Upload LHCI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lhci-budgets-${{ github.run_id }}
+          path: miniapp/.lighthouseci/**
+          if-no-files-found: ignore
