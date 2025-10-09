@@ -988,3 +988,30 @@ Examples:
 feat(miniapp): add paywall page with A/B copy
 fix(alerts): handle cooldown hysteresis properly
 ```
+
+
+## P58 — Release RC/Canary/GA + Freeze
+
+**RC → Canary (staging):**
+```bash
+gh workflow run "Release RC → Canary" -f version=v1.3.0-rc.1 -f canary_percent=10
+```
+
+**Promote → GA (production):**
+```bash
+gh workflow run "Promote RC → GA (100%)" -f version=v1.3.0
+```
+
+**Freeze:**
+• Активировать: создать пустой файл .release-freeze в корне или установить секрет RELEASE_FREEZE=true.
+• Снять: удалить файл/сбросить секрет.
+• Во время freeze PR требуют label release-exception.
+
+**Scripts:**
+```bash
+bash tools/release/tag_rc.sh v1.3.0-rc.1
+bash tools/release/canary.sh 10
+bash tools/release/promote.sh
+bash tools/release/rollback.sh
+```
+

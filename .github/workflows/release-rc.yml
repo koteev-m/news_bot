@@ -1,0 +1,67 @@
+name: Release RC → Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "RC version (e.g., v1.3.0-rc.1)"
+        required: true
+      canary_percent:
+        description: "Canary traffic percent on GREEN (0..50)"
+        required: false
+        default: "10"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  rc-build-and-canary:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      CANARY: ${{ inputs.canary_percent }}
+      REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+      APP_PROFILE: staging
+      BASE_URL: ${{ secrets.STAGE_BASE_URL }}
+      PROM_URL: ${{ secrets.STAGE_PROM_URL }}
+      WEBHOOK_SECRET: ${{ secrets.STAGE_WEBHOOK_SECRET }}
+      TG_USER_ID: ${{ secrets.STAGE_TG_USER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, lfs: true }
+
+      - name: Preflight (build/tests/lint/audit)
+        run: |
+          bash tools/release/preflight.sh
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: gradle }
+
+      - name: Build app & image
+        run: |
+          ./gradlew --no-daemon --stacktrace clean build
+          docker build -t "${REGISTRY_IMAGE}:${VERSION}" -t "${REGISTRY_IMAGE}:rc" -f Dockerfile .
+
+      - name: Push image to GHCR
+        run: |
+          echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push "${REGISTRY_IMAGE}:${VERSION}"
+          docker push "${REGISTRY_IMAGE}:rc"
+
+      - name: Deploy CANARY on staging (GREEN=${{ env.CANARY }}%)
+        run: |
+          bash tools/release/canary.sh "${CANARY}"
+
+      - name: Post-deploy verify (staging)
+        run: |
+          bash tools/release/postdeploy_verify.sh | tee verify_rc_canary.txt
+
+      - name: Upload verify artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc-canary-${{ env.VERSION }}
+          path: |
+            verify_rc_canary.txt
