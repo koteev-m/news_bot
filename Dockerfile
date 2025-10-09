@@ -3,7 +3,7 @@
 ############################
 # Build stage
 ############################
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:25-jdk AS build
 
 WORKDIR /workspace
 ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs='-Xmx2g -Dfile.encoding=UTF-8'"
@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.gradle \
 ############################
 # Runtime stage
 ############################
-FROM eclipse-temurin:21-jre-jammy AS runtime
+FROM eclipse-temurin:25-jre-jammy AS runtime
 
 # Безопасные локали/часовой пояс
 ENV TZ=UTC \
