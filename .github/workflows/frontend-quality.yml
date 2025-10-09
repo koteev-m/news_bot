@@ -1,0 +1,49 @@
+name: Frontend Quality
+
+on:
+  pull_request:
+    paths:
+      - 'miniapp/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  miniapp-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Enable corepack & pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          pnpm -v
+
+      - name: Install deps
+        working-directory: miniapp
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: miniapp
+        run: pnpm build
+
+      - name: Lighthouse CI
+        working-directory: miniapp
+        run: pnpm lhci
+
+      - name: Bundle-size guard
+        working-directory: miniapp
+        env:
+          BUNDLE_BUDGET_KB: 500
+        run: node scripts/bundle-report.js
+
+      - name: Upload LHCI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lhci-${{ github.run_id }}
+          path: miniapp/.lighthouseci/**
+          if-no-files-found: ignore
