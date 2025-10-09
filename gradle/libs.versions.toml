@@ -49,7 +49,7 @@ postgresql = { module = "org.postgresql:postgresql", version.ref = "postgres" }
 micrometer-core = { module = "io.micrometer:micrometer-core", version.ref = "micrometer" }
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "prometheus" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
-typesafe-config = { module = "com.typesafe:config", version = "1.4.3" }
+typesafe-config = { module = "com.typesafe:config", version = "1.4.5" }
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
 kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
