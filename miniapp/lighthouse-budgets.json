@@ -1,0 +1,39 @@
+[
+  {
+    "path": "/index.html",
+    "resourceSizes": [
+      { "resourceType": "total", "budget": 500 },
+      { "resourceType": "script", "budget": 350 },
+      { "resourceType": "stylesheet", "budget": 120 }
+    ],
+    "timings": [
+      { "metric": "first-contentful-paint", "budget": 2500 },
+      { "metric": "interactive", "budget": 3500 },
+      { "metric": "total-blocking-time", "budget": 200 }
+    ]
+  },
+  {
+    "path": "/#/import",
+    "resourceSizes": [
+      { "resourceType": "total", "budget": 550 },
+      { "resourceType": "script", "budget": 380 }
+    ],
+    "timings": [
+      { "metric": "first-contentful-paint", "budget": 2800 },
+      { "metric": "interactive", "budget": 3800 },
+      { "metric": "total-blocking-time", "budget": 220 }
+    ]
+  },
+  {
+    "path": "/#/positions",
+    "resourceSizes": [
+      { "resourceType": "total", "budget": 520 },
+      { "resourceType": "script", "budget": 360 }
+    ],
+    "timings": [
+      { "metric": "first-contentful-paint", "budget": 2600 },
+      { "metric": "interactive", "budget": 3600 },
+      { "metric": "total-blocking-time", "budget": 210 }
+    ]
+  }
+]

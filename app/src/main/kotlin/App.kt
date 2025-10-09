@@ -65,6 +65,7 @@ import kotlinx.serialization.decodeFromString
 import news.metrics.NewsMetricsPort
 import observability.DomainMetrics
 import observability.Observability
+import observability.WebVitals
 import observability.WebhookMetrics
 import observability.adapters.AlertMetricsAdapter
 import observability.adapters.NewsMetricsAdapter
@@ -92,6 +93,7 @@ import routes.quotesRoutes
 import routes.redirectRoutes
 import routes.supportRoutes
 import routes.pricingRoutes
+import routes.webVitalsRoutes
 import security.installSecurity
 import security.installUploadGuard
 import security.RateLimitConfig
@@ -110,6 +112,7 @@ fun Application.module() {
     installTracing()
     val metrics = DomainMetrics(prometheusRegistry)
     val webhookMetrics = WebhookMetrics.create(prometheusRegistry)
+    val vitals = WebVitals(prometheusRegistry)
     val appConfig = environment.config
 
     installSecurity()
@@ -191,6 +194,7 @@ fun Application.module() {
     }
 
     routing {
+        webVitalsRoutes(vitals)
         apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)
