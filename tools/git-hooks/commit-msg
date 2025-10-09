@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+FILE="$1"
+MSG="$(head -n1 "$FILE" | tr -d '\r')"
+
+# Disallow WIP
+if echo "$MSG" | grep -qiE '^\s*WIP\b'; then
+  echo "ERROR: 'WIP' commits are not allowed."; exit 1
+fi
+
+# Conventional Commits (type(scope)?: subject)
+PAT='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._-]+\))?: .{1,}$'
+if ! echo "$MSG" | grep -Eq "$PAT"; then
+  cat >&2 <<'EOF2'
+ERROR: Commit message must follow Conventional Commits:
+  <type>(<scope>): <subject>
+Allowed types: build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test
+Example:
+  feat(miniapp): add paywall page with A/B copy
+EOF2
+  exit 1
+fi
+
+# Subject length <= 72 chars
+SUBJ_LEN=$(printf "%s" "$MSG" | wc -c | tr -d ' ')
+if [ "$SUBJ_LEN" -gt 72 ]; then
+  echo "ERROR: subject too long ($SUBJ_LEN > 72)."; exit 1
+fi
+
+exit 0

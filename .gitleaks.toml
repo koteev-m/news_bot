@@ -1,0 +1,24 @@
+title = "NewsBot Gitleaks Config"
+
+[allowlist]
+description = "Allowlist test/docs/build artifacts"
+paths = [
+  '''^docs/''',
+  '''^deploy/monitoring/''',
+  '''^deploy/load/''',
+  '''^miniapp/dist/''',
+  '''^miniapp/.lighthouseci/''',
+  '''^samples?/''',
+  '''^.*\\.md$''',
+  '''^.*\\.http$''',
+  '''^.*\\.csv$'''
+]
+commits = [
+  "dependabot", "renovate"
+]
+regexes = [
+  '''(?i)fake|example|replace_me|sample|dummy'''
+]
+
+[rules]
+# Keep the default built-in rules; here you can add local overrides if needed.
