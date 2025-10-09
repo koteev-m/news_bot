@@ -1,0 +1,32 @@
+name: Release Freeze Guard
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check freeze
+        id: chk
+        run: |
+          FREEZE_FLAG=0
+          # File-based freeze
+          if [ -f ".release-freeze" ]; then FREEZE_FLAG=1; fi
+          # Secret-based freeze
+          if [ "${{ secrets.RELEASE_FREEZE || '' }}" = "true" ]; then FREEZE_FLAG=1; fi
+          echo "freeze=${FREEZE_FLAG}" >> $GITHUB_OUTPUT
+
+      - name: Enforce exception label during freeze
+        if: steps.chk.outputs.freeze == '1'
+        run: |
+          labels="${{ toJson(github.event.pull_request.labels) }}"
+          echo "labels=$labels"
+          echo "$labels" | grep -q '"name":"release-exception"' || {
+            echo "::error ::Release freeze active. Add label 'release-exception' to merge."; exit 1; }
