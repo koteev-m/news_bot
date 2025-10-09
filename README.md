@@ -88,6 +88,18 @@ bash tools/db/up_db_only.sh
   redocly lint docs/api/openapi.yaml
   ```
 
+## P53 — Frontend quality gates (Lighthouse CI + bundle-size)
+
+- **LHCI** конфиг: `miniapp/lighthouserc.json`. Запуск локально:
+  ```bash
+  (cd miniapp && pnpm build && pnpm lhci)
+  ```
+- Bundle-size guard: `miniapp/scripts/bundle-report.js`. Бюджет по умолчанию 500 KB (js+css).
+  ```bash
+  (cd miniapp && pnpm build && BUNDLE_BUDGET_KB=500 node scripts/bundle-report.js)
+  ```
+- CI workflow: `.github/workflows/frontend-quality.yml` — выполняется на PR, выкладывает артефакты LHCI.
+
 ### Integrations tests — updated for P27
 
 Тесты модуля `:integrations` используют фикстуры `http/TestHttpFixtures.kt`:
