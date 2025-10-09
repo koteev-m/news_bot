@@ -25,6 +25,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@redocly/cli": "^1.16.0",
     "@playwright/test": "^1.44.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^14.2.1",

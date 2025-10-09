@@ -1,0 +1,49 @@
+name: API Contract
+
+on:
+  pull_request:
+    paths:
+      - 'docs/api/openapi.yaml'
+      - 'app/src/main/kotlin/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with: { node-version: '18' }
+      - name: Install Redocly
+        run: npm i -g @redocly/cli@1.16.0
+      - name: Lint OpenAPI
+        run: redocly lint docs/api/openapi.yaml
+      - name: Find base spec
+        id: base
+        run: |
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            git fetch origin main --depth=1
+            git show origin/main:docs/api/openapi.yaml > /tmp/openapi-base.yaml || echo "" > /tmp/openapi-base.yaml
+          else
+            echo "" > /tmp/openapi-base.yaml
+          fi
+      - name: Diff (non-breaking)
+        run: |
+          if [ -s /tmp/openapi-base.yaml ]; then
+            redocly diff /tmp/openapi-base.yaml docs/api/openapi.yaml --format=stylish --fail-on-errors
+          else
+            echo "No base spec; skipping diff."
+          fi
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-contract
+          path: |
+            docs/api/openapi.yaml
+            /tmp/openapi-base.yaml
