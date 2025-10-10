@@ -1,0 +1,41 @@
+name: Terraform Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: "AWS region"
+        required: true
+        default: "eu-central-1"
+      s3_backups_bucket:
+        description: "S3 bucket for backups (unique name)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Apply
+        env:
+          TF_VAR_aws_region: ${{ inputs.aws_region }}
+          TF_VAR_s3_backups_bucket: ${{ inputs.s3_backups_bucket }}
+        run: terraform apply -auto-approve -input=false
