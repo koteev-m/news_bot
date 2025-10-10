@@ -37,6 +37,12 @@ jobs:
         run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Pull RC image and tag as GA
+        env: { VERSION: ${{ inputs.version }} }
+        run: |
+          docker pull "${REGISTRY_IMAGE}:rc"
+          docker tag "${REGISTRY_IMAGE}:rc" "${REGISTRY_IMAGE}:${VERSION}"
+          docker tag "${REGISTRY_IMAGE}:rc" "${REGISTRY_IMAGE}:latest"
+          docker push "${REGISTRY_IMAGE}:${VERSION}"
         env:
           VERSION: ${{ inputs.version }}
           RC_TAG: ${{ inputs.rc_tag }}
