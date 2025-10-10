@@ -17,6 +17,6 @@ spec:
           attestors:
             - entries:
                 - keyless:
-                    subject: "https://github.com/*/*"
+                    subject: "https://github.com/koteev-m/news_bot/.github/workflows/*@refs/*"
                     issuer: "https://token.actions.githubusercontent.com"
           mutateDigest: true

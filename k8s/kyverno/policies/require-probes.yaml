@@ -11,6 +11,7 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              namespaces: ["newsbot-staging", "newsbot-prod"]
       validate:
         message: "livenessProbe and readinessProbe are required for each container."
         pattern:
