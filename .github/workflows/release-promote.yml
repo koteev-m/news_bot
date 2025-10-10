@@ -36,8 +36,10 @@ jobs:
       - name: Pull RC image and tag as GA
         env: { VERSION: ${{ inputs.version }} }
         run: |
-          docker pull "${REGISTRY_IMAGE}:${VERSION}"
-          docker tag "${REGISTRY_IMAGE}:${VERSION}" "${REGISTRY_IMAGE}:latest"
+          docker pull "${REGISTRY_IMAGE}:rc"
+          docker tag "${REGISTRY_IMAGE}:rc" "${REGISTRY_IMAGE}:${VERSION}"
+          docker tag "${REGISTRY_IMAGE}:rc" "${REGISTRY_IMAGE}:latest"
+          docker push "${REGISTRY_IMAGE}:${VERSION}"
           docker push "${REGISTRY_IMAGE}:latest"
 
       - name: Switch traffic 100% → GREEN (promote)
