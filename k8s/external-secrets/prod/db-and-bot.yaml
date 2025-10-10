@@ -1,0 +1,29 @@
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: db-and-bot
+  namespace: newsbot-prod
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: aws-secretsmanager
+  target:
+    name: newsbot-prod-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: database_url
+      remoteRef:
+        key: newsbot/prod/DATABASE_URL
+    - secretKey: database_user
+      remoteRef:
+        key: newsbot/prod/DATABASE_USER
+    - secretKey: database_pass
+      remoteRef:
+        key: newsbot/prod/DATABASE_PASS
+    - secretKey: telegram_bot_token
+      remoteRef:
+        key: newsbot/prod/TELEGRAM_BOT_TOKEN
+    - secretKey: telegram_webhook_secret
+      remoteRef:
+        key: newsbot/prod/TELEGRAM_WEBHOOK_SECRET
