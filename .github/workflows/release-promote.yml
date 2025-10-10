@@ -6,6 +6,9 @@ on:
       version:
         description: "Release version (e.g., v1.3.0)"
         required: true
+      rc_tag:
+        description: "RC image tag to promote (e.g., v1.3.0-rc.4)"
+        required: true
 
 permissions:
   contents: write
@@ -34,6 +37,14 @@ jobs:
         run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Pull RC image and tag as GA
+        env:
+          VERSION: ${{ inputs.version }}
+          RC_TAG: ${{ inputs.rc_tag }}
+        run: |
+          docker pull "${REGISTRY_IMAGE}:${RC_TAG}"
+          docker tag "${REGISTRY_IMAGE}:${RC_TAG}" "${REGISTRY_IMAGE}:${VERSION}"
+          docker tag "${REGISTRY_IMAGE}:${RC_TAG}" "${REGISTRY_IMAGE}:latest"
+          docker push "${REGISTRY_IMAGE}:${VERSION}"
         env: { VERSION: ${{ inputs.version }} }
         run: |
           docker pull "${REGISTRY_IMAGE}:${VERSION}"
