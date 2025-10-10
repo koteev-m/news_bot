@@ -45,6 +45,10 @@ jobs:
           docker tag "${REGISTRY_IMAGE}:${RC_TAG}" "${REGISTRY_IMAGE}:${VERSION}"
           docker tag "${REGISTRY_IMAGE}:${RC_TAG}" "${REGISTRY_IMAGE}:latest"
           docker push "${REGISTRY_IMAGE}:${VERSION}"
+        env: { VERSION: ${{ inputs.version }} }
+        run: |
+          docker pull "${REGISTRY_IMAGE}:${VERSION}"
+          docker tag "${REGISTRY_IMAGE}:${VERSION}" "${REGISTRY_IMAGE}:latest"
           docker push "${REGISTRY_IMAGE}:latest"
 
       - name: Switch traffic 100% → GREEN (promote)
