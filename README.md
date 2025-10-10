@@ -1,15 +1,14 @@
-# P60 — Terraform IaC + External Secrets + Argo CD
+## P61 — Progressive Delivery (Argo Rollouts)
 
-- Terraform: каталог `terraform/` разворачивает namespaces, External Secrets Operator, Argo CD и S3-бакет для бэкапов.
-- External Secrets: примеры конфигураций в `k8s/external-secrets/*` для стейджинга и прода.
-- Argo CD: приложения `newsbot-staging` и `newsbot-prod` указывают на Helm-чарт `helm/newsbot`.
+- Включить в чарте: `rollouts.enabled=true`.
+- Анализ шаблоны: `k8s/rollouts/analysis-templates.yaml`.
+- Контроллер/дашборд: workflow **Install Argo Rollouts**.
+- Управление канареечными шагами: workflow **Rollouts Promote/Abort**.
 
-## Команды
+Быстрый старт:
 ```bash
-(cd terraform && terraform init && terraform plan -var='s3_backups_bucket=<unique-bucket>')
-(cd terraform && terraform apply -var='s3_backups_bucket=<unique-bucket>')
+helm upgrade --install newsbot helm/newsbot \
+  --namespace newsbot-staging --create-namespace \
+  --set rollouts.enabled=true
+kubectl apply -f k8s/rollouts/analysis-templates.yaml
 ```
-
-## GitHub Actions
-- Terraform Plan — выполняет план в PR (`.github/workflows/terraform-plan.yml`).
-- Terraform Apply — ручное применение через workflow_dispatch (`.github/workflows/terraform-apply.yml`).

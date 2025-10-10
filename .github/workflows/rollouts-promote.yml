@@ -1,0 +1,44 @@
+name: Rollouts Promote/Abort
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action: promote|pause|resume|abort"
+        required: true
+        default: "promote"
+      namespace:
+        description: "Namespace"
+        required: true
+        default: "newsbot-staging"
+      rollout:
+        description: "Rollout name"
+        required: true
+        default: "newsbot-newsbot"
+
+permissions:
+  contents: read
+
+jobs:
+  ctl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup kubectl & argo-rollouts
+        run: |
+          curl -sLO https://github.com/argoproj/argo-rollouts/releases/download/v1.6.4/kubectl-argo-rollouts-linux-amd64
+          sudo install -m 0755 kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+      - name: Execute
+        env:
+          NS: ${{ inputs.namespace }}
+          R:  ${{ inputs.rollout }}
+          ACT: ${{ inputs.action }}
+        run: |
+          case "$ACT" in
+            promote) kubectl-argo-rollouts promote $R -n $NS ;;
+            pause)   kubectl-argo-rollouts pause $R -n $NS ;;
+            resume)  kubectl-argo-rollouts resume $R -n $NS ;;
+            abort)   kubectl-argo-rollouts abort $R -n $NS ;;
+            *) echo "unknown action"; exit 2 ;;
+          esac
+          kubectl-argo-rollouts get rollout $R -n $NS

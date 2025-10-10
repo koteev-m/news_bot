@@ -1,0 +1,22 @@
+name: Install Argo Rollouts
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Install Argo Rollouts
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+          helm upgrade --install argo-rollouts argo/argo-rollouts \
+            --namespace argo-rollouts --create-namespace \
+            -f helm/rollouts/rollouts-helm-values.yaml

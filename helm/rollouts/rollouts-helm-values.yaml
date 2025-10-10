@@ -1,0 +1,9 @@
+controller:
+  args:
+    - --leader-elect
+    - --loglevel=info
+    - --metrics-port=8090
+dashboard:
+  enabled: true
+  service:
+    type: ClusterIP

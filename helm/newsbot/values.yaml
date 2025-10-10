@@ -65,3 +65,21 @@ podAnnotations:
 
 extraVolumes: []
 extraVolumeMounts: []
+
+rollouts:
+  enabled: true
+  canary:
+    steps:
+      - setWeight: 10
+      - pause: { duration: 60 }
+      - analysis: { templates: [ "slo-analysis" ] }
+      - setWeight: 30
+      - pause: { duration: 120 }
+      - analysis: { templates: [ "slo-analysis" ] }
+      - setWeight: 60
+      - pause: { duration: 120 }
+      - analysis: { templates: [ "slo-analysis" ] }
+      - setWeight: 100
+    trafficRouting:
+      nginx:
+        stableIngress: ""

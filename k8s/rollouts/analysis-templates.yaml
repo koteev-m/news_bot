@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: slo-analysis
+  namespace: newsbot-staging
+spec:
+  args:
+    - name: service
+      value: {{ default "newsbot" "newsbot" }}
+  metrics:
+    - name: http-p95-latency
+      interval: 30s
+      count: 3
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring:9090
+          query: |
+            histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job="app"}[5m])) by (le))
+          # Условие: p95 < 1.5 секунды
+      threshold:
+        failure:
+          lessThan: 0          # placeholder, сравнение ниже в successCondition
+      successCondition: result < 1.5
+      failureCondition: result >= 1.5
+
+    - name: http-5xx-rate
+      interval: 30s
+      count: 3
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring:9090
+          query: |
+            (sum(rate(http_server_requests_seconds_count{status=~"5..",job="app"}[5m])) /
+             clamp_min(sum(rate(http_server_requests_seconds_count{job="app"}[5m])), 1))
+      successCondition: result < 0.02
+      failureCondition: result >= 0.02
