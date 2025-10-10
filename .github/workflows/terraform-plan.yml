@@ -12,6 +12,8 @@ permissions:
 jobs:
   plan:
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_s3_backups_bucket: newsbot-tf-plan-backups
     defaults:
       run:
         working-directory: terraform
