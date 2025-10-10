@@ -1,0 +1,26 @@
+name: Deploy Staging (Helm)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (e.g., rc)"
+        required: true
+        default: "rc"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install newsbot helm/newsbot \
+            --namespace newsbot-staging --create-namespace \
+            --set image.tag=${{ inputs.image_tag }} \
+            --values helm/newsbot/values.yaml

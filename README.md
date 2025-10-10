@@ -118,6 +118,27 @@ bash tools/db/up_db_only.sh
   VITE_SENTRY_DSN=...
   VITE_SENTRY_ENV=staging
   VITE_SENTRY_RELEASE=2025.10.11
+
+## P59 — Kubernetes Helm + GitOps (HPA/PDB/Ingress)
+
+Deploy (staging):
+```bash
+helm upgrade --install newsbot helm/newsbot \
+  --namespace newsbot-staging --create-namespace \
+  --values helm/newsbot/values.yaml \
+  --set image.repository=ghcr.io/ORG/REPO --set image.tag=rc
+```
+
+Scripts:
+
+```bash
+bash tools/k8s/render.sh newsbot newsbot-staging helm/newsbot/values.yaml
+kubectl apply -f k8s/rendered/all.yaml
+```
+
+Workflows:
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-prod.yml
   ```
 
 - Соберите `pnpm build` (или `build:with-sourcemaps`) и, при наличии секретов, загрузите source maps через workflow **Sentry Sourcemaps**.
