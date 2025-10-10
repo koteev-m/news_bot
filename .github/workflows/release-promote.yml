@@ -6,6 +6,9 @@ on:
       version:
         description: "Release version (e.g., v1.3.0)"
         required: true
+      rc_tag:
+        description: "RC image tag to promote (e.g., v1.3.0-rc.4)"
+        required: true
 
 permissions:
   contents: write
@@ -40,6 +43,18 @@ jobs:
           docker tag "${REGISTRY_IMAGE}:rc" "${REGISTRY_IMAGE}:${VERSION}"
           docker tag "${REGISTRY_IMAGE}:rc" "${REGISTRY_IMAGE}:latest"
           docker push "${REGISTRY_IMAGE}:${VERSION}"
+        env:
+          VERSION: ${{ inputs.version }}
+          RC_TAG: ${{ inputs.rc_tag }}
+        run: |
+          docker pull "${REGISTRY_IMAGE}:${RC_TAG}"
+          docker tag "${REGISTRY_IMAGE}:${RC_TAG}" "${REGISTRY_IMAGE}:${VERSION}"
+          docker tag "${REGISTRY_IMAGE}:${RC_TAG}" "${REGISTRY_IMAGE}:latest"
+          docker push "${REGISTRY_IMAGE}:${VERSION}"
+        env: { VERSION: ${{ inputs.version }} }
+        run: |
+          docker pull "${REGISTRY_IMAGE}:${VERSION}"
+          docker tag "${REGISTRY_IMAGE}:${VERSION}" "${REGISTRY_IMAGE}:latest"
           docker push "${REGISTRY_IMAGE}:latest"
 
       - name: Switch traffic 100% → GREEN (promote)
