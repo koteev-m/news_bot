@@ -1,14 +1,12 @@
-## P61 — Progressive Delivery (Argo Rollouts)
+## P62 — Image signing & K8s policies
 
-- Включить в чарте: `rollouts.enabled=true`.
-- Анализ шаблоны: `k8s/rollouts/analysis-templates.yaml`.
-- Контроллер/дашборд: workflow **Install Argo Rollouts**.
-- Управление канареечными шагами: workflow **Rollouts Promote/Abort**.
+- Подпись образов (cosign, keyless): `.github/workflows/cosign-sign.yml`
+- Kyverno политики: `k8s/kyverno/policies/*`
+- PSS restricted: `k8s/pss/namespace-labels.yaml`
+- NetworkPolicies: `k8s/networkpolicies/*.yaml`
 
 Быстрый старт:
 ```bash
-helm upgrade --install newsbot helm/newsbot \
-  --namespace newsbot-staging --create-namespace \
-  --set rollouts.enabled=true
-kubectl apply -f k8s/rollouts/analysis-templates.yaml
+gh workflow run "Install Kyverno"
+kubectl apply -f k8s/kyverno/policies/
 ```

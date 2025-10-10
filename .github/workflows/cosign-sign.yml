@@ -1,0 +1,62 @@
+name: Cosign Sign Image (keyless)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-rc.*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (tag) to build and sign"
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Build JAR
+        run: ./gradlew --no-daemon --stacktrace clean build
+
+      - name: Build image
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          docker build -t "${IMAGE}:${TAG}" -f Dockerfile .
+
+      - name: Login GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push image
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          docker push "${IMAGE}:${TAG}"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Cosign sign (keyless OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          cosign sign --yes "${IMAGE}:${TAG}"
