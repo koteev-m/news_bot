@@ -11,6 +11,7 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              namespaces: ["newsbot-staging", "newsbot-prod"]
       validate:
         message: "CPU/memory requests & limits are required."
         pattern:
