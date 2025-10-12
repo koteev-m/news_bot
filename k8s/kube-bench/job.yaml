@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kube-bench
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      hostPID: true
+      nodeSelector: {}
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: kube-bench
+          image: aquasec/kube-bench:0.7.3
+          args: ["--version", "1.24"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: var-lib-etcd
+              mountPath: /var/lib/etcd
+              readOnly: true
+            - name: var-lib-kubelet
+              mountPath: /var/lib/kubelet
+              readOnly: true
+            - name: etc-systemd
+              mountPath: /etc/systemd
+              readOnly: true
+            - name: etc-kubernetes
+              mountPath: /etc/kubernetes
+              readOnly: true
+      restartPolicy: Never
+      volumes:
+        - name: var-lib-etcd
+          hostPath: { path: /var/lib/etcd }
+        - name: var-lib-kubelet
+          hostPath: { path: /var/lib/kubelet }
+        - name: etc-systemd
+          hostPath: { path: /etc/systemd }
+        - name: etc-kubernetes
+          hostPath: { path: /etc/kubernetes }
