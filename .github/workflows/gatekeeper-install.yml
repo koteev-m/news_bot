@@ -1,0 +1,23 @@
+name: Install OPA Gatekeeper
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  install-gatekeeper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Install Gatekeeper
+        run: |
+          helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+          helm repo update
+          helm upgrade --install gatekeeper gatekeeper/gatekeeper \
+            --namespace gatekeeper-system --create-namespace
+      - name: Check pods
+        run: kubectl -n gatekeeper-system get pods -o wide

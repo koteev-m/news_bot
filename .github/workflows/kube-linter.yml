@@ -1,0 +1,34 @@
+name: kube-linter (Helm render)
+
+on:
+  pull_request:
+    paths:
+      - 'helm/**'
+      - 'k8s/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install kube-linter
+        run: |
+          curl -sSLo kube-linter.tar.gz https://github.com/stackrox/kube-linter/releases/download/v0.6.8/kube-linter-linux.tar.gz
+          tar -xzf kube-linter.tar.gz
+          sudo install -m 0755 kube-linter /usr/local/bin/kube-linter
+
+      - name: Render Helm → YAML
+        run: |
+          mkdir -p k8s/rendered
+          helm template newsbot helm/newsbot -f helm/newsbot/values.yaml > k8s/rendered/all.yaml
+
+      - name: kube-linter
+        run: kube-linter lint k8s/rendered/all.yaml

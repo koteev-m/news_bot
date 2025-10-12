@@ -1,12 +1,14 @@
-## P63 — SLO as Code (Sloth)
+## P64 — K8s security posture (OPA Gatekeeper + kube-linter + kube-bench)
 
-- SLO спеки: `slo/api-slo.yaml`, `slo/miniapp-slo.yaml`
-- Генерация правил: workflow **SLO Generate (Sloth)** → `deploy/monitoring/prometheus/slo.rules.yaml`
-- Prometheus включает `slo.rules.yaml` в `rule_files`.
-- Rollouts анализ: `k8s/rollouts/analysis-templates-slo.yaml`
+- Gatekeeper:
+  ```bash
+  gh workflow run "Install OPA Gatekeeper"
+  kubectl apply -f k8s/gatekeeper/templates/
+  kubectl apply -f k8s/gatekeeper/constraints/staging/
+  ```
 
-Локально:
-```bash
-docker run --rm -v "$PWD":/work -w /work ghcr.io/slok/sloth:v0.11.0 \
-  generate -i slo/api-slo.yaml -o deploy/monitoring/prometheus
-```
+•kube-linter (PR workflow): .github/workflows/kube-linter.yml
+•kube-bench (CIS as Job): kubectl apply -f k8s/kube-bench/job.yaml (одноразово)
+
+Полезно:
+•Политики запрещают :latest, privileged, hostPath, требуют probes/resources, ограничивают registry.

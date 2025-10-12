@@ -1,0 +1,8 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowHostPath
+metadata:
+  name: disallow-hostpath-staging
+spec:
+  match:
+    namespaces: ["newsbot-staging"]
+    kinds: [{ apiGroups: [""], kinds: ["Pod"] }]

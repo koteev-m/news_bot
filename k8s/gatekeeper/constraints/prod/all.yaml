@@ -1,0 +1,43 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata: { name: required-labels-prod }
+spec:
+  match: { namespaces: ["newsbot-prod"], kinds: [{ apiGroups: [""], kinds: ["Pod"] }] }
+  parameters: { labels: ["app.kubernetes.io/name","app.kubernetes.io/instance"] }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAllowedRepos
+metadata: { name: allowed-repos-prod }
+spec:
+  match: { namespaces: ["newsbot-prod"], kinds: [{ apiGroups: [""], kinds: ["Pod"] }] }
+  parameters: { repos: ["ghcr.io/"] }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sNoPrivileged
+metadata: { name: no-privileged-prod }
+spec:
+  match: { namespaces: ["newsbot-prod"], kinds: [{ apiGroups: [""], kinds: ["Pod"] }] }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDropNetRaw
+metadata: { name: drop-net-raw-prod }
+spec:
+  match: { namespaces: ["newsbot-prod"], kinds: [{ apiGroups: [""], kinds: ["Pod"] }] }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireProbes
+metadata: { name: require-probes-prod }
+spec:
+  match: { namespaces: ["newsbot-prod"], kinds: [{ apiGroups: [""], kinds: ["Pod"] }] }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireReLimits
+metadata: { name: require-relimits-prod }
+spec:
+  match: { namespaces: ["newsbot-prod"], kinds: [{ apiGroups: [""], kinds: ["Pod"] }] }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowHostPath
+metadata: { name: disallow-hostpath-prod }
+spec:
+  match: { namespaces: ["newsbot-prod"], kinds: [{ apiGroups: [""], kinds: ["Pod"] }] }

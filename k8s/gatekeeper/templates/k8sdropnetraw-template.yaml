@@ -1,0 +1,25 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdropnetraw
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDropNetRaw
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdropnetraw
+
+        has_drop_net_raw(caps) {
+          some i
+          lower(caps.drop[i]) == "net_raw"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          c := input.review.object.spec.containers[_]
+          not has_drop_net_raw(c.securityContext.capabilities)
+          msg := sprintf("container must drop NET_RAW capability (%v)", [c.name])
+        }

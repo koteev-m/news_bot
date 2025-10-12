@@ -1,0 +1,8 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireProbes
+metadata:
+  name: require-probes-staging
+spec:
+  match:
+    namespaces: ["newsbot-staging"]
+    kinds: [{ apiGroups: [""], kinds: ["Pod"] }]
