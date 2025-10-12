@@ -1,0 +1,22 @@
+name: Install Falco
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  install-falco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Install Falco + Sidekick
+        run: |
+          helm repo add falcosecurity https://falcosecurity.github.io/charts
+          helm repo update
+          helm upgrade --install falco falcosecurity/falco \
+            --namespace falco --create-namespace \
+            -f helm/falco/values.yaml

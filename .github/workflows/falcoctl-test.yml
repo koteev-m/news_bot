@@ -1,0 +1,20 @@
+name: Falco Policy Test
+
+on:
+  pull_request:
+    paths:
+      - 'k8s/falco/rules/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run falcoctl test
+        run: |
+          docker run --rm -v "$PWD":/work -w /work falcosecurity/falcoctl:0.9.1 \
+            test ./k8s/falco/rules --rulesfile k8s/falco/rules/falco_rules.local.yaml || true
