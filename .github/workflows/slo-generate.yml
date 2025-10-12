@@ -1,0 +1,33 @@
+name: SLO Generate (Sloth)
+
+on:
+  pull_request:
+    paths:
+      - 'slo/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Generate Prometheus rules
+        uses: slok/sloth-gh-action@v0.5.0
+        with:
+          sloth-version: v0.11.0
+          spec: "slo/api-slo.yaml,slo/miniapp-slo.yaml"
+          out-dir: "deploy/monitoring/prometheus"
+      - name: Commit rules (if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git add deploy/monitoring/prometheus/*.yaml
+            git commit -m "chore(slo): regenerate Prometheus SLO rules"
+            git push
+          else
+            echo "No changes in SLO rules."
