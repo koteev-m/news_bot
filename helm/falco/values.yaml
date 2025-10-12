@@ -1,0 +1,24 @@
+driver:
+  kind: modern_ebpf
+falco:
+  rules_files:
+    - /etc/falco/falco_rules.yaml
+    - /etc/falco/falco_rules.local.yaml
+  json_output: true
+  http_output:
+    enabled: true
+    url: "http://loki:3100/loki/api/v1/push"  # через falcosidekick лучше, но здесь упрощённый http_output
+falcosidekick:
+  enabled: true
+  config:
+    loki:
+      hostport: "http://loki:3100"
+      minimumpriority: "warning"
+      extralabels: "cluster=demo"
+  webui:
+    enabled: true
+image:
+  pullPolicy: IfNotPresent
+resources:
+  requests: { cpu: "100m", memory: "128Mi" }
+  limits:   { cpu: "500m", memory: "256Mi" }

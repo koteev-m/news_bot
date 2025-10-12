@@ -22,3 +22,17 @@ scrape_configs:
         labels:
           job: app
           __path__: /var/log/containers/*newsbot-app*.log
+
+  - job_name: falco
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: falco
+          __path__: /var/log/containers/*falco*.log
+
+  - job_name: kube-audit
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: kube-audit
+          __path__: /var/log/kubernetes/audit.log

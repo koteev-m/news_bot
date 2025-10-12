@@ -1,0 +1,30 @@
+rules:
+  - rule: Exec in Container (interactive)
+    desc: Detect a shell spawned in a container
+    condition: evt.type = execve and container and proc.name in (bash, sh, zsh, ash)
+    output: >
+      Falco alert: shell spawned in container (user=%user.name container=%container.id image=%container.image.proc.name=%proc.name cmdline=%proc.cmdline)
+    priority: WARNING
+    tags: [container, mitre_execution]
+
+  - rule: Write below etc
+    desc: Detect any write below /etc
+    condition: evt.dir = < and fd.name startswith /etc and container
+    output: "Falco alert: File below /etc opened for writing (file=%fd.name user=%user.name image=%container.image)"
+    priority: WARNING
+    tags: [filesystem]
+
+  - rule: Writable hostPath
+    desc: Detect writable hostPath volume mounts
+    condition: (evt.type = open or evt.type=chown) and ka.target.resource = "pods" and fd.typechar = 'f' and fd.name startswith /host
+    output: "Falco alert: Writable hostPath access (file=%fd.name user=%user.name)"
+    priority: WARNING
+    tags: [k8s, filesystem]
+
+  - rule: Suspicious outbound to non-whitelisted
+    desc: Detect outbound connections to non-whitelisted CIDRs
+    condition: >
+      evt.type = connect and fd.l4proto = tcp and not fd.sip in (10.0.0.0/8,172.16.0.0/12,192.168.0.0/16)
+    output: "Falco alert: Suspicious outbound (%fd.sip:%fd.sport -> %fd.dip:%fd.dport) image=%container.image"
+    priority: NOTICE
+    tags: [network]
