@@ -1,12 +1,12 @@
-## P62 — Image signing & K8s policies
+## P63 — SLO as Code (Sloth)
 
-- Подпись образов (cosign, keyless): `.github/workflows/cosign-sign.yml`
-- Kyverno политики: `k8s/kyverno/policies/*`
-- PSS restricted: `k8s/pss/namespace-labels.yaml`
-- NetworkPolicies: `k8s/networkpolicies/*.yaml`
+- SLO спеки: `slo/api-slo.yaml`, `slo/miniapp-slo.yaml`
+- Генерация правил: workflow **SLO Generate (Sloth)** → `deploy/monitoring/prometheus/slo.rules.yaml`
+- Prometheus включает `slo.rules.yaml` в `rule_files`.
+- Rollouts анализ: `k8s/rollouts/analysis-templates-slo.yaml`
 
-Быстрый старт:
+Локально:
 ```bash
-gh workflow run "Install Kyverno"
-kubectl apply -f k8s/kyverno/policies/
+docker run --rm -v "$PWD":/work -w /work ghcr.io/slok/sloth:v0.11.0 \
+  generate -i slo/api-slo.yaml -o deploy/monitoring/prometheus
 ```

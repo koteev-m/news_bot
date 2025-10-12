@@ -1,0 +1,29 @@
+version: "prometheus/v1"
+service: "miniapp"
+slos:
+  - name: "webvitals-lcp"
+    objective: 95
+    description: "LCP budget: p95 < 2.5s on key pages"
+    labels: { owner: "web", tier: "important" }
+    sli:
+      raw:
+        error_ratio_query: |
+          max(0,
+            (
+              histogram_quantile(0.95, sum by (le,page) (rate(web_vitals_lcp_seconds_bucket[{{.window}}])))
+              > bool 2.5
+            )
+          )
+        total_query: 1
+    alerting:
+      name: "webvitals-lcp"
+      labels: { severity: "ticket" }
+      burn_rate_thresholds:
+        - window: 30m
+          burn_rate: 3
+          threshold: 1
+          for: 10m
+        - window: 6h
+          burn_rate: 1
+          threshold: 1
+          for: 30m

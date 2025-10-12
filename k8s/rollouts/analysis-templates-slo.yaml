@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: slo-burn-analysis
+  namespace: newsbot-staging
+spec:
+  metrics:
+    - name: api-error-burn-5m
+      interval: 30s
+      count: 3
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring:9090
+          query: |
+            slo:newsbot-api:api-availability:error_budget_burn_rate:5m
+      successCondition: result < 2
+      failureCondition: result >= 2
+    - name: api-error-burn-1h
+      interval: 1m
+      count: 3
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring:9090
+          query: |
+            slo:newsbot-api:api-availability:error_budget_burn_rate:1h
+      successCondition: result < 1
+      failureCondition: result >= 1
