@@ -14,8 +14,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import tenancy.*
+import sso.GroupMappingRepo
 import sso.repo.IdpRepository
-import sso.repo.GroupMappingRepo
 
 class OidcSso(
     private val http: HttpClient,

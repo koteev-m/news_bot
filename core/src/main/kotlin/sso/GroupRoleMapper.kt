@@ -2,12 +2,17 @@ package sso
 
 import tenancy.Role
 
-class GroupRoleMapper(private val repo: sso.repo.GroupMappingRepo) {
+/**
+ * Маппер групп из IdP в платформенные роли.
+ * Зависит только от интерфейса GroupMappingRepo из core.
+ */
+class GroupRoleMapper(private val repo: GroupMappingRepo) {
     suspend fun resolveRoles(tenantId: Long, idpId: Long, groups: Set<String>): Set<Role> {
         val mappings = repo.mappingsForTenant(tenantId, idpId)
-        val hits = mappings.filter { it.extGroup in groups }.mapNotNull {
-            runCatching { Role.valueOf(it.role) }.getOrNull()
-        }.toSet()
-        return if (hits.isNotEmpty()) hits else setOf(Role.VIEWER)
+        val resolved = mappings
+            .filter { it.extGroup in groups }
+            .mapNotNull { runCatching { Role.valueOf(it.role) }.getOrNull() }
+            .toSet()
+        return if (resolved.isNotEmpty()) resolved else setOf(Role.VIEWER)
     }
 }

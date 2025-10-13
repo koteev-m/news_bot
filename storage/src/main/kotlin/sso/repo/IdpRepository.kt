@@ -68,9 +68,3 @@ class IdpRepository {
     }
 }
 
-class GroupMappingRepo {
-    suspend fun mappingsForTenant(tenantId: Long, idpId: Long): List<sso.GroupRoleMapping> = dbQuery {
-        IdpGroupMappings.select { (IdpGroupMappings.tenantId eq tenantId) and (IdpGroupMappings.idpId eq idpId) }
-            .map { sso.GroupRoleMapping(tenantId, idpId, it[IdpGroupMappings.extGroup], it[IdpGroupMappings.role]) }
-    }
-}
