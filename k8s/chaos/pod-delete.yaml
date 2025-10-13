@@ -1,0 +1,39 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: newsbot-pod-delete
+  namespace: newsbot-staging
+spec:
+  annotationCheck: "false"
+  appinfo:
+    appns: newsbot-staging
+    applabel: "app.kubernetes.io/name=newsbot"
+    appkind: "deployment"
+  chaosServiceAccount: litmus
+  engineState: "active"
+  terminationGracePeriodSeconds: 60
+  experiments:
+    - name: pod-delete
+      spec:
+        probe:
+          - name: http-health
+            type: "httpProbe"
+            httpProbe/inputs:
+              url: "http://newsbot.newsbot-staging.svc.cluster.local:8080/healthz"
+              method: "GET"
+              insecureSkipVerify: true
+              responseTimeout: 3000
+            mode: "Continuous"
+            runProperties:
+              probeTimeout: 5
+              interval: 5
+              retry: 3
+              probePollingInterval: 2
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "60"
+            - name: CHAOS_INTERVAL
+              value: "15"
+            - name: FORCE
+              value: "false"

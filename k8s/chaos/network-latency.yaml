@@ -1,0 +1,23 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: newsbot-network-latency
+  namespace: newsbot-staging
+spec:
+  appinfo:
+    appns: newsbot-staging
+    applabel: "app.kubernetes.io/name=newsbot"
+    appkind: "deployment"
+  chaosServiceAccount: litmus
+  engineState: "active"
+  experiments:
+    - name: pod-network-latency
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "120"
+            - name: NETWORK_LATENCY
+              value: "150"   # ms
+            - name: LIB_IMAGE
+              value: "ghcr.io/chaosnative/go-runner:latest"
