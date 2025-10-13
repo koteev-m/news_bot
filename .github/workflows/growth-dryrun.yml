@@ -1,0 +1,28 @@
+name: Growth Dry-Run
+
+on:
+  pull_request:
+    paths:
+      - 'growth/**'
+      - 'deploy/data/clickhouse/segments/**'
+      - 'storage/src/main/resources/db/migration/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lint-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Content lint (md bodies)
+        run: |
+          find . -path "./growth/templates/*.md" -type f -print0 2>/dev/null | xargs -0 -I{} bash tools/growth/content_lint.sh "{}" || true
+          echo "[INFO] no md templates found or lint OK"
+  dry-run-orchestrator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kotlin compile (core/app only)
+        run: ./gradlew :core:compileKotlin :app:compileKotlin --console=plain

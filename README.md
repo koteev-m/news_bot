@@ -29,3 +29,21 @@ bash tools/sbom/generate_sbom.sh IMAGE_REF=ghcr.io/ORG/REPO:latest
 ./gradlew :storage:flywayMigrate
 ./gradlew :app:test --tests tenancy.*
 ```
+
+## P79 — Growth Automation 2.0 (Journeys + Segments + Triggers)
+
+- Миграции: `VXX__growth_automation.sql`
+- Core: `growth/Models.kt`, `growth/Engine.kt`
+- Storage: `repo/GrowthRepository.kt`
+- App: `growth/GrowthRoutes.kt`, `growth/TelegramMessenger.kt`
+- Segments: `deploy/data/clickhouse/segments/*.sql`
+- CI: `.github/workflows/growth-dryrun.yml`
+
+Быстрый старт:
+```bash
+./gradlew :storage:flywayMigrate
+./gradlew :app:compileKotlin
+
+
+
+```
