@@ -1,0 +1,46 @@
+{
+  "title": "NewsBot / Golden Signals + Cost",
+  "uid": "golden-cost",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Requests per second",
+      "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count[5m]))", "legendFormat": "rps" }],
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate (5xx)",
+      "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])),1)", "legendFormat": "5xx rate" }],
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p95 (s)",
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket[5m])))", "legendFormat": "p95" }],
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU seconds / request",
+      "targets": [{ "expr": "cpu_seconds_per_request", "legendFormat": "cpu/req" }],
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Service cost (USD/hour)",
+      "targets": [{ "expr": "service_total_cost_usd_per_hour", "legendFormat": "{{service}}" }],
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 }
+    },
+    {
+      "type": "stat",
+      "title": "SLO burn rate (5m)",
+      "targets": [{ "expr": "slo:newsbot-api:api-availability:error_budget_burn_rate:5m" }],
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }
+    }
+  ],
+  "templating": { "list": [] }
+}

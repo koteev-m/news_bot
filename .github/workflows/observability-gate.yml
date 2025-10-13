@@ -1,0 +1,57 @@
+name: Observability Gate (OTLP/Tempo/Loki/Prometheus)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "App base URL"
+        required: true
+      tempo_url:
+        description: "Tempo query URL (http://tempo:3200)"
+        required: true
+      loki_url:
+        description: "Loki URL (http://loki:3100)"
+        required: true
+      prom_url:
+        description: "Prometheus URL"
+        required: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ping /metrics
+        run: curl -sSf "${{ inputs.base_url }}/metrics" | head -n 5
+
+      - name: Send OTLP test trace
+        run: |
+          cat > span.json <<'JSON'
+          {
+            "resourceSpans": [{
+              "resource": { "attributes": [{ "key": "service.name", "value": { "stringValue": "obs-gate" } }] },
+              "scopeSpans": [{
+                "spans": [{
+                  "traceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "spanId": "bbbbbbbbbbbbbbbb",
+                  "name": "obs-gate-span",
+                  "kind": 1,
+                  "startTimeUnixNano": "1690000000000000000",
+                  "endTimeUnixNano": "1690000001000000000"
+                }]
+              }]
+            }]
+          }
+          JSON
+          curl -sS -X POST -H "content-type: application/json" \
+            --data @span.json "${{ inputs.base_url }}/v1/traces" || true
+
+      - name: Query Tempo
+        run: curl -sS "${{ inputs.tempo_url }}/api/search/tags" | head -n 20 || true
+
+      - name: Query Loki
+        run: curl -sS "${{ inputs.loki_url }}/loki/api/v1/labels" | head -n 20 || true
+
+      - name: Query Prometheus
+        run: curl -sS "${{ inputs.prom_url }}/api/v1/query?query=up" | jq -r '.status'

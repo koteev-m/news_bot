@@ -1,0 +1,64 @@
+mode: deployment
+replicaCount: 2
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: 0.104.0
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  ports:
+    otlp-grpc: 4317
+    otlp-http: 4318
+    metrics: 8888
+
+presets:
+  logsCollection:
+    enabled: false
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc: {}
+        http: {}
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    resource:
+      attributes:
+        - key: service.name
+          from_attribute: service.name
+          action: upsert
+  exporters:
+    otlp/tempo:
+      endpoint: "http://tempo:4317"
+      tls:
+        insecure: true
+    loki:
+      endpoint: http://loki:3100/loki/api/v1/push
+      default_labels_enabled:
+        exporter: true
+        job: true
+    prometheus:
+      endpoint: "0.0.0.0:8889"
+      send_timestamps: true
+      metric_expiration: 60m
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch, resource]
+        exporters: [otlp/tempo]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, batch, resource]
+        exporters: [prometheus]
+      logs:
+        receivers: [otlp]
+        processors: [batch, resource]
+        exporters: [loki]
