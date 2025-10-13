@@ -1,0 +1,28 @@
+name: Grype Scan (SBOM → Vulns)
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  grype:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install syft & grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+      - name: SBOM (source)
+        run: syft dir:. -o spdx-json > sbom-source.spdx.json
+      - name: Grype scan (SARIF)
+        run: grype sbom:sbom-source.spdx.json -o sarif > grype.sarif || true
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: grype.sarif
+          category: grype

@@ -1,19 +1,17 @@
-## P75 — Zero-Trust Service Mesh (Istio)
+## P76 — SBOM & Provenance (SLSA-3)
 
-Файлы:
-- `k8s/istio/peerauthentication-strict.yaml` — STRICT mTLS
-- `k8s/istio/destinationrule-newsbot.yaml` — TLS ISTIO_MUTUAL
-- `k8s/istio/gateway-virtualservice.yaml` — HTTPS ingress
-- `k8s/istio/jwt-authz-admin.yaml` — JWT authz для `/api/admin/*`
-- `k8s/istio/envoyfilter-ratelimit.yaml` — rate-limit
-- `k8s/istio/authorization-denyall-allowlist.yaml` — deny-all + allow внутри ns
-
-CI:
-- `.github/workflows/istio-analyze.yml`
-- `.github/workflows/istio-install.yml`
+- SBOM: `tools/sbom/generate_sbom.sh`, CI `sbom.yml`
+- Vulns: `grype-scan.yml` (SARIF → Code Scanning)
+- Provenance: `slsa-provenance.yml` (SLSA predicate + Cosign attest)
+- Verify in cluster: `k8s/kyverno/policies/verify-images-provenance.yaml`
+- SBOM diff gate: `.github/workflows/sbom-diff.yml`
 
 Быстрый старт:
 ```bash
-gh workflow run "Install Istio (control plane)"
-kubectl apply -f k8s/istio/
+bash tools/sbom/generate_sbom.sh IMAGE_REF=ghcr.io/ORG/REPO:latest
+
+
+
 ```
+
+⸻
