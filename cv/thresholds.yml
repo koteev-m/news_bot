@@ -1,0 +1,31 @@
+# Пороговые значения для Continuous Verification
+slo:
+  p95_seconds_max: 1.5       # HTTP p95 < 1.5s
+  error_rate_max: 0.02       # 5xx rate < 2%
+  burn_rate_5m_max: 2        # SLO burn за 5m < 2
+availability:
+  healthz_timeout_s: 5
+  endpoints:
+    - path: /healthz
+    - path: /health/db
+observability:
+  loki_error_rate_qps_max: 0.1 # допустимая частота error-логов (строк/сек) в окне 5m
+  tempo_trace_check: true       # проверять наличие спанов
+  metrics_endpoint_required: true
+  logs_query:
+    # Loki LogQL: error-уровень в приложении
+    query: '{job="app"} |= "ERROR"'
+performance:
+  lhci:
+    enabled: true
+    min_scores:
+      performance: 0.90
+      accessibility: 0.95
+security:
+  code_scanning_required: false  # если true — PR должен быть без CodeQL/Trivy HIGH/CRITICAL
+k6:
+  enabled: true
+  vus: 2
+  duration: 60s
+contract:
+  diff_required: true            # проверять openapi diff с main
