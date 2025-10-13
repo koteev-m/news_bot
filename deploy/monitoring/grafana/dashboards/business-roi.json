@@ -1,0 +1,38 @@
+{
+  "title": "NewsBot / Business ROI & Cost",
+  "uid": "biz-roi",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Cost per request (USD)",
+      "targets": [{ "expr": "cost_per_request_usd" }],
+      "gridPos": { "x": 0, "y": 0, "w": 9, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost per paywall CTA (USD/cta)",
+      "targets": [{ "expr": "cost_per_paywall_click_usd" }],
+      "gridPos": { "x": 9, "y": 0, "w": 9, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cost per payment (USD/pay)",
+      "targets": [{ "expr": "cost_per_payment_usd" }],
+      "gridPos": { "x": 0, "y": 8, "w": 9, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Paywall funnel (view → cta → pay)",
+      "targets": [
+        { "expr": "sum(rate(events_total{type=\"paywall_view\"}[5m]))", "legendFormat": "view/s" },
+        { "expr": "sum(rate(events_total{type=\"paywall_cta_click\"}[5m]))", "legendFormat": "cta/s" },
+        { "expr": "sum(rate(events_total{type=\"stars_payment_succeeded\"}[5m]))", "legendFormat": "pay/s" }
+      ],
+      "gridPos": { "x": 9, "y": 8, "w": 9, "h": 8 }
+    }
+  ],
+  "templating": { "list": [] }
+}

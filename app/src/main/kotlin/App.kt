@@ -64,6 +64,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import news.metrics.NewsMetricsPort
 import observability.DomainMetrics
+import observability.EventsCounter
 import observability.Observability
 import observability.WebVitals
 import observability.WebhookMetrics
@@ -107,6 +108,7 @@ private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
 
 fun Application.module() {
     val prometheusRegistry = Observability.install(this)
+    val eventsCounter = EventsCounter(prometheusRegistry)
     installMdcTrace()
     installSentry()
     installTracing()
@@ -173,7 +175,7 @@ fun Application.module() {
         scope = this,
         metrics = webhookMetrics
     ) { update ->
-        processStarsPayment(update, services.billingService, metrics, analytics)
+        processStarsPayment(update, services.billingService, metrics, analytics, eventsCounter)
     }
     webhookQueue.start()
 
@@ -200,7 +202,7 @@ fun Application.module() {
         authRoutes(analytics)
         redirectRoutes(analytics, referrals, newsConfig.botDeepLinkBase, newsConfig.maxPayloadBytes)
         supportRoutes(supportRepository, services.analytics, supportRateLimiter)
-        pricingRoutes(experimentsService, pricingService, services.analytics)
+        pricingRoutes(experimentsService, pricingService, services.analytics, eventsCounter)
         experimentsRoutes(experimentsService)
         quotesRoutes()
         demoRoutes()
@@ -390,7 +392,8 @@ private suspend fun processStarsPayment(
     update: TgUpdate,
     billing: BillingService,
     metrics: DomainMetrics,
-    analytics: AnalyticsPort
+    analytics: AnalyticsPort,
+    eventsCounter: EventsCounter
 ) {
     val successfulPayment = update.message?.successful_payment ?: return
     if (!successfulPayment.currency.equals("XTR", ignoreCase = true)) {
@@ -430,6 +433,7 @@ private suspend fun processStarsPayment(
                     source = "webhook",
                     props = mapOf("tier" to tier.name)
                 )
+                eventsCounter.inc("stars_payment_succeeded")
                 metrics.webhookStarsSuccess.increment()
                 webhookLogger.info("webhook-queue reason=applied_ok")
             }

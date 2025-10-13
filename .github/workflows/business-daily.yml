@@ -1,0 +1,34 @@
+name: Business Daily (ROI/Funnel)
+
+on:
+  schedule:
+    - cron: "12 5 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  biz-daily:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.ANALYTICS_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Run ROI SQL
+        run: |
+          psql "$DATABASE_URL" -f tools/analytics/business_roi.sql > business_roi.txt
+          {
+            echo "# Business Daily (ROI/Funnel)"
+            echo '```'
+            cat business_roi.txt
+            echo '```'
+          } > business_daily.md
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: business-daily
+          path: business_daily.md
+          retention-days: 14

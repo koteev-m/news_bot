@@ -3,6 +3,7 @@ package routes
 import ab.Assignment
 import ab.ExperimentsService
 import analytics.AnalyticsPort
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
@@ -17,6 +18,7 @@ import kotlin.test.assertTrue
 import pricing.Offer
 import pricing.PricingPort
 import pricing.PricingService
+import observability.EventsCounter
 
 private class FakePricingPort : PricingPort {
     override suspend fun getBasePlans(): Map<String, Long> = mapOf("PRO" to 1000L, "PRO_PLUS" to 2000L, "VIP" to 5000L)
@@ -54,7 +56,9 @@ class PricingRoutesTest {
         application {
             install(ContentNegotiation) { json() }
             routing {
-                pricingRoutes(FakeExperiments(), PricingService(FakePricingPort()), FakeAnalytics())
+                val registry = SimpleMeterRegistry()
+                val eventsCounter = EventsCounter(registry)
+                pricingRoutes(FakeExperiments(), PricingService(FakePricingPort()), FakeAnalytics(), eventsCounter)
             }
         }
 

@@ -11,6 +11,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.serialization.Serializable
+import observability.EventsCounter
 import pricing.PricingService
 import repo.PaywallCopy
 import repo.PriceOverride
@@ -42,6 +43,7 @@ fun Route.pricingRoutes(
     experiments: ExperimentsService,
     pricing: PricingService,
     analytics: AnalyticsPort,
+    eventsCounter: EventsCounter,
 ) {
     get("/api/pricing/offers") {
         val userId = call.userIdOrNull?.toLongOrNull()
@@ -58,6 +60,7 @@ fun Route.pricingRoutes(
                 "price_variant" to priceVariant,
             ),
         )
+        eventsCounter.inc("paywall_view")
         call.respond(HttpStatusCode.OK, payload)
     }
 
@@ -73,6 +76,7 @@ fun Route.pricingRoutes(
                 "variant" to body.variant,
             ),
         )
+        eventsCounter.inc("paywall_cta_click")
         call.respond(HttpStatusCode.Accepted)
     }
 }
