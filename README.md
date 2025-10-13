@@ -1,11 +1,18 @@
-## P80 — Performance Deep Dive
+## P81 — Usage Metering & Invoicing
 
-- async-profiler: `tools/perf/profile_async.sh`
-- JFR: `tools/perf/record_jfr.sh`
-- k6 latency/throughput: `deploy/load/k6/latency_throughput.js`
-- CI budgets: `.github/workflows/perf-budgets.yml`
+- DB migrations: `V13__usage_billing.sql`
+- Core: `billing/UsageModels.kt`, `billing/UsageService.kt`
+- Repo: `repo/UsageBillingRepository.kt`
+- API: `billing/UsageRoutes.kt`
+- Cron: `tools/billing/invoice_monthly.sh`
 
 Пример:
 ```bash
-gh workflow run "Performance Budgets (k6 + server SLO)" -f base_url=https://staging.example.com
+curl -X POST $BASE/api/usage/ingest -H 'Content-Type: application/json' \
+  -H "X-Tenant-Slug: demo" \
+  -d '{"metric":"api.calls","quantity":5}'
+
+curl -X POST $BASE/api/billing/invoice/draft -H 'Content-Type: application/json' \
+  -H "X-Tenant-Slug: demo" \
+  -d '{"from":"2025-09-01T00:00:00Z","to":"2025-10-01T00:00:00Z"}'
 ```
