@@ -45,3 +45,19 @@ Secrets/Vars (в репозитории → Settings → Secrets/Variables):
 - CI: `business-daily.yml` (ROI отчёт)
 
 > Требуется подключённая БД аналитики (ANALYTICS_DB_URL) и корректные события из P33/P51.
+
+## P72 — Continuous Verification (Release Gates)
+
+- Пороговые значения: `cv/thresholds.yml`
+- Скрипты гейтов: `tools/cv/*.sh`
+- k6 smoke: `deploy/load/k6/cv_smoke.js`
+- CI: `.github/workflows/continuous-verification.yml`
+
+Пример:
+```bash
+gh workflow run "Continuous Verification (Release Gates)" \
+  -f base_url=https://staging.example.com \
+  -f prom_url=https://prom.example.com \
+  -f loki_url=https://loki.example.com \
+  -f tempo_url=https://tempo.example.com
+```

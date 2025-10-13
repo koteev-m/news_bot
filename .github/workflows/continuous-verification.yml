@@ -1,0 +1,84 @@
+name: Continuous Verification (Release Gates)
+
+on:
+  workflow_call:
+    inputs:
+      base_url:        { required: true,  type: string }
+      prom_url:        { required: true,  type: string }
+      loki_url:        { required: true,  type: string }
+      tempo_url:       { required: true,  type: string }
+      need_contract:   { required: false, type: boolean, default: true }
+    secrets:
+      GITHUB_TOKEN: {}
+  workflow_dispatch:
+    inputs:
+      base_url:  { required: true, type: string }
+      prom_url:  { required: true, type: string }
+      loki_url:  { required: true, type: string }
+      tempo_url: { required: true, type: string }
+
+permissions:
+  contents: read
+
+jobs:
+  cv:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL:  ${{ inputs.base_url }}
+      PROM_URL:  ${{ inputs.prom_url }}
+      LOKI_URL:  ${{ inputs.loki_url }}
+      TEMPO_URL: ${{ inputs.tempo_url }}
+      CFG:       cv/thresholds.yml
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Install deps (jq yq redocly)
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq curl unzip
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          npm i -g @redocly/cli@1.16.0
+
+      - name: Gate: Availability
+        run: bash tools/cv/gate_availability.sh
+
+      - name: Gate: SLO (p95 / error-rate / burn-rate)
+        run: bash tools/cv/gate_slo.sh
+
+      - name: Gate: Observability (Loki/Tempo/metrics)
+        run: bash tools/cv/gate_observability.sh
+
+      - name: Gate: k6 CV smoke
+        run: bash tools/cv/gate_k6.sh
+
+      - name: Gate: API contract diff
+        env:
+          NEED_DIFF: ${{ inputs.need_contract && 'true' || 'false' }}
+        run: bash tools/cv/gate_contract.sh
+
+      - name: LHCI page score
+        run: bash tools/cv/gate_lhci.sh
+
+      - name: Pack CV report
+        run: |
+          {
+            echo "# Continuous Verification Report"
+            echo "- Base: ${BASE_URL}"
+            echo "- Prom: ${PROM_URL}"
+            echo "- Loki: ${LOKI_URL}"
+            echo "- Tempo: ${TEMPO_URL}"
+            echo "- Time: $(date -u)"
+            echo ""
+            echo "## Thresholds"
+            cat cv/thresholds.yml | sed 's/^/    /'
+          } > cv_report.md
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cv-report
+          path: |
+            cv_report.md
+            .lhci_tmp.json
+          if-no-files-found: ignore
