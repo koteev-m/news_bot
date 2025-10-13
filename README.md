@@ -1,18 +1,15 @@
-## P82 — Enterprise SSO (OIDC/SAML) + SCIM Provisioning
+## P83 — Vault/KMS Envelope Encryption + Rotation
 
-- DB migrations: `VXX__sso_scim.sql`
-- Core: `sso/IdpModels.kt`, `sso/GroupRoleMapper.kt`
-- Repo: `repo/IdpRepository.kt`
-- App: `AppSsoScim.kt`, routes `oidcRoutes`, `scimRoutes`
-- Config: `application.conf (sso, scim)`
-- CI: `.github/workflows/sso-scim-smoke.yml`
+- Core: `crypto/EnvelopeCrypto.kt`
+- KMS Adapter: `integrations/kms/VaultKmsAdapter.kt`
+- Storage: `repo/SecretStore.kt`
+- API: `crypto/CryptoRoutes.kt`
+- Rotation helper: `tools/crypto/rotate_key.sh`
+- CI: `.github/workflows/secrets-drift.yml`
 
-Пример:
-```bash
-curl -I "$BASE/sso/oidc/login?issuer=https://idp.example.com&redirect_uri=$BASE/sso/oidc/callback"
-curl "$BASE/scim/v2/ServiceProviderConfig"
+ENV (пример):
+```env
+VAULT_TRANSIT_BASE=https://vault.example/v1/transit
+VAULT_TOKEN=***
+VAULT_KEY_ID=newsbot-app-key
 ```
-
-
-
-⸻
