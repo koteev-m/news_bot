@@ -36,3 +36,12 @@ gh workflow run "Observability Gate (OTLP/Tempo/Loki/Prometheus)" \
 Secrets/Vars (в репозитории → Settings → Secrets/Variables):
 - **Secrets**: `GC_PROM_URL`, `GC_LOKI_URL`, `GC_LOKI_USER`, `GC_LOKI_API_KEY`, `GRAFANA_API_URL`, `GRAFANA_API_TOKEN`
 - **Vars**: `WATT_PER_VCPU`, `CARBON_GCO2_PER_KWH`
+
+## P71 — Business SLO/ROI Layer
+
+- Recording rules: `deploy/monitoring/prometheus/business.rules.yml`
+- Exporter: `EventsCounter` (инкрементируйте после `analytics.track(...)`)
+- Dashboard: `deploy/monitoring/grafana/dashboards/business-roi.json`
+- CI: `business-daily.yml` (ROI отчёт)
+
+> Требуется подключённая БД аналитики (ANALYTICS_DB_URL) и корректные события из P33/P51.

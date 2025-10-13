@@ -1,0 +1,14 @@
+groups:
+  - name: finops.business
+    rules:
+      # из P44/P68: service_total_cost_usd_per_hour, app_rps
+      - record: cost_per_request_usd
+        expr: total_cost_usd_per_hour / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 1) / 3600
+      # стоимость одного клика paywall (усреднённо): cost/hour / clicks/hour
+      - record: cost_per_paywall_click_usd
+        expr: |
+          total_cost_usd_per_hour / clamp_min(sum(rate(events_total{type="paywall_cta_click"}[5m])), 1)
+      # стоимость одной оплаты (усреднённо)
+      - record: cost_per_payment_usd
+        expr: |
+          total_cost_usd_per_hour / clamp_min(sum(rate(events_total{type="stars_payment_succeeded"}[15m])), 1)
