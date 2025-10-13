@@ -1,13 +1,15 @@
-## P73 — Privacy & Compliance Automation
+## P74 — Continuous Governance (Audit, Risk & Policy Engine)
 
-- DLP rules: `compliance/dlp_rules.yml`
-- Скрипты: `tools/compliance/dlp_scan.py`, `tools/compliance/dlp_report.sh`
-- DSAR endpoint: `/api/dsar`
-- CI: `.github/workflows/compliance-gate.yml`
+- Policies: `governance/policies/**` (Rego) + `conftest`
+- Evidence: `tools/governance/collect_evidence.sh`
+- Risk score: `tools/governance/risk_score.py` → `.governance/governance-report.json`
+- CI:
+  - `.github/workflows/governance-gate.yml`
+  - `.github/workflows/governance-daily.yml`
 
-Проверка:
+Локально:
 ```bash
-python3 tools/compliance/dlp_scan.py
-curl -X POST http://localhost:8080/api/dsar -H 'Content-Type: application/json' \
-  -d '{"userId":123,"action":"export"}'
+bash tools/governance/policy_check.sh
+bash tools/governance/collect_evidence.sh
+python3 tools/governance/risk_score.py
 ```

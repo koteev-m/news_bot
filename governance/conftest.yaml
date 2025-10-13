@@ -1,0 +1,3 @@
+# Определяет, как Conftest читает входы (K8s, Helm-рендер, конфиги/логи)
+policy:
+  - governance/policies
