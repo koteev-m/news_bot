@@ -1,0 +1,24 @@
+name: Install LitmusChaos
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  install-litmus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+      - name: Install Litmus (operator + CRDs)
+        run: |
+          helm repo add litmuschaos https://litmuschaos.github.io/litmus-helm/
+          helm repo update
+          helm upgrade --install litmus litmuschaos/litmus \
+            --namespace litmus --create-namespace \
+            --set portal.enabled=false
+      - name: Check pods
+        run: kubectl -n litmus get pods -o wide

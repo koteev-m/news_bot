@@ -1,0 +1,37 @@
+name: Chaos Smoke (staging)
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment:
+        description: "Experiment file (pod-delete|network-latency|cpu-hog)"
+        required: true
+        default: "pod-delete"
+
+permissions:
+  contents: read
+
+jobs:
+  chaos:
+    runs-on: ubuntu-latest
+    env:
+      PROM_URL: ${{ secrets.STAGE_PROM_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply chaos engine
+        run: |
+          case "${{ inputs.experiment }}" in
+            pod-delete)       kubectl apply -f k8s/chaos/pod-delete.yaml ;;
+            network-latency)  kubectl apply -f k8s/chaos/network-latency.yaml ;;
+            cpu-hog)          kubectl apply -f k8s/chaos/cpu-hog.yaml ;;
+            *) echo "unknown experiment"; exit 2 ;;
+          esac
+      - name: Wait 2 minutes
+        run: sleep 120
+      - name: SLO guard (burn-rate)
+        run: bash tools/chaos/slo_guard.sh
+      - name: Get rollout status (staging)
+        run: |
+          curl -sLO https://github.com/argoproj/argo-rollouts/releases/download/v1.6.4/kubectl-argo-rollouts-linux-amd64
+          sudo install -m 0755 kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          kubectl-argo-rollouts get rollout newsbot-newsbot -n newsbot-staging
