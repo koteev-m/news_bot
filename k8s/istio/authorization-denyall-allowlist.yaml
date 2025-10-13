@@ -1,0 +1,21 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: default-deny
+  namespace: newsbot-prod
+spec:
+  {}
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-mesh-to-app
+  namespace: newsbot-prod
+spec:
+  rules:
+    - from:
+        - source:
+            namespaces: ["newsbot-prod"]
+      to:
+        - operation:
+            ports: ["8080"]

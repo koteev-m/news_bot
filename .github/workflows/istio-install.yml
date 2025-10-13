@@ -1,0 +1,25 @@
+name: Install Istio (control plane)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  istio-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download istioctl
+        run: |
+          curl -sL https://istio.io/downloadIstio | ISTIO_VERSION=1.22.3 sh -
+          sudo install -m 0755 istio-1.22.3/bin/istioctl /usr/local/bin/istioctl
+      - name: Install Istio (minimal)
+        run: |
+          istioctl install -y --set profile=minimal
+      - name: Enable ingress gateway
+        run: |
+          kubectl apply -f istio-1.22.3/samples/addons/prometheus.yaml || true
+          istioctl install -y --set components.ingressGateways[0].name=istio-ingressgateway \
+            --set components.ingressGateways[0].enabled=true

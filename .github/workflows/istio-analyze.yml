@@ -1,0 +1,23 @@
+name: Istio Analyze (CI)
+
+on:
+  pull_request:
+    paths:
+      - 'k8s/istio/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download istioctl
+        run: |
+          curl -sL https://istio.io/downloadIstio | ISTIO_VERSION=1.22.3 sh -
+          sudo install -m 0755 istio-1.22.3/bin/istioctl /usr/local/bin/istioctl
+      - name: istioctl analyze
+        run: |
+          istioctl analyze k8s/istio --use-kube=false --timeout 30s

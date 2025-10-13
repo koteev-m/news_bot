@@ -1,15 +1,19 @@
-## P74 — Continuous Governance (Audit, Risk & Policy Engine)
+## P75 — Zero-Trust Service Mesh (Istio)
 
-- Policies: `governance/policies/**` (Rego) + `conftest`
-- Evidence: `tools/governance/collect_evidence.sh`
-- Risk score: `tools/governance/risk_score.py` → `.governance/governance-report.json`
-- CI:
-  - `.github/workflows/governance-gate.yml`
-  - `.github/workflows/governance-daily.yml`
+Файлы:
+- `k8s/istio/peerauthentication-strict.yaml` — STRICT mTLS
+- `k8s/istio/destinationrule-newsbot.yaml` — TLS ISTIO_MUTUAL
+- `k8s/istio/gateway-virtualservice.yaml` — HTTPS ingress
+- `k8s/istio/jwt-authz-admin.yaml` — JWT authz для `/api/admin/*`
+- `k8s/istio/envoyfilter-ratelimit.yaml` — rate-limit
+- `k8s/istio/authorization-denyall-allowlist.yaml` — deny-all + allow внутри ns
 
-Локально:
+CI:
+- `.github/workflows/istio-analyze.yml`
+- `.github/workflows/istio-install.yml`
+
+Быстрый старт:
 ```bash
-bash tools/governance/policy_check.sh
-bash tools/governance/collect_evidence.sh
-python3 tools/governance/risk_score.py
+gh workflow run "Install Istio (control plane)"
+kubectl apply -f k8s/istio/
 ```
