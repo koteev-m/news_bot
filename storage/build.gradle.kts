@@ -6,8 +6,8 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("org.flywaydb:flyway-gradle-plugin:10.17.2")
-        classpath("org.flywaydb:flyway-database-postgresql:10.17.2")
+        classpath("org.flywaydb:flyway-gradle-plugin:11.14.0")
+        classpath("org.flywaydb:flyway-database-postgresql:11.14.0")
         classpath("org.postgresql:postgresql:42.7.4")
     }
 }
