@@ -1,0 +1,24 @@
+{
+  "name": "pg-cdc-newsbot",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "db",
+    "database.port": "5432",
+    "database.user": "app",
+    "database.password": "app_pass",
+    "database.dbname": "newsbot",
+    "database.server.name": "pg",
+    "table.include.list": "public.portfolios,public.alerts_rules,public.user_subscriptions,public.users",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_newsbot",
+    "publication.autocreate.mode": "filtered",
+    "tombstones.on.delete": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "true",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "decimal.handling.mode": "string",
+    "time.precision.mode": "connect"
+  }
+}
