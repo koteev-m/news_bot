@@ -1,0 +1,33 @@
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: admin-jwt
+  namespace: newsbot-prod
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: newsbot
+  jwtRules:
+    - issuer: "https://accounts.example.com"
+      jwksUri: "https://accounts.example.com/.well-known/jwks.json"
+      forwardOriginalToken: true
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: admin-allow
+  namespace: newsbot-prod
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: newsbot
+  rules:
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            paths: ["/api/admin/*"]
+      when:
+        - key: request.auth.claims[role]
+          values: ["admin"]

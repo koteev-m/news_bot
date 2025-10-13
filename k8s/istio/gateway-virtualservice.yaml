@@ -1,0 +1,28 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: newsbot-gw
+  namespace: newsbot-prod
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port: { number: 443, name: https, protocol: HTTPS }
+      tls: { mode: SIMPLE, credentialName: newsbot-tls }
+      hosts: ["newsbot.example.com"]
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: newsbot
+  namespace: newsbot-prod
+spec:
+  hosts: ["newsbot.example.com"]
+  gateways: ["newsbot-gw"]
+  http:
+    - match:
+        - uri: { prefix: "/" }
+      route:
+        - destination:
+            host: newsbot-newsbot.newsbot-prod.svc.cluster.local
+            port: { number: 8080 }
