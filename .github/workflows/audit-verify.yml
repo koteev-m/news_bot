@@ -1,0 +1,31 @@
+name: Audit Ledger Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'UTC day to verify (YYYY-MM-DD). Defaults to yesterday.'
+        required: false
+      seq:
+        description: 'Optional upper bound seq_id to verify.'
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: ${{ secrets.AUDIT_DB_URL }}
+
+jobs:
+  verify-ledger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Verify ledger integrity
+        run: |
+          tools/audit/ledger_verify.sh "${{ github.event.inputs.day }}" "${{ github.event.inputs.seq }}"

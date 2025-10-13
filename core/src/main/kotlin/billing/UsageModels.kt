@@ -1,9 +1,13 @@
+@file:UseSerializers(common.serialization.InstantIso8601Serializer::class)
+
 package billing
 
-import kotlinx.serialization.Serializable
 import java.time.Instant
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.UseSerializers
 
-@Serializable data class UsageEvent(
+@Serializable
+data class UsageEvent(
     val tenantId: Long,
     val projectId: Long? = null,
     val userId: Long? = null,
@@ -13,7 +17,8 @@ import java.time.Instant
     val dedupKey: String? = null
 )
 
-@Serializable data class RateItem(
+@Serializable
+data class RateItem(
     val metric: String,
     val unit: String,
     val pricePerUnit: Double,
@@ -21,14 +26,16 @@ import java.time.Instant
     val tierTo: Double? = null
 )
 
-@Serializable data class RateCard(
+@Serializable
+data class RateCard(
     val rateId: Long,
     val name: String,
     val currency: String,
     val items: List<RateItem>
 )
 
-@Serializable data class InvoiceLine(
+@Serializable
+data class InvoiceLine(
     val metric: String,
     val quantity: Double,
     val unit: String,
@@ -36,7 +43,8 @@ import java.time.Instant
     val amount: Double
 )
 
-@Serializable data class InvoiceDraft(
+@Serializable
+data class InvoiceDraft(
     val tenantId: Long,
     val currency: String,
     val periodFrom: Instant,

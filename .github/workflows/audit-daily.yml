@@ -1,0 +1,39 @@
+name: Audit Ledger Daily Checkpoint
+
+on:
+  schedule:
+    - cron: '10 1 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  DATABASE_URL: ${{ secrets.AUDIT_DB_URL }}
+
+jobs:
+  sign-checkpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Generate daily audit checkpoint
+        env:
+          AUDIT_SIGNER: cosign
+          COSIGN_EXPERIMENTAL: '1'
+        run: tools/audit/ledger_sign_daily.sh
+
+      - name: Upload checkpoint artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-ledger-checkpoint
+          path: checkpoint.json
+          retention-days: 30
