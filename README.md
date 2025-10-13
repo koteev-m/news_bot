@@ -1,15 +1,13 @@
-## P65 — Runtime security & audit visibility
+## P67 — Multi-Cluster DR (active–passive)
 
-- Falco + Falcosidekick (HTTP → Loki), кастомные правила.
-- Kubernetes Audit logs (policy пример).
-- Promtail собирает потоки: `app`, `falco`, `kube-audit`.
-- CI: `falcoctl-test.yml` для smoke-валидации правил.
+- Argo CD App-of-Apps: `k8s/argocd/app-of-apps/*`
+- Route53 failover: `terraform/route53_dr.tf`
+- Скрипты: `tools/dr/failover.sh`, `failback.sh`, `verify_pair.sh`
+- CI: **DR Exercise (manual)**
 
-## P66 — Resilience & Chaos Engineering
-
-- Install Litmus: workflow **Install LitmusChaos**
-- Run chaos smoke:
+Быстрый старт:
 ```bash
-gh workflow run "Chaos Smoke (staging)" -f experiment=pod-delete
+kubectl apply -f k8s/argocd/app-of-apps/root.yaml
+(cd terraform && terraform init && terraform apply -var='zone_id=Z...'
+  -var='record_name=app.example.com' -var='primary_dns=...' -var='secondary_dns=...')
 ```
-- SLO guard: Prometheus burn-rate проверяется в CI.
