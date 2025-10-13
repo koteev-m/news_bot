@@ -1,0 +1,30 @@
+name: DR Exercise (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "verify|failover|failback"
+        required: true
+        default: "verify"
+
+permissions:
+  contents: read
+
+jobs:
+  dr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pair
+        if: inputs.action == 'verify'
+        env:
+          BASE_PRIMARY: ${{ secrets.PRIMARY_BASE_URL }}
+          BASE_SECONDARY: ${{ secrets.SECONDARY_BASE_URL }}
+        run: bash tools/dr/verify_pair.sh
+      - name: Failover
+        if: inputs.action == 'failover'
+        run: bash tools/dr/failover.sh
+      - name: Failback
+        if: inputs.action == 'failback'
+        run: bash tools/dr/failback.sh

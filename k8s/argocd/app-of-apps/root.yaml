@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: newsbot-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ORG/REPO.git
+    targetRevision: main
+    path: k8s/argocd/app-of-apps
+    directory:
+      recurse: true
+  destination:
+    name: in-cluster
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
