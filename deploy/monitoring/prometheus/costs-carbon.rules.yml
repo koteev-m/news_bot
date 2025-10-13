@@ -1,0 +1,28 @@
+groups:
+  - name: finops.costs.carbon
+    rules:
+      # Из P44: container_cpu_seconds_rate_by_service, service_total_cost_usd_per_hour
+      # Параметры по умолчанию (можно переопределить в Prometheus через external labels/recording):
+      # WATT_PER_VCPU ≈ 15W, CARBON_GCO2_PER_KWH зависит от региона (напр., 400 gCO2/kWh)
+      - record: finops:watt_per_vcpu
+        expr: 15
+      - record: finops:carbon_gco2_per_kwh
+        expr: 400
+
+      # Энергопотребление по сервису (kWh/hour) = CPU_seconds_rate * Watt_per_vCPU / 1000
+      - record: service_energy_kwh_per_hour
+        expr: |
+          (container_cpu_seconds_rate_by_service * finops:watt_per_vcpu) / 1000
+
+      # Углеродный след (gCO2/hour) = kWh/hour * carbon_intensity
+      - record: service_carbon_gco2_per_hour
+        expr: |
+          service_energy_kwh_per_hour * finops:carbon_gco2_per_kwh
+
+      # Итого по кластеру
+      - record: total_cost_usd_per_hour
+        expr: sum(service_total_cost_usd_per_hour)
+      - record: total_energy_kwh_per_hour
+        expr: sum(service_energy_kwh_per_hour)
+      - record: total_carbon_gco2_per_hour
+        expr: sum(service_carbon_gco2_per_hour)

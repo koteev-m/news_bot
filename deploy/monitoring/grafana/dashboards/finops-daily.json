@@ -1,0 +1,45 @@
+{
+  "title": "NewsBot / FinOps — Cost & Carbon",
+  "uid": "finops-daily",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Cost (USD/hour)",
+      "targets": [{ "expr": "total_cost_usd_per_hour" }],
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "stat",
+      "title": "Energy (kWh/hour)",
+      "targets": [{ "expr": "total_energy_kwh_per_hour" }],
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "stat",
+      "title": "Carbon (gCO2/hour)",
+      "targets": [{ "expr": "total_carbon_gco2_per_hour" }],
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Service cost (USD/hour)",
+      "targets": [{ "expr": "service_total_cost_usd_per_hour", "legendFormat": "{{service}}" }],
+      "gridPos": { "x": 0, "y": 4, "w": 9, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Service carbon (gCO2/hour)",
+      "targets": [{ "expr": "service_carbon_gco2_per_hour", "legendFormat": "{{service}}" }],
+      "gridPos": { "x": 9, "y": 4, "w": 9, "h": 8 }
+    },
+    {
+      "type": "annotation",
+      "title": "FinOps daily markers",
+      "gridPos": { "x": 0, "y": 12, "w": 18, "h": 2 }
+    }
+  ],
+  "templating": { "list": [] }
+}
