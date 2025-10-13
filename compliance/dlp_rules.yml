@@ -1,0 +1,26 @@
+rules:
+  - id: EMAIL
+    description: "Email addresses"
+    regex: '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b'
+    severity: medium
+  - id: PHONE
+    description: "Phone numbers"
+    regex: '\\+?\\d[\\d \\-]{8,}\\d'
+    severity: medium
+  - id: CREDIT_CARD
+    description: "Credit card number"
+    regex: '\\b(?:\\d[ -]*?){13,16}\\b'
+    severity: high
+  - id: TOKEN
+    description: "API/Access tokens"
+    regex: '(?i)(token|secret|apikey|api_key|password)\\s*[=:]\\s*[A-Za-z0-9_\\-]{16,}'
+    severity: critical
+  - id: GEOLOCATION
+    description: "Coordinates / GPS lat/lon"
+    regex: '(-?\\d{1,2}\\.\\d{3,}),\\s*(-?\\d{1,3}\\.\\d{3,})'
+    severity: low
+exclude_dirs:
+  - node_modules
+  - build
+  - dist
+  - .git
