@@ -99,6 +99,9 @@ subprojects {
                 testLogging {
                     events = setOf(TestLogEvent.PASSED, TestLogEvent.SKIPPED, TestLogEvent.FAILED)
                 }
+                filter {
+                    isFailOnNoMatchingTests = false
+                }
             }
         }
     }
