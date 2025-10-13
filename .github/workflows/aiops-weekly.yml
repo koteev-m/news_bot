@@ -1,0 +1,54 @@
+name: AIOps Weekly (anomalies + optional remediation)
+
+on:
+  schedule:
+    - cron: "15 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      remediate:
+        description: "promote|abort|scale|none"
+        required: true
+        default: "none"
+
+permissions:
+  contents: read
+
+jobs:
+  aiops:
+    runs-on: ubuntu-latest
+    env:
+      PROM_URL: ${{ secrets.STAGE_PROM_URL }}
+      BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python & jq
+        run: sudo apt-get update && sudo apt-get install -y python3 jq
+      - name: Detect anomalies
+        env:
+          QUERY: sum(rate(http_server_requests_seconds_count[5m]))
+        run: |
+          bash tools/aiops/anomaly_report.sh
+          head -n 50 aiops_anomalies.md
+      - name: Notify Telegram
+        if: env.BOT_TOKEN != '' && env.CHAT_ID != ''
+        run: |
+          MSG="$(head -n 20 aiops_anomalies.md | sed 's/"/\\"/g')"
+          bash tools/aiops/notify_telegram.sh "$MSG"
+      - name: Optional remediation
+        if: inputs.remediate != 'none'
+        env:
+          NS: newsbot-staging
+          ROLLOUT: newsbot-newsbot
+        run: |
+          curl -sLO https://github.com/argoproj/argo-rollouts/releases/download/v1.6.4/kubectl-argo-rollouts-linux-amd64
+          sudo install -m 0755 kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          bash tools/aiops/remediate.sh "${{ inputs.remediate }}"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiops-weekly
+          path: |
+            aiops_anomalies.json
+            aiops_anomalies.md
+          retention-days: 14
