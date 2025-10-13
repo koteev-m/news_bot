@@ -25,6 +25,7 @@ dependencies {
     implementation("io.ktor:ktor-client-encoding:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation(libs.serialization.json)
+    implementation(libs.kafka.clients)
     implementation(libs.opentelemetry.api)
     implementation(libs.opentelemetry.context)
     api(libs.micrometer.core)
