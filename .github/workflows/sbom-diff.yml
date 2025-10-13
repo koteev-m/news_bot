@@ -1,0 +1,27 @@
+name: SBOM Diff Gate
+
+on:
+  pull_request:
+    paths:
+      - '**/*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  sbom-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: SBOM diff
+        run: bash tools/sbom/sbom_diff.sh
+      - name: Upload SBOM diff
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-diff
+          path: .sbom/**
+          retention-days: 14

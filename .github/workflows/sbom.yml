@@ -1,0 +1,35 @@
+name: SBOM (Syft) — image & source
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_REF: ghcr.io/${{ github.repository }}:latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, lfs: true }
+
+      - name: Build image (if needed)
+        run: |
+          if ! docker pull "$IMAGE_REF" 2>/dev/null; then
+            docker build -t "$IMAGE_REF" -f Dockerfile .
+          fi
+
+      - name: Generate SBOM (Syft)
+        run: |
+          bash tools/sbom/generate_sbom.sh
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: .sbom/**
+          retention-days: 30

@@ -1,0 +1,59 @@
+name: SLSA Provenance (SLSA v1 predicate + Cosign attest)
+
+on:
+  push:
+    tags: ['v*.*.*', 'v*.*.*-rc.*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (tag) to build & attest"
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, ref: ${{ inputs.ref || github.ref }} }
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21', cache: gradle }
+
+      - name: Build
+        run: ./gradlew --no-daemon --stacktrace clean build
+
+      - name: Build image
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          docker build -t "${IMAGE}:${TAG}" -f Dockerfile .
+          echo "IMAGE_REF=${IMAGE}:${TAG}" >> $GITHUB_ENV
+
+      - name: Login GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push image
+        run: docker push "${IMAGE_REF}"
+
+      - name: Generate SLSA provenance (GitHub Generator)
+        uses: slsa-framework/slsa-github-generator/actions/generator@v2.0.0
+        with:
+          base64-subjects: "${{ env.IMAGE_REF }}"
+          upload-assets: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Cosign attest (provenance)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign attest --yes --predicate provenance.json --type slsaprovenance "${IMAGE_REF}"
