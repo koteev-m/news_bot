@@ -1,18 +1,18 @@
-## P81 — Usage Metering & Invoicing
+## P82 — Enterprise SSO (OIDC/SAML) + SCIM Provisioning
 
-- DB migrations: `V13__usage_billing.sql`
-- Core: `billing/UsageModels.kt`, `billing/UsageService.kt`
-- Repo: `repo/UsageBillingRepository.kt`
-- API: `billing/UsageRoutes.kt`
-- Cron: `tools/billing/invoice_monthly.sh`
+- DB migrations: `VXX__sso_scim.sql`
+- Core: `sso/IdpModels.kt`, `sso/GroupRoleMapper.kt`
+- Repo: `repo/IdpRepository.kt`
+- App: `AppSsoScim.kt`, routes `oidcRoutes`, `scimRoutes`
+- Config: `application.conf (sso, scim)`
+- CI: `.github/workflows/sso-scim-smoke.yml`
 
 Пример:
 ```bash
-curl -X POST $BASE/api/usage/ingest -H 'Content-Type: application/json' \
-  -H "X-Tenant-Slug: demo" \
-  -d '{"metric":"api.calls","quantity":5}'
-
-curl -X POST $BASE/api/billing/invoice/draft -H 'Content-Type: application/json' \
-  -H "X-Tenant-Slug: demo" \
-  -d '{"from":"2025-09-01T00:00:00Z","to":"2025-10-01T00:00:00Z"}'
+curl -I "$BASE/sso/oidc/login?issuer=https://idp.example.com&redirect_uri=$BASE/sso/oidc/callback"
+curl "$BASE/scim/v2/ServiceProviderConfig"
 ```
+
+
+
+⸻
