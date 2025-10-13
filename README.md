@@ -15,3 +15,17 @@ bash tools/sbom/generate_sbom.sh IMAGE_REF=ghcr.io/ORG/REPO:latest
 ```
 
 ⸻
+
+## P77 — Multi-tenant & Enterprise RBAC
+
+- Миграции: `storage/src/main/resources/db/migration/V11__multitenancy_rbac.sql`
+- Core: `core/src/main/kotlin/tenancy/*`
+- Storage: `storage/src/main/kotlin/repo/TenancyRepository.kt`
+- App: `app/src/main/kotlin/tenancy/*`, `AppTenancy.kt`, `routes/AdminTenancyRoutes.kt`
+- Rate limit per-tenant: `app/src/main/kotlin/security/TenantRateLimit.kt`
+
+Быстрый старт:
+```bash
+./gradlew :storage:flywayMigrate
+./gradlew :app:test --tests tenancy.*
+```
