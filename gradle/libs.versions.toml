@@ -1,6 +1,6 @@
 [versions]
 kafka = "3.7.0"
-kotlin = "2.2.10"
+kotlin = "2.2.20"
 ktor = "3.2.3"
 javajwt = "4.4.0"
 coroutines = "1.10.2"
