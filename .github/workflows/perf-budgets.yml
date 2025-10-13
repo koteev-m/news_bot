@@ -1,0 +1,36 @@
+name: Performance Budgets (k6 + server SLO)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url: { required: true, type: string }
+      vus:      { required: false, type: string, default: "10" }
+      duration: { required: false, type: string, default: "2m" }
+
+permissions:
+  contents: read
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download k6
+        run: |
+          curl -sSLO https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz
+          tar -xzf k6-v0.49.0-linux-amd64.tar.gz
+          sudo install -m 0755 k6-v0.49.0-linux-amd64/k6 /usr/local/bin/k6
+      - name: Run k6 test
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          VUS: ${{ inputs.vus }}
+          DURATION: ${{ inputs.duration }}
+        run: k6 run deploy/load/k6/latency_throughput.js
+      - name: Upload k6 output (raw)
+        if: always()
+        run: echo "see GitHub Actions log" > perf_note.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-note
+          path: perf_note.txt
