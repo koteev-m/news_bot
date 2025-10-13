@@ -1,0 +1,19 @@
+name: SSO/SCIM Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url: { required: true, type: string }
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OIDC endpoints
+        run: |
+          curl -sSf "${{ inputs.base_url }}/sso/oidc/login?issuer=https://idp.example.com&redirect_uri=${{ inputs.base_url }}/sso/oidc/callback" -I | head -n 5
+      - name: SCIM ServiceProviderConfig
+        run: curl -sSf "${{ inputs.base_url }}/scim/v2/ServiceProviderConfig" | jq .
