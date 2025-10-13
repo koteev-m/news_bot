@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Paywall CTA v1",
+  "type": "object",
+  "required": ["type","version","id","tenantId","occurredAt","payload"],
+  "properties": {
+    "type": { "const": "paywall.cta" },
+    "version": { "const": 1 },
+    "id": { "type": "string" },
+    "tenantId": { "type": "integer" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "payload": {
+      "type": "object",
+      "required": ["plan","variant"],
+      "properties": {
+        "plan": { "type": "string" },
+        "variant": { "type": "string" }
+      }
+    }
+  }
+}

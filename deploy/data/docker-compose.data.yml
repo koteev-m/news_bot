@@ -1,0 +1,36 @@
+version: "3.9"
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.1.4
+    command:
+      - redpanda start --overprovisioned --smp 1 --memory 1G --reserve-memory 0M --check=false
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "PLAINTEXT://redpanda:9092"
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+    ports: ["8081:8081"]
+    depends_on: [redpanda]
+  connect:
+    image: debezium/connect:2.7
+    environment:
+      BOOTSTRAP_SERVERS: "redpanda:9092"
+      GROUP_ID: "1"
+      CONFIG_STORAGE_TOPIC: "connect-configs"
+      OFFSET_STORAGE_TOPIC: "connect-offsets"
+      STATUS_STORAGE_TOPIC: "connect-status"
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+    ports: ["8083:8083"]
+    depends_on: [redpanda, schema-registry]
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports: ["8123:8123", "9000:9000"]
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
