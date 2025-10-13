@@ -27,3 +27,12 @@ gh workflow run "Observability Gate (OTLP/Tempo/Loki/Prometheus)" \
   -f loki_url=http://loki:3100 \
   -f prom_url=http://prom:9090
 ```
+## P69 — FinOps pipeline (Cost & Carbon → Grafana Cloud)
+
+- Recording rules: `deploy/monitoring/prometheus/costs-carbon.rules.yml`
+- CI: `finops-daily-cloud.yml` — ежедневный отчёт (Loki + Grafana annotation)
+- Dashboard: `deploy/monitoring/grafana/dashboards/finops-daily.json`
+
+Secrets/Vars (в репозитории → Settings → Secrets/Variables):
+- **Secrets**: `GC_PROM_URL`, `GC_LOKI_URL`, `GC_LOKI_USER`, `GC_LOKI_API_KEY`, `GRAFANA_API_URL`, `GRAFANA_API_TOKEN`
+- **Vars**: `WATT_PER_VCPU`, `CARBON_GCO2_PER_KWH`
