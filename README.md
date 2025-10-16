@@ -37,3 +37,16 @@ VAULT_KEY_ID=newsbot-app-key
 - Metadata stored in the ledger must remain non-PII.
 - Cosign keyless signing requires `id-token: write` permissions in GitHub Actions and `COSIGN_EXPERIMENTAL=1`.
 - Verification expects read-only DB credentials and will abort on any hash mismatch.
+
+## P86 — AI-assisted Governance
+
+- RCA сбор: `tools/ai_gov/rca_collect.py`
+- Саммари: `tools/ai_gov/llm_summarize.py` (LLM опционально)
+- Policy digest: `tools/ai_gov/policy_summarizer.py`
+- CI: `.github/workflows/ai-governance-weekly.yml`
+
+Пример (LLM off):
+```bash
+python3 tools/ai_gov/rca_collect.py
+python3 tools/ai_gov/llm_summarize.py
+```
