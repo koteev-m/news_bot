@@ -1,0 +1,45 @@
+name: AI Governance Weekly
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      with_llm:
+        description: "Use LLM (OPENAI_API_KEY in secrets)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  build-report:
+    runs-on: ubuntu-latest
+    env:
+      EVIDENCE_DIR: .
+      RCA_INPUT: ai_gov_rca_input.json
+      RCA_REPORT: ai_gov_rca_report.md
+      POLICY_DIR: governance/policies
+      POLICY_SUMMARY: policy_summary.md
+      OPENAI_API_KEY: ${{ inputs.with_llm == 'true' && secrets.OPENAI_API_KEY || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Install python & jq
+        run: sudo apt-get update && sudo apt-get install -y python3 jq
+      - name: Collect evidence
+        run: python3 tools/ai_gov/rca_collect.py
+      - name: Summarize RCA
+        run: python3 tools/ai_gov/llm_summarize.py
+      - name: Policy summary
+        run: python3 tools/ai_gov/policy_summarizer.py
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-gov-weekly
+          path: |
+            ai_gov_rca_input.json
+            ai_gov_rca_report.md
+            policy_summary.md
+          retention-days: 28
