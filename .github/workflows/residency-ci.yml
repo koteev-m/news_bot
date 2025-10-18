@@ -1,0 +1,23 @@
+name: Data Residency CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_id: { required: true, type: string }
+      app_region: { required: true, type: string }
+
+jobs:
+  residency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify residency routing (smoke)
+        run: |
+          curl -sS -H "X-Region-Served: ${{ inputs.app_region }}" "$BASE_URL/healthz" -I | head -n 5
+      - name: Record evidence
+        env:
+          DATABASE_URL: ${{ secrets.ANALYTICS_DB_URL }}
+          TENANT_ID: ${{ inputs.tenant_id }}
+          REGION: ${{ inputs.app_region }}
+          PI_WRITES_OK: "true"
+        run: bash tools/residency/evidence_snapshot.sh

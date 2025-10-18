@@ -1,0 +1,24 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: deny-pii-cross-region
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: block-pii-egress
+      match:
+        any:
+          - resources:
+              kinds: ["NetworkPolicy"]
+      validate:
+        message: "PII flows cannot egress to different region"
+        pattern:
+          spec:
+            egress:
+              - to:
+                  - namespaceSelector:
+                      matchExpressions:
+                        - key: region
+                          operator: In
+                          values: ["{{ request.object.metadata.namespace | to_string | split(':')[1] }}"]
