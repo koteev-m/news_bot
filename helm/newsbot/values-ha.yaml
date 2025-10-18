@@ -1,0 +1,28 @@
+priorityClassName: "standard-apps"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.kubernetes.io/region
+              operator: In
+              values: ["eu-central-1"]
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: newsbot
+service:
+  annotations: {}
+  type: ClusterIP
+ingress:
+  enabled: false
+rollouts:
+  enabled: true

@@ -1,0 +1,21 @@
+name: Global Health & Failover Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      hostname:
+        description: "Global hostname (e.g., newsbot.example.com)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check global /healthz
+        env:
+          HOSTNAME: ${{ inputs.hostname }}
+        run: bash tools/ha/health_check.sh

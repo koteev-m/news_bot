@@ -1,0 +1,13 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata: { name: critical-apps }
+value: 100000
+globalDefault: false
+description: "Critical NewsBot services"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata: { name: standard-apps }
+value: 1000
+globalDefault: true
+description: "Standard priority for workloads"
