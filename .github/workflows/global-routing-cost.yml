@@ -1,0 +1,25 @@
+name: Cost-aware Global Routing
+
+on:
+  schedule:
+    - cron: "3 5 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  cost-routing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect FinOps region data
+        run: python3 tools/finops/regions_cost_fetch.py
+      - name: Choose preferred region
+        run: python3 tools/finops/choose_region.py
+      - name: Apply Terraform with chosen region
+        env:
+          TF_VAR_preferred_region: $(cat preferred_region.txt)
+        run: |
+          terraform -chdir=terraform/global init -input=false
+          terraform -chdir=terraform/global apply -auto-approve -var "preferred_region=$(cat preferred_region.txt)"
