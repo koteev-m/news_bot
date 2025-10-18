@@ -1,0 +1,23 @@
+name: Access Reviews (quarterly)
+
+on:
+  schedule:
+    - cron: "0 7 1 1,4,7,10 *"
+  workflow_dispatch:
+    inputs:
+      base_url: { required: true, type: string }
+      tenant_slug: { required: true, type: string }
+
+jobs:
+  start-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create quarterly review (tenant)
+        env:
+          BASE: ${{ inputs.base_url }}
+          TENANT: ${{ inputs.tenant_slug }}
+        run: |
+          DUE=$(date -u -d '+14 days' +%Y-%m-%dT%H:%M:%SZ)
+          curl -sS -X POST "$BASE/api/access/review/start" \
+            -H 'Content-Type: application/json' -H "X-Tenant-Slug: $TENANT" \
+            -d "{\"dueAtIso\":\"$DUE\"}" | jq .
