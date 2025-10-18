@@ -1,0 +1,13 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: tenant-a-high
+value: 10000
+description: "tenant A premium apps"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: tenant-b-standard
+value: 1000
+description: "tenant B standard apps"
