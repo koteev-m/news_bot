@@ -72,3 +72,18 @@ terraform -chdir=terraform/global apply \
 # Проверка
 gh workflow run "Global Health & Failover Smoke" -f hostname=newsbot.example.com
 ```
+
+## P90 — Access Reviews & SoD (Attestations, PAM)
+
+- DB: `V16__access_reviews_sod.sql`
+- Core: `access/AccessModels.kt`, `access/AccessServices.kt`
+- Repo: `repo/AccessRepoImpl.kt`
+- API: `access/AccessRoutes.kt`; wiring: `AppAccess.kt`
+- CI: `access-reviews-schedule.yml`
+- Docs: `docs/ACCESS_REVIEWS_SOD_PAM.md`
+
+Быстрый старт:
+```bash
+./gradlew :storage:flywayMigrate
+./gradlew :app:compileKotlin
+```
