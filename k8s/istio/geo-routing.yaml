@@ -1,0 +1,42 @@
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: newsbot-geo
+  namespace: newsbot-prod
+spec:
+  host: newsbot-newsbot.newsbot-prod.svc.cluster.local
+  subsets:
+    - name: eu
+      labels: { region: "EU" }
+    - name: us
+      labels: { region: "US" }
+    - name: ap
+      labels: { region: "AP" }
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: newsbot-geo
+  namespace: newsbot-prod
+spec:
+  hosts: ["newsbot.example.com"]
+  gateways: ["newsbot-gw"]
+  http:
+    - match:
+        - headers:
+            X-Region-Served:
+              exact: "EU"
+      route:
+        - destination: { host: newsbot-newsbot.newsbot-prod.svc.cluster.local, subset: eu, port: { number: 8080 } }
+    - match:
+        - headers:
+            X-Region-Served:
+              exact: "US"
+      route:
+        - destination: { host: newsbot-newsbot.newsbot-prod.svc.cluster.local, subset: us, port: { number: 8080 } }
+    - match:
+        - headers:
+            X-Region-Served:
+              exact: "AP"
+      route:
+        - destination: { host: newsbot-newsbot.newsbot-prod.svc.cluster.local, subset: ap, port: { number: 8080 } }
