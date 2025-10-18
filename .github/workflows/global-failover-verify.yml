@@ -1,0 +1,99 @@
+name: Global Failover Verify (GameDay)
+
+on:
+  workflow_dispatch:
+    inputs:
+      hostname:
+        description: "Global hostname (e.g., newsbot.example.com)"
+        required: true
+      expected_cname:
+        description: "Expected SECONDARY CNAME (optional)"
+        required: false
+      base_url:
+        description: "Base URL (https://host)"
+        required: true
+      primary_kubeconfig_secret:
+        description: "Name of GitHub secret containing PRIMARY kubeconfig (base64)"
+        required: true
+      k6_vus:
+        description: "k6 VUs"
+        required: false
+        default: "5"
+      k6_duration:
+        description: "k6 duration"
+        required: false
+        default: "5m"
+
+permissions:
+  contents: read
+
+jobs:
+  gameday:
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ inputs.hostname }}
+      EXPECTED_CNAME: ${{ inputs.expected_cname }}
+      BASE_URL: ${{ inputs.base_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Install deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq dnsutils unzip
+          curl -sSLO https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz
+          tar -xzf k6-v0.49.0-linux-amd64.tar.gz
+          sudo install -m 0755 k6-v0.49.0-linux-amd64/k6 /usr/local/bin/k6
+
+      - name: Prepare PRIMARY kubeconfig
+        env:
+          KCFG_B64: ${{ secrets[inputs.primary_kubeconfig_secret] }}
+        run: |
+          echo "$KCFG_B64" | base64 -d > primary.kubeconfig
+
+      - name: Drain PRIMARY ingress (simulate)
+        env:
+          NS: istio-system
+          GW_DEPLOY: istio-ingressgateway
+          KUBECONFIG_PRIMARY: ${{ github.workspace }}/primary.kubeconfig
+        run: bash tools/ha/trigger_primary_drain.sh
+
+      - name: Start DNS probe
+        env:
+          HOST: ${{ env.HOST }}
+          INTERVAL: 5
+          DUR: 600
+        run: |
+          bash tools/ha/dns_probe.sh &
+          echo $! > dns_probe.pid
+
+      - name: Measure RTO
+        env:
+          HOST: ${{ env.HOST }}
+          EXPECTED_CNAME: ${{ env.EXPECTED_CNAME }}
+          PATH_CHECK: /healthz
+          INTERVAL: 3
+          TIMEOUT: 600
+        run: bash tools/ha/measure_rto.sh
+
+      - name: k6 failover smoke
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+          VUS: ${{ inputs.k6_vus }}
+          DURATION: ${{ inputs.k6_duration }}
+        run: k6 run deploy/load/k6/failover_smoke.js
+
+      - name: Stop DNS probe
+        if: always()
+        run: |
+          [ -f dns_probe.pid ] && kill "$(cat dns_probe.pid)" || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failover-artifacts
+          path: |
+            dns_probe.csv
+            rto.env
+          retention-days: 14
