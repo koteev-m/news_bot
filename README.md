@@ -50,3 +50,25 @@ VAULT_KEY_ID=newsbot-app-key
 python3 tools/ai_gov/rca_collect.py
 python3 tools/ai_gov/llm_summarize.py
 ```
+
+## P87 — Multi-Region HA & Global Failover
+
+- Terraform global DNS: `terraform/global/*`
+- K8s HA: `k8s/priorityclasses/`, `k8s/overlays/region-*`, `helm/newsbot/values-ha.yaml`
+- PostgreSQL logical replication: `deploy/db/pg/*`
+- Prometheus federation: `deploy/monitoring/prometheus/federation.yml`
+- CI: `.github/workflows/global-health.yml`
+
+Быстрый старт:
+```bash
+# DNS
+terraform -chdir=terraform/global init
+terraform -chdir=terraform/global apply \
+  -var='zone_id=ZXXXXXXXX' \
+  -var='hostname=newsbot.example.com' \
+  -var='primary_lb=a123.eu-lb.amazonaws.com' \
+  -var='secondary_lb=b456.us-lb.amazonaws.com'
+
+# Проверка
+gh workflow run "Global Health & Failover Smoke" -f hostname=newsbot.example.com
+```

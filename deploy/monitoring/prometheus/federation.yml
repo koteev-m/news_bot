@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: 'federate-eu'
+    honor_labels: true
+    metrics_path: /federate
+    params:
+      'match[]':
+        - '{__name__=~"http_server_requests_seconds_.*|web_vitals_.*|service_total_cost_usd_per_hour|slo:.*"}'
+    static_configs:
+      - targets: ['prometheus-eu:9090']
+
+  - job_name: 'federate-us'
+    honor_labels: true
+    metrics_path: /federate
+    params:
+      'match[]':
+        - '{__name__=~"http_server_requests_seconds_.*|web_vitals_.*|service_total_cost_usd_per_hour|slo:.*"}'
+    static_configs:
+      - targets: ['prometheus-us:9090']
