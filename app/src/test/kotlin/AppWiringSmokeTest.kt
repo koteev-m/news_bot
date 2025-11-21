@@ -259,23 +259,54 @@ class AppWiringSmokeTest {
             "storesMixedCaseIdentifiers", "supportsMixedCaseQuotedIdentifiers", "storesUpperCaseQuotedIdentifiers",
             "storesLowerCaseQuotedIdentifiers", "storesMixedCaseQuotedIdentifiers" -> false
             "supportsANSI92EntryLevelSQL", "supportsANSI92IntermediateSQL", "supportsANSI92FullSQL" -> false
-            "supportsAlterTableWithAddColumn", "supportsAlterTableWithDropColumn", "supportsColumnAliasing" -> false
+            "supportsAlterTableWithAddColumn",
+            "supportsAlterTableWithDropColumn",
+            "supportsColumnAliasing",
+            -> false
             "supportsGroupBy", "supportsGroupByUnrelated", "supportsGroupByBeyondSelect" -> false
-            "supportsLikeEscapeClause", "supportsMultipleResultSets", "supportsMultipleTransactions",
-            "supportsDifferentTableCorrelationNames", "supportsExpressionsInOrderBy", "supportsOrderByUnrelated",
+            "supportsLikeEscapeClause", "supportsMultipleResultSets", "supportsMultipleTransactions" -> false
+            "supportsDifferentTableCorrelationNames",
+            "supportsExpressionsInOrderBy",
+            "supportsOrderByUnrelated",
+            -> false
             "supportsOuterJoins", "supportsFullOuterJoins", "supportsLimitedOuterJoins" -> false
             "getExtraNameCharacters" -> ""
-            "usesLocalFiles", "usesLocalFilePerTable", "supportsOpenCursorsAcrossCommit",
-            "supportsOpenCursorsAcrossRollback", "supportsOpenStatementsAcrossCommit",
-            "supportsOpenStatementsAcrossRollback" -> false
-            "getMaxBinaryLiteralLength", "getMaxCharLiteralLength", "getMaxColumnNameLength", "getMaxColumnsInGroupBy",
-            "getMaxColumnsInIndex", "getMaxColumnsInOrderBy", "getMaxColumnsInSelect", "getMaxColumnsInTable",
-            "getMaxConnections", "getMaxCursorNameLength", "getMaxIndexLength", "getMaxSchemaNameLength",
-            "getMaxProcedureNameLength", "getMaxCatalogNameLength", "getMaxRowSize", "getMaxStatementLength",
-            "getMaxStatements", "getMaxTableNameLength", "getMaxTablesInSelect", "getMaxUserNameLength" -> 0
-            "supportsResultSetType", "supportsResultSetConcurrency", "supportsBatchUpdates",
-            "supportsSavepoints", "supportsNamedParameters", "supportsMultipleOpenResults",
-            "supportsGetGeneratedKeys", "supportsResultSetHoldability" -> false
+            "usesLocalFiles",
+            "usesLocalFilePerTable",
+            "supportsOpenCursorsAcrossCommit",
+            "supportsOpenCursorsAcrossRollback",
+            "supportsOpenStatementsAcrossCommit",
+            "supportsOpenStatementsAcrossRollback",
+            -> false
+            "getMaxBinaryLiteralLength",
+            "getMaxCharLiteralLength",
+            "getMaxColumnNameLength",
+            "getMaxColumnsInGroupBy",
+            "getMaxColumnsInIndex",
+            "getMaxColumnsInOrderBy",
+            "getMaxColumnsInSelect",
+            "getMaxColumnsInTable",
+            "getMaxConnections",
+            "getMaxCursorNameLength",
+            "getMaxIndexLength",
+            "getMaxSchemaNameLength",
+            "getMaxProcedureNameLength",
+            "getMaxCatalogNameLength",
+            "getMaxRowSize",
+            "getMaxStatementLength",
+            "getMaxStatements",
+            "getMaxTableNameLength",
+            "getMaxTablesInSelect",
+            "getMaxUserNameLength",
+            -> 0
+            "supportsResultSetType" -> false
+            "supportsResultSetConcurrency" -> false
+            "supportsBatchUpdates" -> false
+            "supportsSavepoints" -> false
+            "supportsNamedParameters" -> false
+            "supportsMultipleOpenResults" -> false
+            "supportsGetGeneratedKeys" -> false
+            "supportsResultSetHoldability" -> false
             "getResultSetHoldability" -> ResultSet.CLOSE_CURSORS_AT_COMMIT
             "getRowIdLifetime" -> java.sql.RowIdLifetime.ROWID_UNSUPPORTED
             "unwrap" -> throw SQLFeatureNotSupportedException()

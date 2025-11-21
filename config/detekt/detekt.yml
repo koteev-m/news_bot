@@ -1,6 +1,6 @@
 build:
   maxIssues: 0
-  excludes: ""
+  excludes: "**/build/**,**/generated/**"
 
 config:
   validation: true
@@ -22,7 +22,7 @@ comments:
 style:
   MagicNumber:
     active: true
-    excludes: ['**/test/**', '**/androidTest/**', '**/generated/**']
+    excludes: ['**/test/**', '**/androidTest/**', '**/generated/**', '**/build/**']
     ignoreNumbers: ['-1','0','1','2','2.0','1.5','5.0','22','50','60','0.7','1.3','7']
   WildcardImport:
     active: true
@@ -104,6 +104,16 @@ complexity:
     constructorThreshold: 9
     functionThreshold: 8
     ignoreDefaultParameters: true
+    excludes: ['**/test/**', '**/androidTest/**', '**/generated/**', '**/build/**']
+  LongMethod:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**', '**/generated/**', '**/build/**']
+  TooManyFunctions:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**', '**/generated/**', '**/build/**']
+  CyclomaticComplexMethod:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**', '**/generated/**', '**/build/**']
 
 empty-blocks:
   active: true

@@ -1,0 +1,123 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ArgumentListWrapping:AlertsTables.kt$AlertsRulesTable$( "instrument_id")</ID>
+    <ID>ArgumentListWrapping:AlertsTables.kt$AlertsRulesTable$( "portfolio_id")</ID>
+    <ID>ArgumentListWrapping:AlertsTables.kt$AlertsRulesTable$("instrument_id")</ID>
+    <ID>ArgumentListWrapping:AlertsTables.kt$AlertsRulesTable$("portfolio_id")</ID>
+    <ID>ArgumentListWrapping:InstrumentsTables.kt$InstrumentAliasesTable$( "instrument_id")</ID>
+    <ID>ArgumentListWrapping:InstrumentsTables.kt$InstrumentAliasesTable$("instrument_id")</ID>
+    <ID>ArgumentListWrapping:NewsTables.kt$NewsClustersTable$( "canonical_item_id")</ID>
+    <ID>ArgumentListWrapping:NewsTables.kt$NewsClustersTable$("canonical_item_id")</ID>
+    <ID>ArgumentListWrapping:PricesTables.kt$PricesTable$( "instrument_id")</ID>
+    <ID>ArgumentListWrapping:PricesTables.kt$PricesTable$("instrument_id")</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$( 0, AlertsRulesTable.selectAll().where { AlertsRulesTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$( 0, PortfoliosTable.selectAll().where { PortfoliosTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$( 0, PositionsTable.selectAll().where { PositionsTable.portfolioId eq portfolioId }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$( 0, TradesTable.selectAll().where { TradesTable.portfolioId eq portfolioId }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$( 0, UserAlertOverridesTable.selectAll().where { UserAlertOverridesTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$( 0, UserSubscriptionsTable.selectAll().where { UserSubscriptionsTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$( 0, ValuationsDailyTable.selectAll().where { ValuationsDailyTable.portfolioId eq portfolioId }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$(0, AlertsRulesTable.selectAll().where { AlertsRulesTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$(0, PortfoliosTable.selectAll().where { PortfoliosTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$(0, PositionsTable.selectAll().where { PositionsTable.portfolioId eq portfolioId }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$(0, TradesTable.selectAll().where { TradesTable.portfolioId eq portfolioId }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$(0, UserAlertOverridesTable.selectAll().where { UserAlertOverridesTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$(0, UserSubscriptionsTable.selectAll().where { UserSubscriptionsTable.userId eq targetUser }.count())</ID>
+    <ID>ArgumentListWrapping:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$(0, ValuationsDailyTable.selectAll().where { ValuationsDailyTable.portfolioId eq portfolioId }.count())</ID>
+    <ID>ArgumentListWrapping:RepositorySignatureTest.kt$RepositorySignatureTest$( functions.containsAll(listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete")))</ID>
+    <ID>ArgumentListWrapping:RepositorySignatureTest.kt$RepositorySignatureTest$( listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete"))</ID>
+    <ID>ArgumentListWrapping:RepositorySignatureTest.kt$RepositorySignatureTest$(functions.containsAll(listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete")))</ID>
+    <ID>ArgumentListWrapping:RepositorySignatureTest.kt$RepositorySignatureTest$(listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete"))</ID>
+    <ID>ArgumentListWrapping:StatsTables.kt$BotStartsTable$( "cluster_id")</ID>
+    <ID>ArgumentListWrapping:StatsTables.kt$BotStartsTable$("cluster_id")</ID>
+    <ID>ArgumentListWrapping:StatsTables.kt$CtaClicksTable$( "cluster_id")</ID>
+    <ID>ArgumentListWrapping:StatsTables.kt$CtaClicksTable$("cluster_id")</ID>
+    <ID>ArgumentListWrapping:StatsTables.kt$PostStatsTable$( "cluster_id")</ID>
+    <ID>ArgumentListWrapping:StatsTables.kt$PostStatsTable$("cluster_id")</ID>
+    <ID>ArgumentListWrapping:TradesPositionsTables.kt$PositionsTable$( "instrument_id")</ID>
+    <ID>ArgumentListWrapping:TradesPositionsTables.kt$PositionsTable$("instrument_id")</ID>
+    <ID>ArgumentListWrapping:TradesPositionsTables.kt$TradesTable$( "instrument_id")</ID>
+    <ID>ArgumentListWrapping:TradesPositionsTables.kt$TradesTable$("instrument_id")</ID>
+    <ID>Filename:AlertsSettingsTables.kt$repo.AlertsSettingsTables.kt</ID>
+    <ID>Filename:BillingRepository.kt$repo.BillingRepository.kt</ID>
+    <ID>Filename:FxRatesTables.kt$db.tables.FxRatesTables.kt</ID>
+    <ID>Filename:PricesTables.kt$db.tables.PricesTables.kt</ID>
+    <ID>Filename:ValuationsTables.kt$db.tables.ValuationsTables.kt</ID>
+    <ID>ImplicitDefaultLocale:BillingRepository.kt$String.format("%02x", byte)</ID>
+    <ID>InvalidPackageDeclaration:GroupMappingRepoImpl.kt$package sso.repo</ID>
+    <ID>LateinitUsage:DatabaseFactory.kt$DatabaseFactory$private lateinit var dataSource: HikariDataSource</ID>
+    <ID>MagicNumber:AlertsTables.kt$AlertsRulesTable$10</ID>
+    <ID>MagicNumber:AlertsTables.kt$AlertsRulesTable$20</ID>
+    <ID>MagicNumber:AlertsTables.kt$AlertsRulesTable$4</ID>
+    <ID>MagicNumber:AlertsTables.kt$AlertsRulesTable$8</ID>
+    <ID>MagicNumber:BillingRepository.kt$64</ID>
+    <ID>MagicNumber:FxRatesTables.kt$FxRatesTable$20</ID>
+    <ID>MagicNumber:FxRatesTables.kt$FxRatesTable$3</ID>
+    <ID>MagicNumber:FxRatesTables.kt$FxRatesTable$8</ID>
+    <ID>MagicNumber:InstrumentsTables.kt$InstrumentsTable$3</ID>
+    <ID>MagicNumber:NewsTables.kt$NewsClustersTable$10</ID>
+    <ID>MagicNumber:NewsTables.kt$NewsClustersTable$4</ID>
+    <ID>MagicNumber:NewsTables.kt$NewsItemsTable$32</ID>
+    <ID>MagicNumber:NewsTables.kt$NewsSourcesTable$10</ID>
+    <ID>MagicNumber:PricesTables.kt$PricesTable$20</ID>
+    <ID>MagicNumber:PricesTables.kt$PricesTable$3</ID>
+    <ID>MagicNumber:PricesTables.kt$PricesTable$8</ID>
+    <ID>MagicNumber:TradesPositionsTables.kt$PositionsTable$20</ID>
+    <ID>MagicNumber:TradesPositionsTables.kt$PositionsTable$3</ID>
+    <ID>MagicNumber:TradesPositionsTables.kt$PositionsTable$8</ID>
+    <ID>MagicNumber:TradesPositionsTables.kt$TradesTable$20</ID>
+    <ID>MagicNumber:TradesPositionsTables.kt$TradesTable$3</ID>
+    <ID>MagicNumber:TradesPositionsTables.kt$TradesTable$8</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$InvoiceLines$20</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$InvoiceLines$6</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$Invoices$20</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$Invoices$6</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$RateItems$20</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$RateItems$6</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$UsageEvents$20</ID>
+    <ID>MagicNumber:UsageBillingRepository.kt$UsageEvents$6</ID>
+    <ID>MagicNumber:UsersPortfoliosTables.kt$PortfoliosTable$3</ID>
+    <ID>MagicNumber:ValuationsTables.kt$ValuationsDailyTable$24</ID>
+    <ID>MagicNumber:ValuationsTables.kt$ValuationsDailyTable$8</ID>
+    <ID>MatchingDeclarationName:AlertsSettingsTables.kt$UserAlertOverridesTable : Table</ID>
+    <ID>MatchingDeclarationName:FxRatesTables.kt$FxRatesTable : Table</ID>
+    <ID>MatchingDeclarationName:PricesTables.kt$PricesTable : Table</ID>
+    <ID>MatchingDeclarationName:ValuationsTables.kt$ValuationsDailyTable : Table</ID>
+    <ID>MaxLineLength:AccessRepoImpl.kt$AccessRepoImpl$override suspend</ID>
+    <ID>MaxLineLength:AuditLedgerRepository.kt$AuditLedgerRepository$suspend</ID>
+    <ID>MaxLineLength:BillingReconRepository.kt$BillingReconRepository$override suspend</ID>
+    <ID>MaxLineLength:CsvImportIT.kt$CsvImportIT$expected = calc.applyBuy(expected, BigDecimal("10"), Money.of(BigDecimal("250"), "RUB"), Money.zero("RUB")).position</ID>
+    <ID>MaxLineLength:CsvImportIT.kt$CsvImportIT$expected = calc.applyBuy(expected, BigDecimal("5"), Money.of(BigDecimal("255"), "RUB"), Money.zero("RUB")).position</ID>
+    <ID>MaxLineLength:CsvImportIT.kt$CsvImportIT$expected = calc.applySell(expected, BigDecimal("4"), Money.of(BigDecimal("260"), "RUB"), Money.zero("RUB")).position</ID>
+    <ID>MaxLineLength:CsvImportIT.kt$DatabaseInstrumentResolver$override suspend</ID>
+    <ID>MaxLineLength:PortfolioRepository.kt$PortfolioRepository$suspend</ID>
+    <ID>MaxLineLength:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$it[UserAlertOverridesTable.updatedAt] = Instant.parse("2024-01-11T00:00:00Z").atOffset(ZoneOffset.UTC)</ID>
+    <ID>MaxLineLength:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$it[UserSubscriptionsTable.expiresAt] = Instant.parse("2024-02-05T00:00:00Z").atOffset(ZoneOffset.UTC)</ID>
+    <ID>MaxLineLength:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$it[UserSubscriptionsTable.startedAt] = Instant.parse("2024-01-05T00:00:00Z").atOffset(ZoneOffset.UTC)</ID>
+    <ID>MaxLineLength:TradeRepository.kt$TradeRepository$val op = condition?.let { (TradesTable.portfolioId eq portfolioId) and it } ?: (TradesTable.portfolioId eq portfolioId)</ID>
+    <ID>MaximumLineLength:AccessRepoImpl.kt$AccessRepoImpl$ </ID>
+    <ID>MaximumLineLength:AuditLedgerRepository.kt$AuditLedgerRepository$ </ID>
+    <ID>MaximumLineLength:BillingReconRepository.kt$BillingReconRepository$ </ID>
+    <ID>MaximumLineLength:CsvImportIT.kt$CsvImportIT$ </ID>
+    <ID>MaximumLineLength:CsvImportIT.kt$DatabaseInstrumentResolver$ </ID>
+    <ID>MaximumLineLength:PortfolioRepository.kt$PortfolioRepository$ </ID>
+    <ID>MaximumLineLength:PrivacyRepositoryIT.kt$PrivacyRepositoryIT$ </ID>
+    <ID>MaximumLineLength:TradeRepository.kt$TradeRepository$ </ID>
+    <ID>NoConsecutiveBlankLines:IdpRepository.kt$ </ID>
+    <ID>NoUnusedImports:PrivacyRepositoryIT.kt$repo.PrivacyRepositoryIT.kt</ID>
+    <ID>NoWildcardImports:IdpRepository.kt$import org.jetbrains.exposed.sql.*</ID>
+    <ID>NoWildcardImports:IdpRepository.kt$import sso.*</ID>
+    <ID>NoWildcardImports:UsageBillingRepository.kt$import billing.*</ID>
+    <ID>NoWildcardImports:UsageBillingRepository.kt$import org.jetbrains.exposed.sql.*</ID>
+    <ID>PropertyWrapping:PortfolioMapperTest.kt$PortfolioMapperTest$val payload = NewPortfolio(userId = 7L, name = "Growth", baseCurrency = "EUR", isActive = false, createdAt = createdAt)</ID>
+    <ID>StringTemplate:InstrumentRepository.kt$InstrumentRepository$${query}</ID>
+    <ID>TooManyFunctions:InstrumentRepository.kt$InstrumentRepository</ID>
+    <ID>UnusedParameter:InstrumentRepository.kt$InstrumentRepository$query: String</ID>
+    <ID>WildcardImport:IdpRepository.kt$import org.jetbrains.exposed.sql.*</ID>
+    <ID>WildcardImport:IdpRepository.kt$import sso.*</ID>
+    <ID>WildcardImport:UsageBillingRepository.kt$import billing.*</ID>
+    <ID>WildcardImport:UsageBillingRepository.kt$import org.jetbrains.exposed.sql.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

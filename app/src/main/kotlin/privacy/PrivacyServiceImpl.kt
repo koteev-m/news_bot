@@ -131,7 +131,9 @@ class PrivacyServiceImpl(
     }
 
     private suspend fun deleteAlertEvents(userId: Long, dryRun: Boolean): Long {
-        val countSql = "SELECT count(*) FROM alerts_events WHERE rule_id IN (SELECT rule_id FROM alerts_rules WHERE user_id = $userId)"
+        val countSql =
+            "SELECT count(*) FROM alerts_events WHERE rule_id IN (" +
+                "SELECT rule_id FROM alerts_rules WHERE user_id = $userId)"
         val count = countWithQuery(countSql)
         if (!dryRun && count > 0) {
             exec("DELETE FROM alerts_events WHERE rule_id IN (SELECT rule_id FROM alerts_rules WHERE user_id = $userId)")

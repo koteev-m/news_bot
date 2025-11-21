@@ -4,7 +4,7 @@ import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
 import sso.*
-import storage.db.DatabaseFactory.dbQuery
+import db.DatabaseFactory.dbQuery
 
 object IdpProviders : LongIdTable("idp_providers", "idp_id") {
     val name = text("name")

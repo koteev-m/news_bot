@@ -165,10 +165,14 @@ class PortfolioPositionsTradesRoutesTest {
         application { configureTestApp(deps.toDeps()) }
 
         val token = issueToken("77")
-        val response = get(
-            path = "/api/portfolio/${UUID.randomUUID()}/trades?limit=10&offset=5&from=2024-05-01&to=2024-05-31&side=BUY",
-            headers = authHeader(token),
-        )
+        val portfolioId = UUID.randomUUID()
+        val response =
+            get(
+                path =
+                    "/api/portfolio/$portfolioId/trades" +
+                        "?limit=10&offset=5&from=2024-05-01&to=2024-05-31&side=BUY",
+                headers = authHeader(token),
+            )
         assertEquals(HttpStatusCode.OK, response.status)
         val payload = json.decodeFromString<TradesPageResponse>(response.body)
         assertEquals(15, payload.total)

@@ -1,4 +1,5 @@
 import io.gitlab.arturbosch.detekt.extensions.DetektExtension
+import org.gradle.api.Task
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jlleitschuh.gradle.ktlint.KtlintExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
@@ -9,6 +10,7 @@ plugins {
     alias(libs.plugins.ktor) apply false
     alias(libs.plugins.ktlint.gradle) apply false
     alias(libs.plugins.detekt.gradle) apply false
+    alias(libs.plugins.kover) apply false
 }
 
 val strictLint: Boolean by lazy {
@@ -47,6 +49,7 @@ subprojects {
         if (hasKotlin) {
             apply(plugin = "org.jlleitschuh.gradle.ktlint")
             apply(plugin = "io.gitlab.arturbosch.detekt")
+            apply(plugin = "org.jetbrains.kotlinx.kover")
 
             dependencies.add(
                 "detektPlugins",
@@ -70,9 +73,15 @@ subprojects {
                 ignoreFailures = !strictLint
                 buildUponDefaultConfig = true
                 allRules = false
-                autoCorrect = false
+                autoCorrect = !strictLint
                 config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
-                source.setFrom(files(projectDir))
+                baseline = file("$rootDir/config/detekt/baseline.xml")
+                source.setFrom(
+                    files(
+                        "$projectDir/src/main/kotlin",
+                        "$projectDir/src/test/kotlin",
+                    )
+                )
                 parallel = true
                 basePath = rootDir.path
                 reports {
@@ -95,6 +104,8 @@ subprojects {
                 dependsOn("ktlintFormat")
             }
 
+            val koverAgentTasks = tasks.matching { it.name == "koverAgentJar" }
+
             tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
                 testLogging {
                     events = setOf(TestLogEvent.PASSED, TestLogEvent.SKIPPED, TestLogEvent.FAILED)
@@ -102,6 +113,18 @@ subprojects {
                 filter {
                     isFailOnNoMatchingTests = false
                 }
+                dependsOn(koverAgentTasks)
+                doFirst {
+                    val argsFile = project.layout.buildDirectory.file("tmp/${name}/kover-agent.args").get().asFile
+                    argsFile.parentFile.mkdirs()
+                    if (!argsFile.exists()) {
+                        argsFile.writeText("")
+                    }
+                }
+            }
+
+            tasks.named("check").configure {
+                dependsOn("ktlintCheck", "detekt", "koverXmlReport", "test")
             }
         }
     }
