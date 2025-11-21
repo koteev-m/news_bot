@@ -1,6 +1,5 @@
 package growth
 
-import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -9,12 +8,13 @@ import java.util.Base64
 
 class DeepLinkRegistryTest :
     FunSpec({
-        val registry = DeepLinkRegistry()
+        val registry = DeepLinkRegistry(limitStart = 64, limitStartApp = 512)
 
         test("accepts valid start payload") {
             val payload = Base64.getUrlEncoder().withoutPadding().encodeToString("ref=1".toByteArray())
             val result = registry.parse(parametersOf("start" to listOf(payload)))
-            result shouldBe DeepLinkPayload.Start(decoded = "ref=1", raw = payload)
+            val start = result as DeepLinkRegistry.Parsed.Start
+            start.decoded shouldBe "ref=1"
         }
 
         test("rejects mixed start and startapp") {
@@ -37,8 +37,6 @@ class DeepLinkRegistryTest :
         }
 
         test("decoding errors are handled") {
-            shouldNotThrowAny {
-                registry.parse(parametersOf("start" to listOf("===")))
-            }
+            registry.parse(parametersOf("start" to listOf("===")))
         }
     })

@@ -25,6 +25,7 @@ import errors.installErrorPages
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
 import billing.TgUpdate
+import growth.installGrowthRoutes
 import billing.bot.StarsBotCommands
 import billing.bot.StarsBotRouter
 import billing.bot.StarsBotRouter.BotRoute
@@ -194,6 +195,8 @@ fun Application.module() {
             webhookQueue.shutdown(queueConfig.shutdownTimeout)
         }
     }
+
+    installGrowthRoutes(prometheusRegistry)
 
     routing {
         webVitalsRoutes(vitals)
