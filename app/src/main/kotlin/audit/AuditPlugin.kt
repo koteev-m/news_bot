@@ -6,7 +6,7 @@ import io.ktor.server.request.header
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.server.response.ApplicationSendPipeline
-import io.ktor.server.response.status
+import io.ktor.server.response.*
 import io.ktor.server.plugins.callid.callId
 import io.ktor.util.AttributeKey
 import java.time.Instant

@@ -18,6 +18,7 @@ val coroutinesVersion = libs.versions.coroutines.get()
 val micrometerVersion = libs.versions.micrometer.get()
 
 dependencies {
+    implementation(project(":core"))
     api("io.ktor:ktor-client-core-jvm:$ktorVersion")
     implementation("io.ktor:ktor-client-cio-jvm:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")

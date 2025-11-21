@@ -1,9 +1,10 @@
 package sso.repo
 
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
 import sso.GroupMappingRepo
 import sso.GroupRoleMapping
-import storage.db.DatabaseFactory.dbQuery
+import db.DatabaseFactory.dbQuery
 
 /**
  * Реализация интерфейса core:sso.GroupMappingRepo на Exposed.

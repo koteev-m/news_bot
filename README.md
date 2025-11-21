@@ -14,6 +14,15 @@ VAULT_TOKEN=***
 VAULT_KEY_ID=newsbot-app-key
 ```
 
+## Build & Quality Checks
+
+- Run full verification: `./gradlew clean check --no-daemon --console=plain`
+- Lint only: `./gradlew ktlintCheck detekt` (baseline at `config/detekt/baseline.xml`)
+- Coverage reports: `./gradlew koverXmlReport` or `./gradlew koverHtmlReport`
+- Reports live under `build/reports/kover/xml/report.xml` and `build/reports/kover/html/index.html`
+- Detekt reports: `build/reports/detekt/detekt.html` and `build/reports/detekt/detekt.xml`
+- ktlint reports: `<module>/build/reports/ktlint/ktlintMainSourceSetCheck/ktlintMainSourceSetCheck.txt`
+
 ## P84 — Immutable Audit Ledger & Daily Checkpoints
 
 - Core models & hashing: `core/src/main/kotlin/audit/AuditModels.kt`

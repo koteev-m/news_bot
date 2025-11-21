@@ -22,6 +22,7 @@ pengrad = "9.2.0"
 otel = "1.40.0"
 otelAlpha = "1.40.0-alpha"
 sentry = "8.23.0"
+kover = "0.8.3"
 
 
 [libraries]
@@ -85,3 +86,4 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 ktlint-gradle = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 detekt-gradle = { id = "io.gitlab.arturbosch.detekt",   version.ref = "detekt" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

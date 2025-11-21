@@ -3,7 +3,6 @@ package residency
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createApplicationPlugin
-import io.ktor.server.application.finish
 import io.ktor.server.response.respond
 import repo.ResidencyRepository
 import tenancy.TenantContextKey
@@ -34,7 +33,7 @@ val ResidencyPlugin = createApplicationPlugin(name = "ResidencyPlugin", createCo
                     HttpStatusCode.Forbidden,
                     mapOf("code" to "RESIDENCY_VIOLATION", "message" to "write denied in region=$served, home=${policy.region}")
                 )
-                finish()
+                return@onCall
             }
         }
     }

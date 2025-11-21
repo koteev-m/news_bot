@@ -2,9 +2,10 @@ package repo
 
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.Column
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
-import storage.db.DatabaseFactory.dbQuery
+import db.DatabaseFactory.dbQuery
 
 object SecretsTable : LongIdTable("secrets", "secret_id") {
     val tenantId: Column<Long> = long("tenant_id")

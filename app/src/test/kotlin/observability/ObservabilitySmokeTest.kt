@@ -45,9 +45,16 @@ class ObservabilitySmokeTest {
     }
 
     private fun maskSensitive(message: String): String {
-        val regex = Regex(
-            pattern = "(?i)\\b(bearer\\s+[A-Za-z0-9._-]+|x-telegram-bot-api-secret-token:[^,\\s]+|initData=[^&\\s]+|token=[A-Za-z0-9:_-]{20,})"
-        )
+        val regex =
+            Regex(
+                pattern =
+                    "(?i)\\b(" +
+                        "bearer\\s+[A-Za-z0-9._-]+|" +
+                        "x-telegram-bot-api-secret-token:[^,\\s]+|" +
+                        "initData=[^&\\s]+|" +
+                        "token=[A-Za-z0-9:_-]{20,}" +
+                        ")",
+            )
         return regex.replace(message) { "***" }
     }
 }

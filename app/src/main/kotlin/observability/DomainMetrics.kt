@@ -4,7 +4,9 @@ import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 
-class DomainMetrics(private val registry: MeterRegistry) {
+class DomainMetrics(
+    private val registry: MeterRegistry,
+) {
     // Billing / Webhook
     val webhookStarsSuccess: Counter = registry.counter("webhook_stars_success_total")
     val webhookStarsDuplicate: Counter = registry.counter("webhook_stars_duplicate_total")

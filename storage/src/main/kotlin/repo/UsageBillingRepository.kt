@@ -3,10 +3,11 @@ package repo
 import billing.*
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.between
+import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
-import storage.db.DatabaseFactory.dbQuery
+import db.DatabaseFactory.dbQuery
 import java.time.Instant
+import java.time.ZoneOffset
 
 object UsageEvents : LongIdTable("usage_events", "event_id") {
     val tenantId = long("tenant_id")
@@ -76,20 +77,26 @@ class UsageBillingRepository : UsageRepo {
             if (exists) return@dbQuery -1L
         }
         UsageEvents.insertAndGetId {
-            it[tenantId] = e.tenantId
-            it[projectId] = e.projectId
-            it[userId] = e.userId
-            it[metric] = e.metric
-            it[quantity] = e.quantity.toBigDecimal()
-            it[occurredAt] = e.occurredAt
-            it[dedupKey] = e.dedupKey
+            it[UsageEvents.tenantId] = e.tenantId
+            it[UsageEvents.projectId] = e.projectId
+            it[UsageEvents.userId] = e.userId
+            it[UsageEvents.metric] = e.metric
+            it[UsageEvents.quantity] = e.quantity.toBigDecimal()
+            it[UsageEvents.occurredAt] = e.occurredAt.atOffset(ZoneOffset.UTC)
+            it[UsageEvents.dedupKey] = e.dedupKey
         }.value
     }
 
     override suspend fun aggregateByMetric(tenantId: Long, from: Instant, to: Instant): Map<String, Double> = dbQuery {
+        val fromTs = from.atOffset(ZoneOffset.UTC)
+        val toTs = to.atOffset(ZoneOffset.UTC)
         UsageEvents
             .slice(UsageEvents.metric, UsageEvents.quantity.sum())
-            .select { (UsageEvents.tenantId eq tenantId) and (UsageEvents.occurredAt between from and to) }
+            .select {
+                with(SqlExpressionBuilder) {
+                    (UsageEvents.tenantId eq tenantId) and (UsageEvents.occurredAt.between(fromTs, toTs))
+                }
+            }
             .groupBy(UsageEvents.metric)
             .associate { it[UsageEvents.metric] to (it[UsageEvents.quantity.sum()]?.toDouble() ?: 0.0) }
     }
@@ -118,28 +125,28 @@ class UsageBillingRepository : UsageRepo {
 
     override suspend fun persistInvoice(draft: InvoiceDraft): Long = dbQuery {
         val runId = InvoiceRuns.insertAndGetId {
-            it[periodFrom] = draft.periodFrom
-            it[periodTo] = draft.periodTo
-            it[createdAt] = Instant.now()
+            it[InvoiceRuns.periodFrom] = draft.periodFrom.atOffset(ZoneOffset.UTC)
+            it[InvoiceRuns.periodTo] = draft.periodTo.atOffset(ZoneOffset.UTC)
+            it[InvoiceRuns.createdAt] = Instant.now().atOffset(ZoneOffset.UTC)
         }.value
         val invId = Invoices.insertAndGetId {
             it[Invoices.runId] = runId
-            it[tenantId] = draft.tenantId
-            it[currency] = draft.currency
-            it[subtotal] = draft.subtotal.toBigDecimal()
-            it[tax] = draft.tax.toBigDecimal()
-            it[total] = draft.total.toBigDecimal()
-            it[status] = "DRAFT"
-            it[createdAt] = Instant.now()
+            it[Invoices.tenantId] = draft.tenantId
+            it[Invoices.currency] = draft.currency
+            it[Invoices.subtotal] = draft.subtotal.toBigDecimal()
+            it[Invoices.tax] = draft.tax.toBigDecimal()
+            it[Invoices.total] = draft.total.toBigDecimal()
+            it[Invoices.status] = "DRAFT"
+            it[Invoices.createdAt] = Instant.now().atOffset(ZoneOffset.UTC)
         }.value
         draft.lines.forEach { ln ->
             InvoiceLines.insert {
-                it[invoiceId] = invId
-                it[metric] = ln.metric
-                it[quantity] = ln.quantity.toBigDecimal()
-                it[unit] = ln.unit
-                it[unitPrice] = ln.unitPrice.toBigDecimal()
-                it[amount] = ln.amount.toBigDecimal()
+                it[InvoiceLines.invoiceId] = invId
+                it[InvoiceLines.metric] = ln.metric
+                it[InvoiceLines.quantity] = ln.quantity.toBigDecimal()
+                it[InvoiceLines.unit] = ln.unit
+                it[InvoiceLines.unitPrice] = ln.unitPrice.toBigDecimal()
+                it[InvoiceLines.amount] = ln.amount.toBigDecimal()
             }
         }
         invId

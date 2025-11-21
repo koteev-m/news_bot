@@ -1,8 +1,11 @@
-package your.app.package
+package app
 
-import io.ktor.server.application.*
-import io.ktor.server.routing.*
-import access.*
+import access.AccessReviewService
+import access.PamService
+import access.SodService
+import access.accessRoutes
+import io.ktor.server.application.Application
+import io.ktor.server.routing.routing
 import repo.AccessRepoImpl
 
 fun Application.installAccessLayer() {

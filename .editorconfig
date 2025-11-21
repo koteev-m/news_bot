@@ -4,22 +4,16 @@ root = true
 charset = utf-8
 end_of_line = lf
 insert_final_newline = true
-indent_style = space
-indent_size = 4
-max_line_length = 120
 trim_trailing_whitespace = true
 
-[*.kt]
-ij_kotlin_packages_to_use_import_on_demand = _
-ij_kotlin_imports_layout = *,java.**,javax.**,kotlin.**,^ 
-ktlint_standard_filename = enabled
-ktlint_standard_final-newline = enabled
-ktlint_standard_no-wildcard-imports = enabled
-ktlint_standard_max-line-length = enabled
-ktlint_function_naming_ignore_when_annotated = true
-
-[*.kts]
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+ktlint_code_style = ktlint_official
 max_line_length = 120
+ktlint_standard_no-wildcard-imports = disabled
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_name_count_to_use_star_import = 99
 
 [*.md]
 max_line_length = off
