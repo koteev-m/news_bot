@@ -23,6 +23,11 @@ VAULT_KEY_ID=newsbot-app-key
 - Detekt reports: `build/reports/detekt/detekt.html` and `build/reports/detekt/detekt.xml`
 - ktlint reports: `<module>/build/reports/ktlint/ktlintMainSourceSetCheck/ktlintMainSourceSetCheck.txt`
 
+## Growth deeplinks (/r/*)
+
+- `installGrowthRoutes` теперь принимает `MeterRegistry` (например, `prometheusRegistry`).
+- В тестах можно использовать `SimpleMeterRegistry` из Micrometer для инициализации роутов.
+
 ## P84 — Immutable Audit Ledger & Daily Checkpoints
 
 - Core models & hashing: `core/src/main/kotlin/audit/AuditModels.kt`

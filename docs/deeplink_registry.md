@@ -15,8 +15,9 @@
 
 ## Редиректы
 
-- `/r/cta/{postId}?ab=A2&start=...` → `302` на `https://t.me/<bot>?start=...`  
+- `/r/cta/{postId}?ab=A2&start=...` → `302` на `https://t.me/<bot>?start=...`
   Метрика: `cta_click_total{post_id,ab,payload}` где `payload` — канонический ID.
+  Значения `payload` ограничены фиксированными идентификаторами (`TICKER_*`, `TOPIC_*`, `PORTFOLIO`) во избежание роста кардинальности.
 
 - `/r/app?startapp=...` → `302` на `https://t.me/<bot>?startapp=...`
 
