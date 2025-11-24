@@ -8,7 +8,6 @@ import io.ktor.server.response.respondRedirect
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Metrics
 import io.micrometer.core.instrument.Tag
 import org.slf4j.LoggerFactory
 
@@ -22,7 +21,7 @@ private const val METRIC_CTA_CLICK = "cta_click_total"
  * Метрики соответствуют PRD (Micrometer/Prometheus). Значение payload — канонический ID,
  * не сырой base64url.
  */
-fun Application.installGrowthRoutes(meterRegistry: MeterRegistry = Metrics.globalRegistry) {
+fun Application.installGrowthRoutes(meterRegistry: MeterRegistry) {
     val log = LoggerFactory.getLogger("growth.routes")
 
     val cfg = environment.config
