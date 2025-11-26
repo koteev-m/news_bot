@@ -2,6 +2,8 @@ package routes
 
 import billing.model.Tier
 import billing.service.BillingService
+import billing.service.EntitlementsService
+import billing.stars.StarBalancePort
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
@@ -13,12 +15,9 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.util.AttributeKey
 import kotlinx.serialization.Serializable
-import routes.dto.BillingPlanDto
+import routes.dto.EntitlementDto
 import routes.dto.UserSubscriptionDto
 import routes.dto.toDto
-import routes.respondBadRequest
-import routes.respondInternal
-import routes.respondUnauthorized
 import security.userIdOrNull
 
 fun Route.billingRoutes() {
@@ -75,6 +74,23 @@ fun Route.billingRoutes() {
             )
         }
 
+        get("/balance") {
+            val subject = call.userIdOrNull?.toLongOrNull()
+                ?: return@get call.respondUnauthorized()
+
+            val starPort = call.balanceService()
+            val result = runCatching { starPort.getMyStarBalance(subject) }
+            result.fold(
+                onSuccess = { balance ->
+                    call.respond(HttpStatusCode.OK, balance)
+                },
+                onFailure = { error ->
+                    call.application.environment.log.error("billing.getMyStarBalance failure", error)
+                    call.respondInternal()
+                },
+            )
+        }
+
         get("/me") {
             val subject = call.userIdOrNull?.toLongOrNull()
                 ?: return@get call.respondUnauthorized()
@@ -94,6 +110,26 @@ fun Route.billingRoutes() {
                     call.application.environment.log.error("billing.getMySubscription failure", error)
                     call.respondInternal()
                 }
+            )
+        }
+    }
+
+    route("/api/billing") {
+        get("/entitlements") {
+            val subject = call.userIdOrNull?.toLongOrNull()
+                ?: return@get call.respondUnauthorized()
+
+            val svc = call.entitlementsService()
+            val result = svc.getEntitlement(subject)
+            result.fold(
+                onSuccess = { entitlement ->
+                    val dto: EntitlementDto = entitlement.toDto()
+                    call.respond(HttpStatusCode.OK, dto)
+                },
+                onFailure = { error ->
+                    call.application.environment.log.error("billing.getEntitlement failure", error)
+                    call.respondInternal()
+                },
             )
         }
     }
@@ -132,7 +168,11 @@ private data class MySubscriptionResponse(
 internal val BillingRouteServicesKey: AttributeKey<BillingRouteServices> =
     AttributeKey("BillingRouteServices")
 
-internal data class BillingRouteServices(val billingService: BillingService)
+internal data class BillingRouteServices(
+    val billingService: BillingService,
+    val starBalancePort: StarBalancePort? = null,
+    val entitlementsService: EntitlementsService? = null,
+)
 
 private fun ApplicationCall.billingService(): BillingService {
     val attributes = application.attributes
@@ -140,4 +180,22 @@ private fun ApplicationCall.billingService(): BillingService {
         return attributes[BillingRouteServicesKey].billingService
     }
     error("BillingService is not configured")
+}
+
+private fun ApplicationCall.balanceService(): StarBalancePort {
+    val attributes = application.attributes
+    if (attributes.contains(BillingRouteServicesKey)) {
+        return attributes[BillingRouteServicesKey].starBalancePort
+            ?: error("StarBalancePort is not configured")
+    }
+    error("StarBalancePort is not configured")
+}
+
+private fun ApplicationCall.entitlementsService(): EntitlementsService {
+    val attributes = application.attributes
+    if (attributes.contains(BillingRouteServicesKey)) {
+        return attributes[BillingRouteServicesKey].entitlementsService
+            ?: error("EntitlementsService is not configured")
+    }
+    error("EntitlementsService is not configured")
 }

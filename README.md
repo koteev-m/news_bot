@@ -101,3 +101,10 @@ gh workflow run "Global Health & Failover Smoke" -f hostname=newsbot.example.com
 ./gradlew :storage:flywayMigrate
 ./gradlew :app:compileKotlin
 ```
+
+## Billing / Stars
+
+- `GET /api/billing/stars/balance` — возвращает баланс Stars текущего пользователя через Telegram Bot API `getMyStarBalance` с коротким TTL-кешем.
+- `GET /api/billing/entitlements` — возвращает entitlement на основе активной подписки.
+
+Конфигурация для Stars находится в `application.conf` (`billing.stars.*`) и использует переменную окружения `TELEGRAM_BOT_TOKEN`.

@@ -6,6 +6,8 @@ import billing.model.Tier
 import billing.model.UserSubscription
 import billing.model.Xtr
 import billing.service.BillingService
+import billing.service.EntitlementsService
+import billing.stars.InMemoryStarBalancePort
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.client.request.get
@@ -206,7 +208,12 @@ class BillingRoutesTest {
             installErrorPages()
             install(ContentNegotiation) { json() }
             install(testAuthPlugin)
-            attributes.put(BillingRouteServicesKey, BillingRouteServices(service))
+            val starBalancePort = InMemoryStarBalancePort()
+            val entitlementsService = EntitlementsService(service)
+            attributes.put(
+                BillingRouteServicesKey,
+                BillingRouteServices(service, starBalancePort, entitlementsService)
+            )
             routing { billingRoutes() }
         }
     }
