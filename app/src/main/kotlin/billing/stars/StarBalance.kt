@@ -1,5 +1,8 @@
 package billing.stars
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class StarBalance(
     val userId: Long,
     val available: Long,
@@ -16,6 +19,7 @@ interface StarSubscriptionRepository {
     suspend fun findActiveByUser(userId: Long): StarSubscription?
 }
 
+@Serializable
 data class StarSubscription(
     val userId: Long,
     val planCode: String,

@@ -28,7 +28,6 @@ import billing.TgUpdate
 import growth.installGrowthRoutes
 import billing.bot.StarsBotCommands
 import billing.bot.StarsBotRouter
-import billing.bot.StarsBotRouter.BotRoute
 import billing.bot.StarsBotRouter.BotRoute.Buy
 import billing.bot.StarsBotRouter.BotRoute.Callback
 import billing.bot.StarsBotRouter.BotRoute.Plans
@@ -36,8 +35,12 @@ import billing.bot.StarsBotRouter.BotRoute.Status
 import billing.bot.StarsBotRouter.BotRoute.Unknown
 import billing.service.BillingService
 import billing.service.BillingServiceImpl
+import billing.service.EntitlementsService
 import repo.BillingLedgerRepository
 import billing.service.applySuccessfulPaymentOutcome
+import billing.stars.StarsClient
+import billing.stars.StarsClientConfig
+import billing.stars.StarsService
 import com.pengrad.telegrambot.utility.BotUtils
 import di.FeatureFlagsModule
 import di.PrivacyModule
@@ -303,8 +306,20 @@ private fun Application.ensureBillingServices(
             experimentsService = experimentsService,
             newsConfig = newsConfig
         )
+        val currentRoutingServices = if (attributes.contains(BillingRouteServicesKey)) {
+            attributes[BillingRouteServicesKey]
+        } else {
+            null
+        }
         attributes.put(Services.Key, updated)
-        attributes.put(BillingRouteServicesKey, BillingRouteServices(updated.billingService))
+        attributes.put(
+            BillingRouteServicesKey,
+            BillingRouteServices(
+                billingService = updated.billingService,
+                starBalancePort = currentRoutingServices?.starBalancePort,
+                entitlementsService = currentRoutingServices?.entitlementsService,
+            ),
+        )
         return updated
     }
 
@@ -316,6 +331,18 @@ private fun Application.ensureBillingServices(
         ledger = BillingLedgerRepository(),
         defaultDurationDays = billingDefaultDuration(),
     )
+    val starBalanceConfig = starsClientConfig()
+    val starsClient = StarsClient(
+        botToken = environment.config.property("telegram.botToken").getString(),
+        config = starBalanceConfig,
+    )
+    val starsService = StarsService(
+        client = starsClient,
+        ttlSeconds = environment.config.propertyOrNull("billing.stars.balanceTtlSeconds")?.getString()?.toLongOrNull()
+            ?: 20,
+        meterRegistry = metrics.meterRegistry,
+    )
+    val entitlementsService = EntitlementsService(billingService)
     val services = Services(
         billingService = billingService,
         telegramBot = telegramBot,
@@ -331,7 +358,14 @@ private fun Application.ensureBillingServices(
         newsConfig = newsConfig
     )
     attributes.put(Services.Key, services)
-    attributes.put(BillingRouteServicesKey, BillingRouteServices(billingService))
+    attributes.put(
+        BillingRouteServicesKey,
+        BillingRouteServices(
+            billingService = billingService,
+            starBalancePort = starsService,
+            entitlementsService = entitlementsService,
+        ),
+    )
     return services
 }
 
@@ -353,7 +387,9 @@ private fun Application.loadNewsConfig(): NewsConfig {
     val defaults = NewsDefaults.defaultConfig
     val config = environment.config
     val baseFromConfig = config.propertyOrNull("news.botDeepLinkBase")?.getString()?.trim()
-    val baseFromTelegram = config.propertyOrNull("telegram.botUsername")?.getString()?.trim()?.takeIf { it.isNotEmpty() }?.let { "https://t.me/${it}" }
+    val baseFromTelegram = config.propertyOrNull("telegram.botUsername")?.getString()?.trim()?.takeIf {
+        it.isNotEmpty()
+    }?.let { "https://t.me/$it" }
     val botBase = baseFromConfig?.takeIf { it.isNotEmpty() } ?: baseFromTelegram ?: defaults.botDeepLinkBase
     val maxBytes = config.propertyOrNull("news.maxPayloadBytes")?.getString()?.toIntOrNull() ?: defaults.maxPayloadBytes
     val channelId = config.propertyOrNull("news.channelId")?.getString()?.toLongOrNull()
@@ -365,6 +401,16 @@ private fun Application.loadNewsConfig(): NewsConfig {
 private fun Application.billingDefaultDuration(): Long {
     val raw = environment.config.propertyOrNull("billing.defaultDurationDays")?.getString()
     return raw?.toLongOrNull() ?: 30L
+}
+
+private fun Application.starsClientConfig(): StarsClientConfig {
+    val httpConfig = runCatching { environment.config.config("billing.stars.http") }.getOrNull()
+    return StarsClientConfig(
+        connectTimeoutMs = httpConfig?.propertyOrNull("connectTimeoutMs")?.getString()?.toLongOrNull() ?: 2000L,
+        readTimeoutMs = httpConfig?.propertyOrNull("readTimeoutMs")?.getString()?.toLongOrNull() ?: 3000L,
+        retryMax = httpConfig?.propertyOrNull("retryMax")?.getString()?.toIntOrNull() ?: 3,
+        retryBaseDelayMs = httpConfig?.propertyOrNull("retryBaseDelayMs")?.getString()?.toLongOrNull() ?: 200L,
+    )
 }
 
 private data class WebhookQueueConfig(
