@@ -25,8 +25,11 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry) {
     val log = LoggerFactory.getLogger("growth.routes")
 
     val cfg = environment.config
-    val bot = cfg.propertyOrNull("telegram.botUsername")?.getString()
-        ?: error("telegram.botUsername is required")
+    val bot = cfg.propertyOrNull("telegram.botUsername")?.getString()?.takeIf { it.isNotBlank() }
+        ?: run {
+            log.warn("telegram.botUsername is required; skipping growth routes")
+            return
+        }
     val limStart = cfg.propertyOrNull("growth.limits.start")?.getString()?.toIntOrNull() ?: 64
     val limStartApp = cfg.propertyOrNull("growth.limits.startapp")?.getString()?.toIntOrNull() ?: 512
 

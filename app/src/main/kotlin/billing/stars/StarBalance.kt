@@ -14,6 +14,33 @@ interface StarBalancePort {
     suspend fun getMyStarBalance(userId: Long): StarBalance
 }
 
+@Serializable
+data class BotStarBalance(
+    val available: Long,
+    val pending: Long,
+    val updatedAtEpochSeconds: Long,
+    val stale: Boolean = false,
+)
+
+data class BotStarBalanceResult(
+    val balance: BotStarBalance,
+    val cacheState: CacheState,
+    val cacheAgeSeconds: Long? = null,
+)
+
+enum class CacheState { HIT, MISS, STALE }
+
+fun CacheState.label(): String =
+    when (this) {
+        CacheState.HIT -> "hit"
+        CacheState.MISS -> "miss"
+        CacheState.STALE -> "stale"
+    }
+
+interface BotStarBalancePort {
+    suspend fun getBotStarBalance(): BotStarBalanceResult
+}
+
 interface StarSubscriptionRepository {
     suspend fun save(subscription: StarSubscription)
     suspend fun findActiveByUser(userId: Long): StarSubscription?
@@ -36,6 +63,14 @@ class InMemoryStarBalancePort : StarBalancePort {
 
     fun update(balance: StarBalance) {
         balances[balance.userId] = balance.copy(updatedAtEpochSeconds = now())
+    }
+
+    private fun now(): Long = System.currentTimeMillis() / 1000
+}
+
+class ZeroStarBalancePort : StarBalancePort {
+    override suspend fun getMyStarBalance(userId: Long): StarBalance {
+        return StarBalance(userId, available = 0, pending = 0, updatedAtEpochSeconds = now())
     }
 
     private fun now(): Long = System.currentTimeMillis() / 1000

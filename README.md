@@ -104,7 +104,60 @@ gh workflow run "Global Health & Failover Smoke" -f hostname=newsbot.example.com
 
 ## Billing / Stars
 
-- `GET /api/billing/stars/balance` — возвращает баланс Stars текущего пользователя через Telegram Bot API `getMyStarBalance` с коротким TTL-кешем.
+- `GET /api/billing/stars/balance` — возвращает баланс звёзд бота через Telegram Bot API `getMyStarBalance` (публичный маршрут, кэш не используется, ставится `Cache-Control: no-store`, `Retry-After` на 429 пробрасывается из Telegram — берётся из заголовка или `parameters.retry_after` в теле ok=false и нормализуется в секунды). Клиент понимает оба формата ответа Bot API: `available_balance`/`pending_balance`/`updated_at` и `amount`/`nanostar_amount`.
+- `GET /api/admin/stars/bot-balance` — возвращает баланс звёзд бота через Telegram Bot API `getMyStarBalance` (доступно только администраторам).
 - `GET /api/billing/entitlements` — возвращает entitlement на основе активной подписки.
+- Схема подписок на звёзды — миграции `V18__star_subscriptions.sql` (таблица `star_subscriptions` c индексом `ux_star_subscriptions_user_active`) и `V19__star_subscriptions_checks.sql` (CHECK: `status ∈ {ACTIVE, CANCELED, EXPIRED, TRIAL}`, `plan` непустой).
+- StarsClient отправляет заголовки `User-Agent: stars-client` и `Accept: application/json` во все запросы к Telegram Bot API.
 
-Конфигурация для Stars находится в `application.conf` (`billing.stars.*`) и использует переменную окружения `TELEGRAM_BOT_TOKEN`.
+Поведение админского `/api/admin/stars/bot-balance`:
+
+- Минимальный TTL кэша — 5 секунд (значение из `billing.stars.balanceTtlSeconds` принудительно приводится к минимуму 5 сек; дефолт 20 сек).
+- Максимальная «черствость» кэша задаётся `billing.stars.maxStaleSeconds` (дефолт 300 сек). Если кэш старше — при ошибках Telegram возвращаем соответствующую 5xx/429, а не stale.
+- Пер-админ rate limit (`billing.stars.adminRateLimitPerMinute`, дефолт 30 запросов в минуту) — при превышении возвращает `429 Too Many Requests` и заголовок `Retry-After`.
+- Коды ответов и условия:
+  - `200 OK` — успешный ответ; заголовки `Cache-Control: no-store`, `X-Stars-Cache: hit|miss|stale`, `X-Stars-Cache-Age: <seconds>`.
+  - `401 Unauthorized` — нет аутентификации.
+  - `403 Forbidden` — не из списка админов.
+  - `429 Too Many Requests` — rate limit Telegram или локальный лимитер; `Retry-After` только если пришёл от Telegram или локального лимитера.
+  - `502 Bad Gateway` — ошибки Telegram 4xx или decode_error.
+  - `503 Service Unavailable` — Telegram не сконфигурирован или отвечает 5xx.
+  - `500 Internal Server Error` — прочие неожиданные исключения.
+- Заголовки: `Cache-Control: no-store` всегда; `X-Stars-Cache`/`X-Stars-Cache-Age` только при `200 OK`; `Retry-After` только при `429` и только если был в ответе Telegram или в локальном rate limit. `X-Stars-Cache-Age` отражает возраст записи кэша, а не «свежесть» данных Telegram.
+- Поле `updatedAtEpochSeconds` приходит из Telegram и может не меняться, пока кэш стареет; используйте его как «метку источника», а не как возраст кэшированной записи.
+
+Конфигурация для Stars находится в `application.conf` (`billing.stars.*`) и использует переменную окружения `TELEGRAM_BOT_TOKEN`. Полезные параметры:
+
+- `billing.stars.balanceTtlSeconds` — TTL кэша баланса бота (минимум 5 сек, дефолт 20 сек).
+- `billing.stars.maxStaleSeconds` — максимальная допустимая черствость при fallback на кэш (дефолт 300 сек). При превышении возвращаем 5xx/429 и считаем bounded_stale метрику.
+- `billing.stars.adminRateLimitPerMinute` — лимит обращений на админский маршрут на одного администратора (дефолт 30/min).
+- `billing.stars.http.connectTimeoutMs` / `readTimeoutMs` — таймауты StarsClient.
+- `billing.stars.http.retryMax` / `retryBaseDelayMs` — параметры ретраев StarsClient.
+- Публичный `GET /api/billing/stars/balance` использует тот же `TELEGRAM_BOT_TOKEN`; при его отсутствии возвращает `503 Service Unavailable`. Ошибки Telegram мапятся в `429 Too Many Requests` (с `Retry-After`, если Telegram прислал число или HTTP-дата), `502 Bad Gateway`, `503 Service Unavailable`, остальные — в `500 Internal Server Error`. Кэш не используется.
+
+Метрики Stars:
+
+| Metric | Type | Labels | Description |
+| --- | --- | --- | --- |
+| `stars_bot_balance_fetch_seconds` | Timer | — | Латентность запросов к Telegram Bot API `getMyStarBalance` (баланс бота). |
+| `stars_balance_fetch_seconds` | Timer | — | Алиас для обратной совместимости на тот же вызов (баланс бота). |
+| `stars_admin_bot_balance_request_seconds` | Timer | — | Латентность обработки админского эндпоинта `GET /api/admin/stars/bot-balance` (включая ошибки авторизации/лимита/Telegram). |
+| `stars_public_bot_balance_request_seconds` | Timer | — | Латентность обработки публичного эндпоинта `GET /api/billing/stars/balance`. |
+| `stars_bot_balance_fetch_total` | Counter | `outcome` | Исход запросов к Telegram за балансом бота (`success`, `rate_limited`, `server`, `bad_request`, `decode_error`, `other`, `stale_returned`). Счётчик отражает обращения как из публичного, так и из админского маршрутов. |
+| `stars_bot_balance_bounded_stale_total` | Counter | `reason` | Отсечки по слишком старому кэшу при fallback (`rate_limited`, `server`, `bad_request`, `decode_error`, `other`). |
+| `stars_admin_bot_balance_requests_total` | Counter | `result` | Исходы админского эндпоинта (`ok`, `unauthorized`, `forbidden`, `unconfigured`, `local_rate_limited`, `tg_rate_limited`, `server`, `bad_request`, `decode_error`, `other`). |
+| `stars_public_bot_balance_requests_total` | Counter | `result` | Исходы публичного эндпоинта (`ok`, `unconfigured`, `tg_rate_limited`, `server`, `bad_request`, `decode_error`, `other`). |
+| `stars_bot_balance_cache_total` | Counter | `state` | Состояние обращения к кэшу (`hit`, `miss`, `stale`). |
+| `stars_bot_balance_cache_age_seconds` | Gauge | — | Возраст текущего значения кэша в секундах. |
+| `stars_bot_balance_cache_ttl_seconds` | Gauge | — | Текущий TTL (секунды), с которым инициализирован сервис. |
+| `stars_bot_balance_rl_window_remaining_seconds` | Gauge | — | Остаток окна rate limit Telegram (секунды), 0 если окна нет. |
+| `stars_subscriptions_paid_active_gauge` | Gauge | — | Количество платных активных подписок (исключая trial). |
+| `stars_subscriptions_renew_attempt_total` | Counter | `result` | Исходы попыток продления подписок (`success`, `failed`). |
+| `stars_subscriptions_transactions_total` | Counter | `result` | Исходы активаций/отмен (`activated`, `canceled`, `noop`). |
+
+Быстрые SLO/алерты для бота:
+
+- Ошибки Telegram: доля `outcome ∈ {server,bad_request,decode_error,other}` выше базовой нормы за 10 минут.
+- Всплески `rate_limited` и `stale_returned` (дольше N минут подряд).
+- Возраст кэша (`stars_bot_balance_cache_age_seconds`) выше `maxStaleSeconds`.
+- Для диагностики добавлен заголовок `X-Stars-Cache-Age` в 200-ответах.
