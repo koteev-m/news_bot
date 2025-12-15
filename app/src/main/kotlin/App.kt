@@ -21,6 +21,10 @@ import pricing.PricingPortAdapter
 import pricing.PricingService
 import alerts.metrics.AlertMetricsPort
 import analytics.AnalyticsPort
+import alerts.AlertsRepositoryMemory
+import alerts.AlertsService
+import alerts.EngineConfig
+import alerts.alertsRoutes
 import errors.installErrorPages
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
@@ -123,6 +127,8 @@ fun Application.module() {
     val metrics = DomainMetrics(prometheusRegistry)
     val webhookMetrics = WebhookMetrics.create(prometheusRegistry)
     val vitals = WebVitals(prometheusRegistry)
+    val alertsRepository = AlertsRepositoryMemory()
+    val alertsService = AlertsService(alertsRepository, EngineConfig(), prometheusRegistry)
     val appConfig = environment.config
 
     installSecurity()
@@ -207,6 +213,7 @@ fun Application.module() {
 
     routing {
         webVitalsRoutes(vitals)
+        alertsRoutes(alertsService)
         apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)
@@ -350,7 +357,9 @@ private fun Application.ensureBillingServices(
         )
         val ttl = environment.config.propertyOrNull("billing.stars.balanceTtlSeconds")?.getString()?.toLongOrNull()
         val ttlSeconds = (ttl ?: 20L).coerceAtLeast(5L)
-        val maxStaleConfig = environment.config.propertyOrNull("billing.stars.maxStaleSeconds")?.getString()?.toLongOrNull()
+        val maxStaleConfig = environment.config.propertyOrNull(
+            "billing.stars.maxStaleSeconds"
+        )?.getString()?.toLongOrNull()
         val maxStale = maxOf(ttlSeconds, (maxStaleConfig ?: 300L))
         StarsService(
             client = starsClient!!,
@@ -378,17 +387,17 @@ private fun Application.ensureBillingServices(
     attributes.put(Services.Key, services)
     attributes.put(
         BillingRouteServicesKey,
-            BillingRouteServices(
-                billingService = billingService,
-                starBalancePort = starBalancePort,
-                botStarBalancePort = botStarBalancePort,
-                entitlementsService = entitlementsService,
-                adminUserIds = adminUserIds,
-                botBalanceRateLimiter = botBalanceRateLimiter(environment),
-                meterRegistry = metrics.meterRegistry,
-                starsClient = starsClient,
-            ),
-        )
+        BillingRouteServices(
+            billingService = billingService,
+            starBalancePort = starBalancePort,
+            botStarBalancePort = botStarBalancePort,
+            entitlementsService = entitlementsService,
+            adminUserIds = adminUserIds,
+            botBalanceRateLimiter = botBalanceRateLimiter(environment),
+            meterRegistry = metrics.meterRegistry,
+            starsClient = starsClient,
+        ),
+    )
     environment.monitor.subscribe(ApplicationStopped) {
         starsClient?.close()
     }
@@ -440,7 +449,9 @@ private fun Application.starsClientConfig(): StarsClientConfig {
 }
 
 private fun Application.botBalanceRateLimiter(environment: ApplicationEnvironment): BotBalanceRateLimiter? {
-    val perMinute = environment.config.propertyOrNull("billing.stars.adminRateLimitPerMinute")?.getString()?.toIntOrNull()
+    val perMinute = environment.config.propertyOrNull(
+        "billing.stars.adminRateLimitPerMinute"
+    )?.getString()?.toIntOrNull()
     val capacity = (perMinute ?: 30).coerceAtLeast(1)
     return BotBalanceRateLimiter(capacity = capacity, refillPerMinute = capacity)
 }
