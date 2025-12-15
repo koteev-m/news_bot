@@ -38,9 +38,12 @@ import billing.service.BillingServiceImpl
 import billing.service.EntitlementsService
 import repo.BillingLedgerRepository
 import billing.service.applySuccessfulPaymentOutcome
+import billing.stars.BotBalanceRateLimiter
+import billing.stars.BotStarBalancePort
 import billing.stars.StarsClient
 import billing.stars.StarsClientConfig
 import billing.stars.StarsService
+import billing.stars.ZeroStarBalancePort
 import com.pengrad.telegrambot.utility.BotUtils
 import di.FeatureFlagsModule
 import di.PrivacyModule
@@ -51,8 +54,9 @@ import features.FeatureFlagsService
 import health.healthRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
-import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.ApplicationEnvironment
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
 import io.ktor.server.request.path
@@ -317,7 +321,11 @@ private fun Application.ensureBillingServices(
             BillingRouteServices(
                 billingService = updated.billingService,
                 starBalancePort = currentRoutingServices?.starBalancePort,
+                botStarBalancePort = currentRoutingServices?.botStarBalancePort,
                 entitlementsService = currentRoutingServices?.entitlementsService,
+                adminUserIds = currentRoutingServices?.adminUserIds ?: adminUserIds,
+                meterRegistry = currentRoutingServices?.meterRegistry ?: metrics.meterRegistry,
+                starsClient = currentRoutingServices?.starsClient,
             ),
         )
         return updated
@@ -331,17 +339,27 @@ private fun Application.ensureBillingServices(
         ledger = BillingLedgerRepository(),
         defaultDurationDays = billingDefaultDuration(),
     )
-    val starBalanceConfig = starsClientConfig()
-    val starsClient = StarsClient(
-        botToken = environment.config.property("telegram.botToken").getString(),
-        config = starBalanceConfig,
-    )
-    val starsService = StarsService(
-        client = starsClient,
-        ttlSeconds = environment.config.propertyOrNull("billing.stars.balanceTtlSeconds")?.getString()?.toLongOrNull()
-            ?: 20,
-        meterRegistry = metrics.meterRegistry,
-    )
+    var starsClient: StarsClient? = null
+    val botToken = environment.config.propertyOrNull("telegram.botToken")?.getString()
+        ?: System.getenv("TELEGRAM_BOT_TOKEN")
+    val botStarBalancePort: BotStarBalancePort? = botToken?.let {
+        val starBalanceConfig = starsClientConfig()
+        starsClient = StarsClient(
+            botToken = it,
+            config = starBalanceConfig,
+        )
+        val ttl = environment.config.propertyOrNull("billing.stars.balanceTtlSeconds")?.getString()?.toLongOrNull()
+        val ttlSeconds = (ttl ?: 20L).coerceAtLeast(5L)
+        val maxStaleConfig = environment.config.propertyOrNull("billing.stars.maxStaleSeconds")?.getString()?.toLongOrNull()
+        val maxStale = maxOf(ttlSeconds, (maxStaleConfig ?: 300L))
+        StarsService(
+            client = starsClient!!,
+            ttlSeconds = ttlSeconds,
+            maxStaleSeconds = maxStale,
+            meterRegistry = metrics.meterRegistry,
+        )
+    }
+    val starBalancePort = ZeroStarBalancePort()
     val entitlementsService = EntitlementsService(billingService)
     val services = Services(
         billingService = billingService,
@@ -360,12 +378,20 @@ private fun Application.ensureBillingServices(
     attributes.put(Services.Key, services)
     attributes.put(
         BillingRouteServicesKey,
-        BillingRouteServices(
-            billingService = billingService,
-            starBalancePort = starsService,
-            entitlementsService = entitlementsService,
-        ),
-    )
+            BillingRouteServices(
+                billingService = billingService,
+                starBalancePort = starBalancePort,
+                botStarBalancePort = botStarBalancePort,
+                entitlementsService = entitlementsService,
+                adminUserIds = adminUserIds,
+                botBalanceRateLimiter = botBalanceRateLimiter(environment),
+                meterRegistry = metrics.meterRegistry,
+                starsClient = starsClient,
+            ),
+        )
+    environment.monitor.subscribe(ApplicationStopped) {
+        starsClient?.close()
+    }
     return services
 }
 
@@ -411,6 +437,12 @@ private fun Application.starsClientConfig(): StarsClientConfig {
         retryMax = httpConfig?.propertyOrNull("retryMax")?.getString()?.toIntOrNull() ?: 3,
         retryBaseDelayMs = httpConfig?.propertyOrNull("retryBaseDelayMs")?.getString()?.toLongOrNull() ?: 200L,
     )
+}
+
+private fun Application.botBalanceRateLimiter(environment: ApplicationEnvironment): BotBalanceRateLimiter? {
+    val perMinute = environment.config.propertyOrNull("billing.stars.adminRateLimitPerMinute")?.getString()?.toIntOrNull()
+    val capacity = (perMinute ?: 30).coerceAtLeast(1)
+    return BotBalanceRateLimiter(capacity = capacity, refillPerMinute = capacity)
 }
 
 private data class WebhookQueueConfig(
