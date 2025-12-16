@@ -6,6 +6,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.Route
 import io.ktor.server.request.receive
+import io.ktor.http.HttpStatusCode
 
 fun Route.alertsRoutes(alertsService: AlertsService) {
     post("/internal/alerts/snapshot") {
@@ -14,7 +15,11 @@ fun Route.alertsRoutes(alertsService: AlertsService) {
     }
     get("/internal/alerts/state") {
         val userId = call.request.queryParameters["userId"]?.toLongOrNull()
-        val state = userId?.let { alertsService.getState(it) } ?: FsmState.IDLE
-        call.respond(state)
+        if (userId == null) {
+            call.respond(HttpStatusCode.BadRequest, mapOf("error" to "missing userId"))
+        } else {
+            val state = alertsService.getState(userId)
+            call.respond(state)
+        }
     }
 }

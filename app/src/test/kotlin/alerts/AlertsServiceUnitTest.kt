@@ -1,10 +1,13 @@
 package alerts
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneOffset
 import kotlin.time.Duration.Companion.minutes
 
@@ -134,5 +137,204 @@ class AlertsServiceUnitTest : FunSpec({
         val flush = service.onSnapshot(snapshot.copy(tsEpochSec = quietTs + 9 * 3600, items = emptyList()))
         flush.emitted.shouldHaveSize(1)
         flush.emitted.first().alert.classId.shouldBe("portfolio_summary")
+    }
+
+    test("quiet hours boundaries are start-inclusive and end-exclusive") {
+        fun tsAt(hour: Int): Long = LocalDateTime.of(2024, 1, 1, hour, 0).toEpochSecond(ZoneOffset.UTC)
+
+        val serviceStart = AlertsService(AlertsRepositoryMemory(), baseConfig, SimpleMeterRegistry())
+        val startSnapshot = MarketSnapshot(
+            tsEpochSec = tsAt(23),
+            userId = 7,
+            items = listOf(SignalItem("Q1", "breakout", "daily", pctMove = 1.0))
+        )
+        val startResult = serviceStart.onSnapshot(startSnapshot)
+        startResult.newState.shouldBe(
+            FsmState.QUIET(listOf(PendingAlert("breakout", "Q1", "daily", 0.5, 1.0, startSnapshot.tsEpochSec)))
+        )
+
+        val serviceInside = AlertsService(AlertsRepositoryMemory(), baseConfig, SimpleMeterRegistry())
+        val insideSnapshot = MarketSnapshot(
+            tsEpochSec = tsAt(2),
+            userId = 8,
+            items = listOf(SignalItem("Q2", "breakout", "fast", pctMove = 1.0))
+        )
+        val insideResult = serviceInside.onSnapshot(insideSnapshot)
+        insideResult.newState.shouldBe(
+            FsmState.QUIET(listOf(PendingAlert("breakout", "Q2", "fast", 0.5, 1.0, insideSnapshot.tsEpochSec)))
+        )
+
+        val serviceEnd = AlertsService(AlertsRepositoryMemory(), baseConfig, SimpleMeterRegistry())
+        val endSnapshot = MarketSnapshot(
+            tsEpochSec = tsAt(7),
+            userId = 9,
+            items = listOf(SignalItem("Q3", "breakout", "daily", pctMove = 1.0))
+        )
+        val endResult = serviceEnd.onSnapshot(endSnapshot)
+        endResult.emitted.shouldHaveSize(1)
+        endResult.suppressedReasons.shouldBe(emptyList())
+        endResult.newState.shouldBe(FsmState.COOLDOWN(endSnapshot.tsEpochSec + baseConfig.cooldownT.min.inWholeSeconds))
+
+        val serviceOutside = AlertsService(AlertsRepositoryMemory(), baseConfig, SimpleMeterRegistry())
+        val outsideSnapshot = MarketSnapshot(
+            tsEpochSec = tsAt(12),
+            userId = 10,
+            items = listOf(SignalItem("Q4", "breakout", "daily", pctMove = 1.0))
+        )
+        val outsideResult = serviceOutside.onSnapshot(outsideSnapshot)
+        outsideResult.emitted.shouldHaveSize(1)
+        outsideResult.suppressedReasons.shouldBe(emptyList())
+        outsideResult.newState.shouldBe(FsmState.COOLDOWN(outsideSnapshot.tsEpochSec + baseConfig.cooldownT.min.inWholeSeconds))
+    }
+
+    test("quiet hours flush increments metrics and budget per alert") {
+        val repo = AlertsRepositoryMemory()
+        val registry = SimpleMeterRegistry()
+        val service = AlertsService(repo, baseConfig, registry)
+        val quietTs = LocalDateTime.of(2024, 1, 1, 23, 30).toEpochSecond(ZoneOffset.UTC)
+        val flushTs = quietTs + 9 * 3600
+
+        val first = MarketSnapshot(
+            tsEpochSec = quietTs,
+            userId = 11,
+            items = listOf(SignalItem("F1", "breakout", "daily", pctMove = 1.0))
+        )
+        val second = MarketSnapshot(
+            tsEpochSec = quietTs + 60,
+            userId = 11,
+            items = listOf(SignalItem("F2", "breakout", "fast", pctMove = 1.0))
+        )
+
+        service.onSnapshot(first)
+        service.onSnapshot(second)
+
+        val flush = service.onSnapshot(MarketSnapshot(tsEpochSec = flushTs, userId = 11, items = emptyList()))
+        flush.emitted.shouldHaveSize(2)
+        flush.emitted.all { it.reason == "quiet_hours_flush" }.shouldBe(true)
+        flush.newState.shouldBe(FsmState.COOLDOWN(flushTs + baseConfig.cooldownT.min.inWholeSeconds))
+
+        val flushDate = LocalDateTime.ofEpochSecond(flushTs, 0, ZoneOffset.UTC).toLocalDate()
+        repo.getDailyPushCount(11, flushDate).shouldBe(2)
+        registry.counter("alert_delivered_total", "reason", "quiet_hours_flush").count().shouldBe(2.0)
+    }
+
+    test("below-threshold suppression increments once and allows hysteresis exit") {
+        val repo = AlertsRepositoryMemory()
+        val registry = SimpleMeterRegistry()
+        val service = AlertsService(repo, baseConfig, registry)
+        val armedState = FsmState.ARMED(50)
+        repo.setState(12, armedState)
+
+        val snapshot = MarketSnapshot(
+            tsEpochSec = 100,
+            userId = 12,
+            items = listOf(
+                SignalItem("S1", "breakout", "fast", pctMove = 0.2),
+                SignalItem("S2", "breakout", "fast", pctMove = 0.3)
+            )
+        )
+
+        val result = service.onSnapshot(snapshot)
+        result.suppressedReasons.shouldBe(listOf("below_threshold"))
+        registry.counter("alert_suppressed_total", "reason", "below_threshold").count().shouldBe(1.0)
+        result.newState.shouldBe(FsmState.IDLE)
+    }
+
+    test("quiet flush honors budget and suppresses leftovers") {
+        val repo = AlertsRepositoryMemory()
+        val registry = SimpleMeterRegistry()
+        val config = baseConfig.copy(dailyBudgetPushMax = 1)
+        val service = AlertsService(repo, config, registry)
+        val quietTs = LocalDateTime.of(2024, 1, 1, 23, 15).toEpochSecond(ZoneOffset.UTC)
+        val flushTs = quietTs + 9 * 3600
+
+        val first = MarketSnapshot(
+            tsEpochSec = quietTs,
+            userId = 13,
+            items = listOf(SignalItem("B1", "breakout", "daily", pctMove = 1.0))
+        )
+        val second = first.copy(tsEpochSec = quietTs + 60, items = listOf(SignalItem("B2", "breakout", "fast", pctMove = 1.0)))
+
+        service.onSnapshot(first)
+        service.onSnapshot(second)
+
+        val flush = service.onSnapshot(MarketSnapshot(tsEpochSec = flushTs, userId = 13, items = emptyList()))
+        flush.emitted.shouldHaveSize(1)
+        flush.emitted.first().reason.shouldBe("quiet_hours_flush")
+        flush.suppressedReasons.shouldBe(listOf("budget"))
+        flush.newState.shouldBe(FsmState.BUDGET_EXHAUSTED)
+
+        val flushDate = LocalDateTime.ofEpochSecond(flushTs, 0, ZoneOffset.UTC).toLocalDate()
+        repo.getDailyPushCount(13, flushDate).shouldBe(1)
+        registry.counter("alert_delivered_total", "reason", "quiet_hours_flush").count().shouldBe(1.0)
+        registry.counter("alert_suppressed_total", "reason", "budget").count().shouldBe(1.0)
+    }
+
+    test("candidate selection uses deterministic tie-breaking") {
+        val registry = SimpleMeterRegistry()
+        val config = baseConfig.copy(
+            thresholds = ThresholdMatrix(
+                mapOf(
+                    "a" to Thresholds(fast = 0.5, daily = 0.5),
+                    "b" to Thresholds(fast = 0.5, daily = 0.5)
+                )
+            )
+        )
+        config.thresholds.getThreshold("a", "daily").shouldBe(0.5)
+        config.thresholds.getThreshold("b", "fast").shouldBe(0.5)
+        val repo = AlertsRepositoryMemory()
+        val service = AlertsService(repo, config, registry)
+        val ts = LocalDateTime.of(2024, 1, 2, 12, 0).toEpochSecond(ZoneOffset.UTC)
+        val snapshot = MarketSnapshot(
+            tsEpochSec = ts,
+            userId = 14,
+            items = listOf(
+                SignalItem("Tfast", "b", "fast", pctMove = 1.0),
+                SignalItem("TdailyB", "b", "daily", pctMove = 1.0),
+                SignalItem("ZZZ", "a", "daily", pctMove = 1.0),
+                SignalItem("AAA", "a", "daily", pctMove = 1.0)
+            )
+        )
+
+        val result = service.onSnapshot(snapshot)
+        result.suppressedReasons.shouldBe(emptyList())
+        result.emitted.shouldHaveSize(1)
+        result.emitted.first().alert.shouldBe(
+            PendingAlert("a", "AAA", "daily", score = 0.5, pctMove = 1.0, ts = ts)
+        )
+        result.newState.shouldBe(FsmState.COOLDOWN(ts + baseConfig.cooldownT.min.inWholeSeconds))
+    }
+
+    test("cooldown expiry allows new delivery") {
+        val repo = AlertsRepositoryMemory()
+        val registry = SimpleMeterRegistry()
+        val service = AlertsService(repo, baseConfig, registry)
+        val until = LocalDateTime.of(2024, 1, 2, 8, 0).toEpochSecond(ZoneOffset.UTC)
+        repo.setState(15, FsmState.COOLDOWN(until))
+
+        val snapshot = MarketSnapshot(
+            tsEpochSec = until,
+            userId = 15,
+            items = listOf(SignalItem("CD", "breakout", "daily", pctMove = 1.0))
+        )
+
+        val result = service.onSnapshot(snapshot)
+        result.suppressedReasons.shouldBe(emptyList())
+        result.emitted.shouldHaveSize(1)
+        result.emitted.first().reason.shouldBe("direct")
+        result.newState.shouldBe(FsmState.COOLDOWN(until + baseConfig.cooldownT.min.inWholeSeconds))
+        registry.counter("alert_delivered_total", "reason", "direct").count().shouldBe(1.0)
+    }
+
+    test("engine config enforces hysteresis exit factor bounds") {
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(hysteresisExitFactor = 0.0)
+        }
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(hysteresisExitFactor = 1.0)
+        }
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(hysteresisExitFactor = 1.5)
+        }
     }
 })
