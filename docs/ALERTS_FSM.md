@@ -8,7 +8,8 @@ This module implements a simple anti-noise finite state machine for market alert
 - `COOLDOWN(untilEpochSec)`
 - `QUIET(buffer)`
 - `BUDGET_EXHAUSTED`
-- `PORTFOLIO_SUMMARY`
+
+Portfolio summary alerts are still generated as `portfolio_summary` pending alerts when large daily moves or drawdowns occur, but they do not use a dedicated FSM state.
 
 ## Configuration
 - Confirmation window (`confirmT`): 10–15 minutes for fast signals (daily signals are immediate).
@@ -27,8 +28,8 @@ Candidate selection ordering: highest score (`pctMove - threshold`), then `daily
 
 ## Metrics
 - `alert_fire_total{class,ticker,window}`
-- `alert_delivered_total{reason=direct|quiet_hours_flush|portfolio_summary}`
-- `alert_suppressed_total{reason=cooldown|budget|quiet_hours|duplicate|no_volume|below_threshold}`
+- `alert_delivered_total{reason=AlertDeliveryReasons.DIRECT|AlertDeliveryReasons.QUIET_HOURS_FLUSH|AlertDeliveryReasons.PORTFOLIO_SUMMARY}` (values: `direct|quiet_hours_flush|portfolio_summary`)
+- `alert_suppressed_total{reason=AlertSuppressionReasons.COOLDOWN|AlertSuppressionReasons.BUDGET|AlertSuppressionReasons.QUIET_HOURS|AlertSuppressionReasons.DUPLICATE|AlertSuppressionReasons.NO_VOLUME|AlertSuppressionReasons.BELOW_THRESHOLD}` (values: `cooldown|budget|quiet_hours|duplicate|no_volume|below_threshold`)
 
 The FSM is exposed via internal routes:
 - `POST /internal/alerts/snapshot` to drive the state machine.

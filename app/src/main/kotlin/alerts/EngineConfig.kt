@@ -25,6 +25,14 @@ data class EngineConfig(
         require(hysteresisExitFactor > 0.0 && hysteresisExitFactor < 1.0) {
             "hysteresisExitFactor must be within (0,1)"
         }
+        require(dailyBudgetPushMax >= 1) { "dailyBudgetPushMax must be at least 1" }
+        require(volumeGateK >= 0.0) { "volumeGateK must be non-negative" }
+        require(confirmT.min >= Duration.ZERO && confirmT.max >= confirmT.min) {
+            "confirmT must have non-negative bounds with max >= min"
+        }
+        require(cooldownT.min >= Duration.ZERO && cooldownT.max >= cooldownT.min) {
+            "cooldownT must have non-negative bounds with max >= min"
+        }
     }
 }
 
@@ -37,5 +45,6 @@ data class DurationRange(val min: Duration, val max: Duration)
 data class QuietHours(val startHour: Int, val endHour: Int) {
     init {
         require(startHour in 0..23 && endHour in 0..23) { "hours must be within 0-23" }
+        require(startHour != endHour) { "quiet hours start and end must differ" }
     }
 }
