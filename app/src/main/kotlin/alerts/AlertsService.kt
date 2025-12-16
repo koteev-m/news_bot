@@ -1,8 +1,9 @@
 package alerts
 
+import alerts.AlertDeliveryReasons
+import alerts.AlertSuppressionReasons
 import alerts.metrics.AlertMetrics
 import io.micrometer.core.instrument.MeterRegistry
-import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -43,8 +44,7 @@ data class PortfolioSnapshot(
 class AlertsService(
     private val repo: AlertsRepository,
     private val config: EngineConfig,
-    meterRegistry: MeterRegistry,
-    private val clock: Clock = Clock.systemDefaultZone()
+    meterRegistry: MeterRegistry
 ) {
     private val metrics = AlertMetrics(meterRegistry)
     private val volumeGate = VolumeGate(config.volumeGateK)
@@ -101,12 +101,12 @@ class AlertsService(
 
             state.buffer.forEach { alert ->
                 if (remainingBudget > 0) {
-                    deliver(userId, alert, "quiet_hours_flush", today)
-                    emitted.add(EmittedAlert(alert, "quiet_hours_flush"))
+                    deliver(userId, alert, AlertDeliveryReasons.QUIET_HOURS_FLUSH, today)
+                    emitted.add(EmittedAlert(alert, AlertDeliveryReasons.QUIET_HOURS_FLUSH))
                     deliveredAny = true
                     remainingBudget--
                 } else {
-                    addSuppressed("budget")
+                    addSuppressed(AlertSuppressionReasons.BUDGET)
                 }
             }
 
@@ -122,22 +122,22 @@ class AlertsService(
             val currentBuffer = (state as? FsmState.QUIET)?.buffer ?: emptyList()
             val exists = currentBuffer.any { it.classId == alert.classId && it.ticker == alert.ticker && it.window == alert.window }
             return if (exists) {
-                addSuppressed("duplicate")
+                addSuppressed(AlertSuppressionReasons.DUPLICATE)
                 FsmState.QUIET(currentBuffer)
             } else {
                 FsmState.QUIET(currentBuffer + alert)
             }
         }
 
-        fun attemptPush(alert: PendingAlert, deliveredReason: String = "direct"): Boolean {
+        fun attemptPush(alert: PendingAlert, deliveredReason: String = AlertDeliveryReasons.DIRECT): Boolean {
             val currentBudget = repo.getDailyPushCount(userId, today)
             if (currentBudget >= config.dailyBudgetPushMax) {
                 state = FsmState.BUDGET_EXHAUSTED
-                addSuppressed("budget")
+                addSuppressed(AlertSuppressionReasons.BUDGET)
                 return false
             }
             if (state is FsmState.COOLDOWN && snapshot.tsEpochSec < (state as FsmState.COOLDOWN).untilEpochSec) {
-                addSuppressed("cooldown")
+                addSuppressed(AlertSuppressionReasons.COOLDOWN)
                 return false
             }
             deliver(userId, alert, deliveredReason, today)
@@ -164,10 +164,10 @@ class AlertsService(
                 )
                 portfolioSummaryByDay[userId] = today
                 if (quietNow) {
-                    addSuppressed("quiet_hours")
+                    addSuppressed(AlertSuppressionReasons.QUIET_HOURS)
                     state = bufferAlert(alert)
                 } else {
-                    attemptPush(alert, "portfolio_summary")
+                    attemptPush(alert, AlertDeliveryReasons.PORTFOLIO_SUMMARY)
                 }
             }
         }
@@ -184,7 +184,7 @@ class AlertsService(
             val thresholdBase = config.thresholds.getThreshold(item.classId, item.window) ?: return@mapNotNull null
             val volumeAllowed = volumeGate.allows(item.volume, item.avgVolume)
             if (!volumeAllowed) {
-                addSuppressed("no_volume")
+                addSuppressed(AlertSuppressionReasons.NO_VOLUME)
                 return@mapNotNull null
             }
             val thr = thresholdBase * proMultiplier(item.atr, item.sigma)
@@ -198,19 +198,19 @@ class AlertsService(
             else -> 2
         }
 
+        val bestFirstComparator = compareByDescending<ItemCheck> { it.score }
+            .thenBy { windowPriority(it.item.window) }
+            .thenBy { it.item.classId }
+            .thenBy { it.item.ticker }
+
+        // minWithOrNull picks the best candidate because the comparator orders from best to worst
         val candidate = checks
             .filter { it.meets }
-            .sortedWith(
-                compareByDescending<ItemCheck> { it.score }
-                    .thenBy { windowPriority(it.item.window) }
-                    .thenBy { it.item.classId }
-                    .thenBy { it.item.ticker }
-            )
-            .firstOrNull()
+            .minWithOrNull(bestFirstComparator)
 
         if (candidate == null) {
             if (checks.isNotEmpty()) {
-                addSuppressed("below_threshold")
+                addSuppressed(AlertSuppressionReasons.BELOW_THRESHOLD)
             }
             if (state is FsmState.ARMED) {
                 val belowExit = checks.all { it.item.pctMove < it.hysteresisLevel }
@@ -232,7 +232,7 @@ class AlertsService(
         )
 
         if (quietNow) {
-            addSuppressed("quiet_hours")
+            addSuppressed(AlertSuppressionReasons.QUIET_HOURS)
             state = bufferAlert(pendingAlert)
             repo.setState(userId, state)
             return TransitionResult(state, emitted, suppressedReasons.toList())
@@ -240,10 +240,10 @@ class AlertsService(
 
         when (state) {
             is FsmState.COOLDOWN -> {
-                addSuppressed("cooldown")
+                addSuppressed(AlertSuppressionReasons.COOLDOWN)
             }
             is FsmState.BUDGET_EXHAUSTED -> {
-                addSuppressed("budget")
+                addSuppressed(AlertSuppressionReasons.BUDGET)
             }
             is FsmState.ARMED -> {
                 val armedState = state as FsmState.ARMED

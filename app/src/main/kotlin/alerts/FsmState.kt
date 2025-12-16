@@ -25,9 +25,6 @@ sealed interface FsmState {
     @SerialName("budget_exhausted")
     data object BUDGET_EXHAUSTED : FsmState
 
-    @Serializable
-    @SerialName("portfolio_summary")
-    data object PORTFOLIO_SUMMARY : FsmState
 }
 
 @Serializable

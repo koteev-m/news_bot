@@ -20,13 +20,10 @@ class AlertsRepositoryMemory : AlertsRepository {
     }
 
     override fun incDailyPushCount(userId: Long, date: LocalDate) {
-        val lastDate = lastDateByUser[userId]
-        if (lastDate != date) {
-            dailyCounts.keys.removeIf { it.first == userId && it.second != date }
-            lastDateByUser[userId] = date
+        val previousDate = lastDateByUser.put(userId, date)
+        if (previousDate != null && previousDate != date) {
+            dailyCounts.remove(userId to previousDate)
         }
-        val key = userId to date
-        val counter = dailyCounts.computeIfAbsent(key) { AtomicInteger(0) }
-        counter.incrementAndGet()
+        dailyCounts.computeIfAbsent(userId to date) { AtomicInteger(0) }.incrementAndGet()
     }
 }

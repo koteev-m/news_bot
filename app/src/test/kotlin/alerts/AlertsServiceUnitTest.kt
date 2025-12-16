@@ -6,10 +6,13 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import alerts.AlertDeliveryReasons
+import alerts.AlertSuppressionReasons
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 class AlertsServiceUnitTest : FunSpec({
     val registry = SimpleMeterRegistry()
@@ -34,7 +37,7 @@ class AlertsServiceUnitTest : FunSpec({
         )
         val result = service.onSnapshot(snapshot)
         result.emitted.shouldBe(emptyList())
-        result.suppressedReasons.shouldContain("cooldown")
+        result.suppressedReasons.shouldContain(AlertSuppressionReasons.COOLDOWN)
         repo.getState(1).shouldBe(FsmState.COOLDOWN(ts + 600))
     }
 
@@ -66,12 +69,12 @@ class AlertsServiceUnitTest : FunSpec({
         first.newState.shouldBe(FsmState.QUIET(listOf(PendingAlert("breakout", "C", "fast", 0.5, 1.0, quietTs))))
         val duplicate = service.onSnapshot(snapshotQuiet)
         duplicate.newState.shouldBe(FsmState.QUIET(listOf(PendingAlert("breakout", "C", "fast", 0.5, 1.0, quietTs))))
-        duplicate.suppressedReasons.shouldContain("duplicate")
+        duplicate.suppressedReasons.shouldContain(AlertSuppressionReasons.DUPLICATE)
 
         val flushSnapshot = MarketSnapshot(tsEpochSec = activeTs, userId = 3, items = emptyList())
         val flushed = service.onSnapshot(flushSnapshot)
         flushed.emitted.shouldHaveSize(1)
-        flushed.emitted.first().reason.shouldBe("quiet_hours_flush")
+        flushed.emitted.first().reason.shouldBe(AlertDeliveryReasons.QUIET_HOURS_FLUSH)
     }
 
     test("volume gate suppresses low volume") {
@@ -93,7 +96,7 @@ class AlertsServiceUnitTest : FunSpec({
         )
         val result = service.onSnapshot(snapshot)
         result.emitted.shouldBe(emptyList())
-        result.suppressedReasons.shouldContain("no_volume")
+        result.suppressedReasons.shouldContain(AlertSuppressionReasons.NO_VOLUME)
         service.getState(4).shouldBe(FsmState.IDLE)
     }
 
@@ -210,12 +213,12 @@ class AlertsServiceUnitTest : FunSpec({
 
         val flush = service.onSnapshot(MarketSnapshot(tsEpochSec = flushTs, userId = 11, items = emptyList()))
         flush.emitted.shouldHaveSize(2)
-        flush.emitted.all { it.reason == "quiet_hours_flush" }.shouldBe(true)
+        flush.emitted.all { it.reason == AlertDeliveryReasons.QUIET_HOURS_FLUSH }.shouldBe(true)
         flush.newState.shouldBe(FsmState.COOLDOWN(flushTs + baseConfig.cooldownT.min.inWholeSeconds))
 
         val flushDate = LocalDateTime.ofEpochSecond(flushTs, 0, ZoneOffset.UTC).toLocalDate()
         repo.getDailyPushCount(11, flushDate).shouldBe(2)
-        registry.counter("alert_delivered_total", "reason", "quiet_hours_flush").count().shouldBe(2.0)
+        registry.counter("alert_delivered_total", "reason", AlertDeliveryReasons.QUIET_HOURS_FLUSH).count().shouldBe(2.0)
     }
 
     test("below-threshold suppression increments once and allows hysteresis exit") {
@@ -235,8 +238,8 @@ class AlertsServiceUnitTest : FunSpec({
         )
 
         val result = service.onSnapshot(snapshot)
-        result.suppressedReasons.shouldBe(listOf("below_threshold"))
-        registry.counter("alert_suppressed_total", "reason", "below_threshold").count().shouldBe(1.0)
+        result.suppressedReasons.shouldBe(listOf(AlertSuppressionReasons.BELOW_THRESHOLD))
+        registry.counter("alert_suppressed_total", "reason", AlertSuppressionReasons.BELOW_THRESHOLD).count().shouldBe(1.0)
         result.newState.shouldBe(FsmState.IDLE)
     }
 
@@ -260,14 +263,14 @@ class AlertsServiceUnitTest : FunSpec({
 
         val flush = service.onSnapshot(MarketSnapshot(tsEpochSec = flushTs, userId = 13, items = emptyList()))
         flush.emitted.shouldHaveSize(1)
-        flush.emitted.first().reason.shouldBe("quiet_hours_flush")
-        flush.suppressedReasons.shouldBe(listOf("budget"))
+        flush.emitted.first().reason.shouldBe(AlertDeliveryReasons.QUIET_HOURS_FLUSH)
+        flush.suppressedReasons.shouldBe(listOf(AlertSuppressionReasons.BUDGET))
         flush.newState.shouldBe(FsmState.BUDGET_EXHAUSTED)
 
         val flushDate = LocalDateTime.ofEpochSecond(flushTs, 0, ZoneOffset.UTC).toLocalDate()
         repo.getDailyPushCount(13, flushDate).shouldBe(1)
-        registry.counter("alert_delivered_total", "reason", "quiet_hours_flush").count().shouldBe(1.0)
-        registry.counter("alert_suppressed_total", "reason", "budget").count().shouldBe(1.0)
+        registry.counter("alert_delivered_total", "reason", AlertDeliveryReasons.QUIET_HOURS_FLUSH).count().shouldBe(1.0)
+        registry.counter("alert_suppressed_total", "reason", AlertSuppressionReasons.BUDGET).count().shouldBe(1.0)
     }
 
     test("candidate selection uses deterministic tie-breaking") {
@@ -321,9 +324,9 @@ class AlertsServiceUnitTest : FunSpec({
         val result = service.onSnapshot(snapshot)
         result.suppressedReasons.shouldBe(emptyList())
         result.emitted.shouldHaveSize(1)
-        result.emitted.first().reason.shouldBe("direct")
+        result.emitted.first().reason.shouldBe(AlertDeliveryReasons.DIRECT)
         result.newState.shouldBe(FsmState.COOLDOWN(until + baseConfig.cooldownT.min.inWholeSeconds))
-        registry.counter("alert_delivered_total", "reason", "direct").count().shouldBe(1.0)
+        registry.counter("alert_delivered_total", "reason", AlertDeliveryReasons.DIRECT).count().shouldBe(1.0)
     }
 
     test("engine config enforces hysteresis exit factor bounds") {
@@ -335,6 +338,33 @@ class AlertsServiceUnitTest : FunSpec({
         }
         shouldThrow<IllegalArgumentException> {
             baseConfig.copy(hysteresisExitFactor = 1.5)
+        }
+    }
+
+    test("quiet hours require distinct start and end") {
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(quietHours = QuietHours(5, 5))
+        }
+    }
+
+    test("engine config validates ranges and budgets") {
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(dailyBudgetPushMax = 0)
+        }
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(volumeGateK = -0.1)
+        }
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(confirmT = DurationRange((-1).minutes, 1.minutes))
+        }
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(confirmT = DurationRange(5.minutes, 1.minutes))
+        }
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(cooldownT = DurationRange((-30).seconds, 1.minutes))
+        }
+        shouldThrow<IllegalArgumentException> {
+            baseConfig.copy(cooldownT = DurationRange(10.minutes, 5.minutes))
         }
     }
 })
