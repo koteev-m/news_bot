@@ -1,7 +1,5 @@
 package alerts
 
-import alerts.AlertDeliveryReasons
-import alerts.AlertSuppressionReasons
 import alerts.metrics.AlertMetrics
 import io.micrometer.core.instrument.MeterRegistry
 import java.time.Instant
