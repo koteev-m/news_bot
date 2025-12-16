@@ -50,4 +50,13 @@ class AlertsRoutesTest : FunSpec({
             state shouldBe FsmState.IDLE
         }
     }
+
+    test("state route requires userId") {
+        testApplication {
+            application { minimalAlertsModule() }
+            val response = client.get("/internal/alerts/state")
+            response.status shouldBe HttpStatusCode.BadRequest
+            response.bodyAsText() shouldBe "{\"error\":\"missing userId\"}"
+        }
+    }
 })

@@ -20,7 +20,13 @@ data class EngineConfig(
         )
     ),
     val zoneId: java.time.ZoneId = java.time.ZoneId.systemDefault()
-)
+) {
+    init {
+        require(hysteresisExitFactor > 0.0 && hysteresisExitFactor < 1.0) {
+            "hysteresisExitFactor must be within (0,1)"
+        }
+    }
+}
 
 /**
  * Simple duration range helper.

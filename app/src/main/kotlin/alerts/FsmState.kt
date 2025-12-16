@@ -14,10 +14,6 @@ sealed interface FsmState {
     data class ARMED(val armedAtEpochSec: Long) : FsmState
 
     @Serializable
-    @SerialName("pushed")
-    data class PUSHED(val pushedAtEpochSec: Long) : FsmState
-
-    @Serializable
     @SerialName("cooldown")
     data class COOLDOWN(val untilEpochSec: Long) : FsmState
 

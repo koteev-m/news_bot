@@ -2,10 +2,12 @@ package alerts
 
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 class AlertsRepositoryMemory : AlertsRepository {
     private val states = ConcurrentHashMap<Long, FsmState>()
-    private val dailyCounts = ConcurrentHashMap<Long, MutableMap<LocalDate, Int>>()
+    private val dailyCounts = ConcurrentHashMap<Pair<Long, LocalDate>, AtomicInteger>()
+    private val lastDateByUser = ConcurrentHashMap<Long, LocalDate>()
 
     override fun getState(userId: Long): FsmState = states[userId] ?: FsmState.IDLE
 
@@ -14,16 +16,17 @@ class AlertsRepositoryMemory : AlertsRepository {
     }
 
     override fun getDailyPushCount(userId: Long, date: LocalDate): Int {
-        val map = dailyCounts[userId] ?: return 0
-        return map[date] ?: 0
+        return dailyCounts[userId to date]?.get() ?: 0
     }
 
     override fun incDailyPushCount(userId: Long, date: LocalDate) {
-        dailyCounts.compute(userId) { _, existing ->
-            val map = existing ?: mutableMapOf()
-            map.keys.filter { it != date }.forEach { map.remove(it) }
-            map[date] = (map[date] ?: 0) + 1
-            map
+        val lastDate = lastDateByUser[userId]
+        if (lastDate != date) {
+            dailyCounts.keys.removeIf { it.first == userId && it.second != date }
+            lastDateByUser[userId] = date
         }
+        val key = userId to date
+        val counter = dailyCounts.computeIfAbsent(key) { AtomicInteger(0) }
+        counter.incrementAndGet()
     }
 }

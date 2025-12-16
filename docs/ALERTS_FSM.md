@@ -5,7 +5,6 @@ This module implements a simple anti-noise finite state machine for market alert
 ## States
 - `IDLE`
 - `ARMED(armedAtEpochSec)`
-- `PUSHED(pushedAtEpochSec)`
 - `COOLDOWN(untilEpochSec)`
 - `QUIET(buffer)`
 - `BUDGET_EXHAUSTED`
@@ -14,11 +13,17 @@ This module implements a simple anti-noise finite state machine for market alert
 ## Configuration
 - Confirmation window (`confirmT`): 10–15 minutes for fast signals (daily signals are immediate).
 - Cooldown (`cooldownT`): 60–120 minutes after a push.
-- Quiet hours: 23:00–07:00 local time. Alerts buffer during this window and flush once after 07:00.
+- Quiet hours: 23:00–07:00 local time (start inclusive, end exclusive). Alerts buffer during this window and flush once after 07:00.
 - Daily budget: up to six pushes per user per calendar day.
 - Hysteresis: exit `ARMED` when the signal drops below 75% of the trigger threshold.
 - Volume gate: requires `volume >= k * avgVolume` when both are provided.
 - Thresholds: class/window thresholds optionally scaled by `proK = clamp(ATR/σ, 0.7..1.3)`.
+
+Morning flush respects budget: buffered alerts are delivered up to the daily budget, leftovers are suppressed with reason `budget`. After a flush, the FSM enters `COOLDOWN` when at least one alert is delivered and budget remains, otherwise `BUDGET_EXHAUSTED`.
+
+Each suppression reason is only counted once per snapshot.
+
+Candidate selection ordering: highest score (`pctMove - threshold`), then `daily` before `fast`, then `classId` and `ticker` lexicographically.
 
 ## Metrics
 - `alert_fire_total{class,ticker,window}`
