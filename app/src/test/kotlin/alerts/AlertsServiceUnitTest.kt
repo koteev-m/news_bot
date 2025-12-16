@@ -6,8 +6,6 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
-import alerts.AlertDeliveryReasons
-import alerts.AlertSuppressionReasons
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
