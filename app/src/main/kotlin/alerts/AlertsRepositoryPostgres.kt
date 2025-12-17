@@ -5,11 +5,14 @@ import java.sql.Date
 import java.time.LocalDate
 import kotlinx.serialization.json.Json
 import javax.sql.DataSource
+import org.slf4j.LoggerFactory
 
 class AlertsRepositoryPostgres(
     private val dataSource: DataSource? = null,
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) : AlertsRepository {
+
+    private val logger = LoggerFactory.getLogger(AlertsRepositoryPostgres::class.java)
 
     override fun getState(userId: Long): FsmState {
         val sql = "SELECT state_json FROM alerts_fsm_state WHERE user_id = ?"
@@ -96,6 +99,9 @@ class AlertsRepositoryPostgres(
         } catch (e: Exception) {
             if (!autoCommit) {
                 runCatching { conn.rollback() }
+                    .onFailure { rollbackError ->
+                        logger.warn("Failed to rollback transaction after error", rollbackError)
+                    }
             }
             throw e
         }
