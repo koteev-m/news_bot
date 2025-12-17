@@ -3,6 +3,7 @@ package alerts
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -15,14 +16,14 @@ import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
-import kotlinx.serialization.json.Json
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import kotlinx.serialization.json.Json
 
 class AlertsRoutesTest : FunSpec({
-    fun Application.minimalAlertsModule() {
+    fun Application.minimalAlertsModule(internalToken: String? = "secret") {
         install(ContentNegotiation) { json() }
         val service = AlertsService(AlertsRepositoryMemory(), EngineConfig(zoneId = java.time.ZoneOffset.UTC), SimpleMeterRegistry())
-        routing { alertsRoutes(service) }
+        routing { alertsRoutes(service, internalToken) }
     }
 
     test("snapshot route returns transition") {
@@ -36,6 +37,7 @@ class AlertsRoutesTest : FunSpec({
             val response = client.post("/internal/alerts/snapshot") {
                 contentType(ContentType.Application.Json)
                 setBody(Json.encodeToString(MarketSnapshot.serializer(), snapshot))
+                header(INTERNAL_TOKEN_HEADER, "secret")
             }
             response.status shouldBe HttpStatusCode.OK
         }
@@ -44,7 +46,9 @@ class AlertsRoutesTest : FunSpec({
     test("state route returns current state") {
         testApplication {
             application { minimalAlertsModule() }
-            val response = client.get("/internal/alerts/state?userId=123")
+            val response = client.get("/internal/alerts/state?userId=123") {
+                header(INTERNAL_TOKEN_HEADER, "secret")
+            }
             response.status shouldBe HttpStatusCode.OK
             val state = Json.decodeFromString(FsmState.serializer(), response.bodyAsText())
             state shouldBe FsmState.IDLE
@@ -54,9 +58,60 @@ class AlertsRoutesTest : FunSpec({
     test("state route requires userId") {
         testApplication {
             application { minimalAlertsModule() }
-            val response = client.get("/internal/alerts/state")
+            val response = client.get("/internal/alerts/state") {
+                header(INTERNAL_TOKEN_HEADER, "secret")
+            }
             response.status shouldBe HttpStatusCode.BadRequest
             response.bodyAsText() shouldBe "{\"error\":\"missing userId\"}"
+        }
+    }
+
+    test("snapshot route is unavailable without configured token") {
+        testApplication {
+            application { minimalAlertsModule(internalToken = null) }
+            val snapshot = MarketSnapshot(
+                tsEpochSec = 1_700_043_200L,
+                userId = 9,
+                items = listOf(SignalItem("R", "breakout", "daily", pctMove = 3.0))
+            )
+            val response = client.post("/internal/alerts/snapshot") {
+                contentType(ContentType.Application.Json)
+                setBody(Json.encodeToString(MarketSnapshot.serializer(), snapshot))
+            }
+            response.status shouldBe HttpStatusCode.ServiceUnavailable
+            response.bodyAsText() shouldBe "{\"error\":\"internal token not configured\"}"
+        }
+    }
+
+    test("snapshot route rejects missing token header") {
+        testApplication {
+            application { minimalAlertsModule(internalToken = "token123") }
+            val snapshot = MarketSnapshot(
+                tsEpochSec = 1_700_043_200L,
+                userId = 9,
+                items = listOf(SignalItem("R", "breakout", "daily", pctMove = 3.0))
+            )
+            val response = client.post("/internal/alerts/snapshot") {
+                contentType(ContentType.Application.Json)
+                setBody(Json.encodeToString(MarketSnapshot.serializer(), snapshot))
+            }
+            response.status shouldBe HttpStatusCode.Forbidden
+            response.bodyAsText() shouldBe "{\"error\":\"forbidden\"}"
+        }
+    }
+
+    test("state route validates token before userId") {
+        testApplication {
+            application { minimalAlertsModule(internalToken = "token123") }
+            val forbidden = client.get("/internal/alerts/state")
+            forbidden.status shouldBe HttpStatusCode.Forbidden
+            forbidden.bodyAsText() shouldBe "{\"error\":\"forbidden\"}"
+
+            val badRequest = client.get("/internal/alerts/state") {
+                header(INTERNAL_TOKEN_HEADER, "token123")
+            }
+            badRequest.status shouldBe HttpStatusCode.BadRequest
+            badRequest.bodyAsText() shouldBe "{\"error\":\"missing userId\"}"
         }
     }
 })

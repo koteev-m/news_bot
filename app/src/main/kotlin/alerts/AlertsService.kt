@@ -47,6 +47,7 @@ class AlertsService(
     private val metrics = AlertMetrics(meterRegistry)
     private val volumeGate = VolumeGate(config.volumeGateK)
     private val portfolioSummaryByDay = java.util.concurrent.ConcurrentHashMap<Long, LocalDate>()
+    private val locks = Array(128) { java.util.concurrent.locks.ReentrantLock() }
 
     fun getState(userId: Long): FsmState = repo.getState(userId)
 
@@ -69,7 +70,22 @@ class AlertsService(
 
     private fun cooldownUntil(nowEpoch: Long): Long = nowEpoch + config.cooldownT.min.inWholeSeconds
 
+    private fun lockFor(userId: Long): java.util.concurrent.locks.ReentrantLock {
+        val index = kotlin.math.abs((userId % locks.size).toInt())
+        return locks[index]
+    }
+
     fun onSnapshot(snapshot: MarketSnapshot): TransitionResult {
+        val lock = lockFor(snapshot.userId)
+        lock.lock()
+        return try {
+            processSnapshot(snapshot)
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    private fun processSnapshot(snapshot: MarketSnapshot): TransitionResult {
         val userId = snapshot.userId
         val nowInstant = Instant.ofEpochSecond(snapshot.tsEpochSec)
         val today = LocalDateTime.ofInstant(nowInstant, config.zoneId).toLocalDate()
