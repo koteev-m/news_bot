@@ -33,6 +33,7 @@ dependencies {
     implementation(project(":integrations"))
     implementation(project(":alerts"))
     implementation(project(":news"))
+    implementation(libs.hikaricp)
     implementation(libs.exposed.core)
     implementation(libs.exposed.dao)
     implementation(libs.exposed.jdbc)

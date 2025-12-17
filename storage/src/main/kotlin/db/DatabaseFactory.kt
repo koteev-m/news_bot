@@ -11,7 +11,11 @@ import org.jetbrains.exposed.sql.transactions.TransactionManager
 object DatabaseFactory {
     private lateinit var dataSource: HikariDataSource
 
+    @Synchronized
     fun init(config: HikariConfig = HikariConfigFactory.create()) {
+        if (::dataSource.isInitialized) {
+            return
+        }
         dataSource = HikariDataSource(config)
         Database.connect(dataSource)
     }
@@ -23,6 +27,11 @@ object DatabaseFactory {
         if (::dataSource.isInitialized) {
             dataSource.close()
         }
+    }
+
+    fun <T> withConnection(block: (java.sql.Connection) -> T): T {
+        check(::dataSource.isInitialized) { "DatabaseFactory not initialized" }
+        return dataSource.connection.use(block)
     }
 
     suspend fun ping() {

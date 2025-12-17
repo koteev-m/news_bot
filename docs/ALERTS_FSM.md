@@ -36,3 +36,33 @@ Metric label values are defined in `app/src/main/kotlin/alerts/AlertReasons.kt`,
 The FSM is exposed via internal routes:
 - `POST /internal/alerts/snapshot` to drive the state machine.
 - `GET /internal/alerts/state?userId=<id>` to inspect per-user state.
+
+## Persistence
+- FSM state is stored in `alerts_fsm_state(user_id, state_json, updated_at)`.
+- Daily budgets are stored in `alerts_daily_budget(user_id, day, push_count, updated_at)` with a non-negative check on `push_count`.
+- The Postgres-backed repository is the default when `db.jdbcUrl` is configured. The service fails fast on DB init/ping errors unless `alerts.allowMemoryFallbackOnDbError=true` is explicitly set (dev-only safety valve).
+
+## Security
+- Internal routes require the `alerts.internalToken` configuration and the `X-Internal-Token` header.
+- If the token is unset or blank, the endpoints return **503 Service Unavailable** with `{ "error": "internal token not configured" }`.
+- If the header is missing or invalid, the endpoints return **403 Forbidden** with `{ "error": "forbidden" }` before any business validation.
+
+## Configuration example
+
+```
+alerts {
+  internalToken = "super-secret"
+  allowMemoryFallbackOnDbError = false
+  quietHours { startHour = 23, endHour = 7 }
+  dailyBudgetPushMax = 6
+  hysteresisExitFactor = 0.75
+  volumeGateK = 1.0
+  confirmT { minMinutes = 10, maxMinutes = 15 }
+  cooldownT { minMinutes = 60, maxMinutes = 120 }
+  zoneId = "UTC"
+  thresholds {
+    breakout { fast = 1.2, daily = 2.5 }
+    mean_revert { fast = 0.8, daily = 1.8 }
+  }
+}
+```

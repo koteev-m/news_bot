@@ -7,6 +7,7 @@ import chaos.ChaosConfig
 import chaos.ChaosMetrics
 import chaos.maybeInjectChaos
 import com.typesafe.config.ConfigFactory
+import db.DatabaseFactory
 import docs.apiDocsRoutes
 import news.config.NewsConfig
 import news.config.NewsDefaults
@@ -21,10 +22,12 @@ import pricing.PricingPortAdapter
 import pricing.PricingService
 import alerts.metrics.AlertMetricsPort
 import analytics.AnalyticsPort
+import alerts.AlertsRepository
 import alerts.AlertsRepositoryMemory
+import alerts.AlertsRepositoryPostgres
 import alerts.AlertsService
-import alerts.EngineConfig
 import alerts.alertsRoutes
+import alerts.loadAlertsConfig
 import errors.installErrorPages
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
@@ -86,6 +89,7 @@ import observability.installMdcTrace
 import observability.installSentry
 import observability.installTracing
 import org.slf4j.LoggerFactory
+import io.ktor.server.config.ApplicationConfig
 import repo.AnalyticsRepository
 import repo.BillingRepositoryImpl
 import repo.PricingRepository
@@ -119,6 +123,7 @@ import webhook.WebhookQueue
 private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
 
 fun Application.module() {
+    val appConfig = environment.config
     val prometheusRegistry = Observability.install(this)
     val eventsCounter = EventsCounter(prometheusRegistry)
     installMdcTrace()
@@ -127,9 +132,9 @@ fun Application.module() {
     val metrics = DomainMetrics(prometheusRegistry)
     val webhookMetrics = WebhookMetrics.create(prometheusRegistry)
     val vitals = WebVitals(prometheusRegistry)
-    val alertsRepository = AlertsRepositoryMemory()
-    val alertsService = AlertsService(alertsRepository, EngineConfig(), prometheusRegistry)
-    val appConfig = environment.config
+    val alertsConfig = loadAlertsConfig(appConfig)
+    val alertsRepository = createAlertsRepository(appConfig)
+    val alertsService = AlertsService(alertsRepository, alertsConfig.engine, prometheusRegistry)
 
     installSecurity()
     installUploadGuard()
@@ -213,7 +218,7 @@ fun Application.module() {
 
     routing {
         webVitalsRoutes(vitals)
-        alertsRoutes(alertsService)
+        alertsRoutes(alertsService, alertsConfig.internalToken)
         apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)
@@ -281,6 +286,31 @@ fun Application.module() {
             adminPrivacyRoutes(privacy.service, services.adminUserIds)
             adminPricingRoutes(pricingRepository, services.adminUserIds)
             adminSupportRoutes(supportRepository, services.adminUserIds)
+        }
+    }
+}
+
+private fun Application.createAlertsRepository(config: ApplicationConfig): AlertsRepository {
+    val logger = LoggerFactory.getLogger("alerts")
+    val dbJdbcUrl = config.propertyOrNull("db.jdbcUrl")?.getString()?.takeIf { it.isNotBlank() }
+    if (dbJdbcUrl == null) {
+        logger.info("Using in-memory alerts repository (no DB config)")
+        return AlertsRepositoryMemory()
+    }
+
+    return runCatching {
+        DatabaseFactory.init()
+        runBlocking { DatabaseFactory.ping() }
+        AlertsRepositoryPostgres()
+    }.getOrElse {
+        val allowMemoryFallback =
+            config.propertyOrNull("alerts.allowMemoryFallbackOnDbError")?.getString()?.toBoolean() ?: false
+        if (allowMemoryFallback) {
+            logger.warn("Falling back to in-memory alerts repository: {}", it.message)
+            AlertsRepositoryMemory()
+        } else {
+            logger.error("Failed to initialize alerts repository", it)
+            throw it
         }
     }
 }
