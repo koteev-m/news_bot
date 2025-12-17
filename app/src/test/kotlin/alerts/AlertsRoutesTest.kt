@@ -60,6 +60,17 @@ class AlertsRoutesTest : FunSpec({
         }
     }
 
+    test("state route rejects wrong token") {
+        testApplication {
+            application { minimalAlertsModule(internalToken = "token123") }
+            val response = client.get("/internal/alerts/state?userId=123") {
+                header(INTERNAL_TOKEN_HEADER, "wrong-token")
+            }
+            response.status shouldBe HttpStatusCode.Forbidden
+            response.bodyAsText().errorMessage() shouldBe "forbidden"
+        }
+    }
+
     test("state route requires userId") {
         testApplication {
             application { minimalAlertsModule() }
