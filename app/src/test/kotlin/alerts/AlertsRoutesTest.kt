@@ -18,8 +18,13 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class AlertsRoutesTest : FunSpec({
+    fun String.errorMessage(): String? =
+        Json.parseToJsonElement(this).jsonObject["error"]?.jsonPrimitive?.content
+
     fun Application.minimalAlertsModule(internalToken: String? = "secret") {
         install(ContentNegotiation) { json() }
         val service = AlertsService(AlertsRepositoryMemory(), EngineConfig(zoneId = java.time.ZoneOffset.UTC), SimpleMeterRegistry())
@@ -62,7 +67,7 @@ class AlertsRoutesTest : FunSpec({
                 header(INTERNAL_TOKEN_HEADER, "secret")
             }
             response.status shouldBe HttpStatusCode.BadRequest
-            response.bodyAsText() shouldBe "{\"error\":\"missing userId\"}"
+            response.bodyAsText().errorMessage() shouldBe "missing userId"
         }
     }
 
@@ -79,7 +84,7 @@ class AlertsRoutesTest : FunSpec({
                 setBody(Json.encodeToString(MarketSnapshot.serializer(), snapshot))
             }
             response.status shouldBe HttpStatusCode.ServiceUnavailable
-            response.bodyAsText() shouldBe "{\"error\":\"internal token not configured\"}"
+            response.bodyAsText().errorMessage() shouldBe "internal token not configured"
         }
     }
 
@@ -96,7 +101,25 @@ class AlertsRoutesTest : FunSpec({
                 setBody(Json.encodeToString(MarketSnapshot.serializer(), snapshot))
             }
             response.status shouldBe HttpStatusCode.Forbidden
-            response.bodyAsText() shouldBe "{\"error\":\"forbidden\"}"
+            response.bodyAsText().errorMessage() shouldBe "forbidden"
+        }
+    }
+
+    test("snapshot route rejects wrong token") {
+        testApplication {
+            application { minimalAlertsModule(internalToken = "token123") }
+            val snapshot = MarketSnapshot(
+                tsEpochSec = 1_700_043_200L,
+                userId = 9,
+                items = listOf(SignalItem("R", "breakout", "daily", pctMove = 3.0))
+            )
+            val response = client.post("/internal/alerts/snapshot") {
+                contentType(ContentType.Application.Json)
+                setBody(Json.encodeToString(MarketSnapshot.serializer(), snapshot))
+                header(INTERNAL_TOKEN_HEADER, "wrong-token")
+            }
+            response.status shouldBe HttpStatusCode.Forbidden
+            response.bodyAsText().errorMessage() shouldBe "forbidden"
         }
     }
 
@@ -105,13 +128,13 @@ class AlertsRoutesTest : FunSpec({
             application { minimalAlertsModule(internalToken = "token123") }
             val forbidden = client.get("/internal/alerts/state")
             forbidden.status shouldBe HttpStatusCode.Forbidden
-            forbidden.bodyAsText() shouldBe "{\"error\":\"forbidden\"}"
+            forbidden.bodyAsText().errorMessage() shouldBe "forbidden"
 
             val badRequest = client.get("/internal/alerts/state") {
                 header(INTERNAL_TOKEN_HEADER, "token123")
             }
             badRequest.status shouldBe HttpStatusCode.BadRequest
-            badRequest.bodyAsText() shouldBe "{\"error\":\"missing userId\"}"
+            badRequest.bodyAsText().errorMessage() shouldBe "missing userId"
         }
     }
 })

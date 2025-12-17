@@ -2,7 +2,6 @@ package alerts
 
 import db.DatabaseFactory
 import java.sql.Date
-import java.sql.SQLException
 import java.time.LocalDate
 import kotlinx.serialization.json.Json
 import javax.sql.DataSource
@@ -98,7 +97,7 @@ class AlertsRepositoryPostgres(
             if (!autoCommit) {
                 runCatching { conn.rollback() }
             }
-            if (e is SQLException) throw e else throw SQLException(e)
+            throw e
         }
     }
 }
