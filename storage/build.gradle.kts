@@ -1,5 +1,6 @@
 import org.flywaydb.gradle.FlywayExtension
 import org.flywaydb.gradle.task.AbstractFlywayTask
+import org.gradle.api.tasks.testing.Test
 
 buildscript {
     repositories {
@@ -98,5 +99,17 @@ tasks.withType<AbstractFlywayTask>().configureEach {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("integration")
+    }
+}
+
+val integrationTest by tasks.registering(Test::class) {
+    description = "Runs integration tests"
+    group = "verification"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform {
+        includeTags("integration")
+    }
 }

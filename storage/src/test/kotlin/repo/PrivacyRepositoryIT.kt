@@ -21,21 +21,18 @@ import kotlinx.serialization.json.jsonObject
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import privacy.ErasureCfg
 import privacy.PrivacyConfig
 import privacy.PrivacyServiceImpl
-import repo.PrivacyErasureQueue
-import repo.PrivacyRepository
-import repo.UserAlertOverridesTable
-import repo.UserSubscriptionsTable
-import repo.EventsTable
 import privacy.RetentionCfg
 import repo.tables.InstrumentsTable
 import repo.tables.PositionsTable
 import repo.tables.TradesTable
 import repo.tables.ValuationsDailyTable
 
+@Tag("integration")
 class PrivacyRepositoryIT {
     @Test
     fun `runErasure removes and anonymizes user data`() = runBlocking {
@@ -173,14 +170,35 @@ class PrivacyRepositoryIT {
             TestDb.tx {
                 kotlin.test.assertEquals(0, EventsTable.selectAll().where { EventsTable.userId eq targetUser }.count())
                 kotlin.test.assertEquals(1, EventsTable.selectAll().where { EventsTable.userId eq otherUser }.count())
-                kotlin.test.assertEquals(0, UserAlertOverridesTable.selectAll().where { UserAlertOverridesTable.userId eq targetUser }.count())
-                kotlin.test.assertEquals(0, AlertsRulesTable.selectAll().where { AlertsRulesTable.userId eq targetUser }.count())
+                kotlin.test.assertEquals(
+                    0,
+                    UserAlertOverridesTable.selectAll().where { UserAlertOverridesTable.userId eq targetUser }.count()
+                )
+                kotlin.test.assertEquals(
+                    0,
+                    AlertsRulesTable.selectAll().where { AlertsRulesTable.userId eq targetUser }.count()
+                )
                 kotlin.test.assertEquals(0, AlertsEventsTable.selectAll().count())
-                kotlin.test.assertEquals(0, UserSubscriptionsTable.selectAll().where { UserSubscriptionsTable.userId eq targetUser }.count())
-                kotlin.test.assertEquals(0, PortfoliosTable.selectAll().where { PortfoliosTable.userId eq targetUser }.count())
-                kotlin.test.assertEquals(0, TradesTable.selectAll().where { TradesTable.portfolioId eq portfolioId }.count())
-                kotlin.test.assertEquals(0, PositionsTable.selectAll().where { PositionsTable.portfolioId eq portfolioId }.count())
-                kotlin.test.assertEquals(0, ValuationsDailyTable.selectAll().where { ValuationsDailyTable.portfolioId eq portfolioId }.count())
+                kotlin.test.assertEquals(
+                    0,
+                    UserSubscriptionsTable.selectAll().where { UserSubscriptionsTable.userId eq targetUser }.count()
+                )
+                kotlin.test.assertEquals(
+                    0,
+                    PortfoliosTable.selectAll().where { PortfoliosTable.userId eq targetUser }.count()
+                )
+                kotlin.test.assertEquals(
+                    0,
+                    TradesTable.selectAll().where { TradesTable.portfolioId eq portfolioId }.count()
+                )
+                kotlin.test.assertEquals(
+                    0,
+                    PositionsTable.selectAll().where { PositionsTable.portfolioId eq portfolioId }.count()
+                )
+                kotlin.test.assertEquals(
+                    0,
+                    ValuationsDailyTable.selectAll().where { ValuationsDailyTable.portfolioId eq portfolioId }.count()
+                )
                 val botRecord = BotStartsTable.selectAll().single()
                 kotlin.test.assertNull(botRecord[BotStartsTable.userId])
                 kotlin.test.assertEquals("start", botRecord[BotStartsTable.payload])

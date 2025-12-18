@@ -5,11 +5,13 @@ import it.TestDb
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
+@Tag("integration")
 class AlertsRepositoryPostgresIT {
     @Test
     fun `state and budget persist in postgres`() = runBlocking {

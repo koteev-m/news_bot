@@ -5,10 +5,12 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.sql.selectAll
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
+@Tag("integration")
 class AnalyticsRepositoryTest {
     @Test
     fun `track inserts analytics event`() = runBlocking {
