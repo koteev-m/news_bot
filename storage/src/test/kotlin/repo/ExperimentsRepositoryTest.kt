@@ -3,6 +3,7 @@ package repo
 import ab.Assignment
 import ab.Experiment
 import it.TestDb
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,6 +11,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlinx.coroutines.runBlocking
 
+@Tag("integration")
 class ExperimentsRepositoryTest {
     @Test
     fun `upsert and assignments persist`() = runBlocking {

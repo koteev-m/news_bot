@@ -3,7 +3,10 @@ package it
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+
+@Tag("integration")
 class FlywaySmokeIT {
     @Test
     fun `migrations apply and base tables exist`() = runBlocking {

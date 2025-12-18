@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import portfolio.model.Money
 import portfolio.model.ValuationMethod
@@ -36,6 +37,7 @@ import repo.tables.InstrumentsTable
 import repo.tables.PositionsTable
 import repo.tables.TradesTable
 
+@Tag("integration")
 class CsvImportIT {
     @Test
     fun `csv import reports inserted duplicates and failed rows`() = runBlocking {

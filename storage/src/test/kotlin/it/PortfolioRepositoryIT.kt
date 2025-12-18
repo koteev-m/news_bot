@@ -11,6 +11,7 @@ import org.jetbrains.exposed.sql.selectAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import portfolio.model.Money
 import portfolio.model.TradeSide
@@ -24,6 +25,7 @@ import repo.model.NewPortfolio
 import repo.model.NewTrade
 import repo.tables.PositionsTable
 
+@Tag("integration")
 class PortfolioRepositoryIT {
     @Test
     fun `repositories persist trades and positions with deduplication`() = runBlocking {
