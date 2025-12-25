@@ -1,6 +1,7 @@
 package it
 
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
@@ -28,20 +29,33 @@ class Netflow2SchemaIT {
                 )
             }
 
-            assertNotNull(constraintDef)
-            val trimsTicker = Regex("btrim\\s*\\(\\s*ticker").containsMatchIn(constraintDef!!)
-            val checksEmpty = Regex("<>\\s*''(::text)?").containsMatchIn(constraintDef)
+            assertNotNull(constraintDef, "moex_netflow2_ticker_not_blank constraint should exist")
+
+            val regexChecksNonWhitespace = Regex(
+                """\(?\s*ticker\s*~\s*'${Regex.escape("^[^[:space:]]+$")}'(::text)?\s*\)?"""
+            ).containsMatchIn(constraintDef!!)
+
             assertTrue(
-                trimsTicker && checksEmpty,
-                "constraint definition should trim ticker and compare to empty string"
+                regexChecksNonWhitespace,
+                "constraint definition should require ticker to contain non-whitespace characters; actual: $constraintDef"
             )
         }
     }
 
     @Test
-    fun `moex_netflow2 rejects blank tickers`() = runBlocking {
+    fun `moex_netflow2 enforces ticker constraint`() = runBlocking {
         TestDb.withMigratedDatabase { _ ->
-            val errorsByTicker = listOf("", "   ").associateWith { ticker ->
+            TestDb.tx {
+                val connection = TransactionManager.current().connection.connection as java.sql.Connection
+                connection.prepareStatement(
+                    "insert into moex_netflow2 (date, ticker) values (date '2024-01-01', ?)"
+                ).use { stmt ->
+                    stmt.setString(1, "SBER")
+                    stmt.executeUpdate()
+                }
+            }
+
+            val errorsByTicker = listOf("", "   ", "\t", "\n").associateWith { ticker ->
                 runCatching {
                     TestDb.tx {
                         val connection = TransactionManager.current().connection.connection as java.sql.Connection
@@ -62,17 +76,13 @@ class Netflow2SchemaIT {
                     is java.sql.SQLException -> error.sqlState
                     else -> (error?.cause as? java.sql.SQLException)?.sqlState
                 }
-                assertTrue(
-                    sqlState == "23514" ||
-                        error?.message?.contains("moex_netflow2_ticker_not_blank") == true,
-                    "expected check violation for ticker '$ticker'"
-                )
+                assertEquals("23514", sqlState, "expected check violation for ticker '$ticker'")
             }
 
             val count = TestDb.tx {
                 exec("select count(*) from moex_netflow2") { rs -> if (rs.next()) rs.getInt(1) else null }
             } ?: -1
-            assertTrue(count == 0, "moex_netflow2 should remain empty after rejected inserts")
+            assertEquals(1, count, "moex_netflow2 should contain only the valid ticker")
         }
     }
 }
