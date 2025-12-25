@@ -3,6 +3,7 @@ package repo
 import db.DatabaseFactory.dbQuery
 import java.sql.Date
 import java.sql.Types
+import java.util.Locale
 import netflow2.Netflow2Row
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import repo.tables.MoexNetflow2Table
@@ -19,7 +20,7 @@ class PostgresNetflow2Repository : Netflow2Repository {
             val jdbcConnection = TransactionManager.current().connection.connection as java.sql.Connection
             jdbcConnection.prepareStatement(UPSERT_SQL).use { statement ->
                 rows.forEach { row ->
-                    val ticker = row.ticker.trim().uppercase()
+                    val ticker = row.ticker.trim().uppercase(Locale.ROOT)
                     require(ticker.isNotBlank()) { "ticker must not be blank" }
                     statement.setDate(1, Date.valueOf(row.date))
                     statement.setString(2, ticker)

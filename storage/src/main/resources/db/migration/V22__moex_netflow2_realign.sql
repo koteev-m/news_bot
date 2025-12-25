@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS moex_netflow2 (
     pv100 BIGINT,
     vol BIGINT,
     oi BIGINT,
-    CONSTRAINT moex_netflow2_ticker_not_blank CHECK (btrim(ticker) <> ''),
+    CONSTRAINT moex_netflow2_ticker_not_blank CHECK (ticker ~ '^[^[:space:]]+$'),
     PRIMARY KEY (date, ticker)
 );
 
@@ -42,35 +42,16 @@ CREATE INDEX IF NOT EXISTS idx_moex_netflow2_ticker_date ON moex_netflow2 (ticke
 COMMENT ON TABLE moex_netflow2 IS 'Netflow2 daily aggregates from MOEX; upserts are idempotent due to PK(date, ticker)';
 
 DO $$
-DECLARE
-    ticker_constraint_def TEXT;
 BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.tables
         WHERE table_schema = current_schema() AND table_name = 'moex_netflow2'
     ) THEN
-        SELECT lower(pg_get_constraintdef(c.oid))
-        INTO ticker_constraint_def
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE n.nspname = current_schema()
-          AND t.relname = 'moex_netflow2'
-          AND c.conname = 'moex_netflow2_ticker_not_blank'
-          AND c.contype = 'c'
-        LIMIT 1;
-
-        IF ticker_constraint_def IS NULL THEN
-            EXECUTE 'ALTER TABLE moex_netflow2
-                     ADD CONSTRAINT moex_netflow2_ticker_not_blank
-                     CHECK (btrim(ticker) <> '''')';
-        ELSIF ticker_constraint_def !~ E'btrim[[:space:]]*\\([[:space:]]*ticker'
-           OR ticker_constraint_def !~ E'<>[[:space:]]*''''(::text)?'
-        THEN
-            EXECUTE 'ALTER TABLE moex_netflow2 DROP CONSTRAINT moex_netflow2_ticker_not_blank';
-            EXECUTE 'ALTER TABLE moex_netflow2
-                     ADD CONSTRAINT moex_netflow2_ticker_not_blank
-                     CHECK (btrim(ticker) <> '''')';
-        END IF;
+        EXECUTE 'UPDATE moex_netflow2 SET ticker = btrim(ticker) WHERE ticker IS NOT NULL';
+        EXECUTE 'DELETE FROM moex_netflow2 WHERE ticker IS NULL OR ticker = '''' OR ticker ~ ''[[:space:]]''';
+        EXECUTE 'ALTER TABLE moex_netflow2 DROP CONSTRAINT IF EXISTS moex_netflow2_ticker_not_blank';
+        EXECUTE 'ALTER TABLE moex_netflow2
+                 ADD CONSTRAINT moex_netflow2_ticker_not_blank
+                 CHECK (ticker ~ ''^[^[:space:]]+$'')';
     END IF;
 END $$;
