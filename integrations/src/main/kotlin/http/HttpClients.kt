@@ -211,8 +211,12 @@ sealed class HttpClientError(message: String, cause: Throwable? = null) : Runtim
     abstract val category: String
     open val metricsTag: String get() = category
 
-    data class HttpStatusError(val status: HttpStatusCode, val requestUrl: String, val origin: Throwable? = null) :
-        HttpClientError("HTTP ${status.value} for $requestUrl", origin) {
+    data class HttpStatusError(
+        val status: HttpStatusCode,
+        val requestUrl: String,
+        val bodySnippet: String? = null,
+        val origin: Throwable? = null
+    ) : HttpClientError(httpStatusMessage(status, requestUrl, bodySnippet), origin) {
         override val category: String = "http"
         override val metricsTag: String get() = status.value.toString()
     }
@@ -247,7 +251,7 @@ internal fun Throwable.toHttpClientError(): HttpClientError = when (this) {
     is HttpRequestTimeoutException -> HttpClientError.TimeoutError(null, this)
     is io.ktor.client.plugins.ResponseException -> {
         val requestUrl = runCatching { response.call.request.url.toString() }.getOrNull() ?: "unknown"
-        HttpClientError.HttpStatusError(response.status, requestUrl, this)
+        HttpClientError.HttpStatusError(response.status, requestUrl, origin = this)
     }
     is SerializationException -> HttpClientError.DeserializationError(message ?: "serialization error", this)
     is IOException -> HttpClientError.NetworkError(null, this)
@@ -260,3 +264,8 @@ data class HttpPoolConfig(
     val maxConnectionsPerRoute: Int,
     val keepAliveSeconds: Long
 )
+
+private fun httpStatusMessage(status: HttpStatusCode, requestUrl: String, bodySnippet: String?): String {
+    val base = "HTTP ${status.value} for $requestUrl"
+    return if (bodySnippet.isNullOrBlank()) base else "$base, body: $bodySnippet"
+}

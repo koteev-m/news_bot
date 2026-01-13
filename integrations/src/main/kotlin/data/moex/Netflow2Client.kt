@@ -109,8 +109,8 @@ class Netflow2Client(
 
     private fun ensureSuccess(response: HttpResponse, url: String, snippet: String? = null) {
         if (response.status.isSuccess()) return
-        val payloadHint = snippet?.take(MAX_ERROR_SNIPPET).orEmpty()
-        throw HttpClientError.HttpStatusError(response.status, "$url (body: $payloadHint)")
+        val payloadHint = safeSnippet(snippet)
+        throw HttpClientError.HttpStatusError(response.status, url, payloadHint)
     }
 
     private fun parseCsv(payload: String, expectedTicker: String): List<Netflow2Row> {
@@ -184,7 +184,7 @@ class Netflow2Client(
 
         val index = columns.withIndex().associate { it.value.jsonPrimitive.content.uppercase(Locale.ROOT) to it.index }
         val dateIdx = index["DATE"] ?: index["TRADEDATE"] ?: throw Netflow2ClientError.UpstreamError(
-            "DATE column is missing in Netflow2 JSON"
+            "DATE/TRADEDATE column is missing in Netflow2 JSON"
         )
         val tickerIdx = index["SECID"] ?: index["TICKER"] ?: throw Netflow2ClientError.UpstreamError(
             "SECID/TICKER column is missing in Netflow2 JSON"
@@ -312,13 +312,16 @@ class Netflow2Client(
         return when (root) {
             is Netflow2ClientError -> root
             is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, root)
-            is HttpClientError -> Netflow2ClientError.UpstreamError(url, root.message ?: "HTTP error", root)
+            is HttpClientError -> Netflow2ClientError.UpstreamError(root.message ?: "HTTP error for $url", root)
             is DateTimeParseException -> Netflow2ClientError.UpstreamError("Invalid date in Netflow2 payload", root)
             else -> {
                 val httpError = root.toHttpClientError()
                 when (httpError) {
                     is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, httpError)
-                    else -> Netflow2ClientError.UpstreamError(url, httpError.message ?: "Netflow2 upstream error", root)
+                    else -> Netflow2ClientError.UpstreamError(
+                        httpError.message ?: "Netflow2 upstream error",
+                        root
+                    )
                 }
             }
         }
@@ -344,6 +347,18 @@ class Netflow2Client(
     }
 
     private fun cleanCsvToken(raw: String): String = raw.trim().removePrefix("\uFEFF").trim()
+
+    private fun safeSnippet(raw: String?): String? {
+        val normalized = raw
+            ?.replace(Regex("[\\r\\n\\t]+"), " ")
+            ?.trim()
+            .orEmpty()
+        if (normalized.isEmpty()) return null
+        if (normalized.length <= MAX_ERROR_SNIPPET) return normalized
+        val limit = (MAX_ERROR_SNIPPET - 1).coerceAtLeast(0)
+        val clipped = normalized.take(limit).trimEnd()
+        return "${clipped}…"
+    }
 
     companion object {
         private const val SERVICE = "netflow2"

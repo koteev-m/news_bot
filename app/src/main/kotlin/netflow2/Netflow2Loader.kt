@@ -27,6 +27,7 @@ class Netflow2Loader(
     suspend fun upsert(sec: String, from: LocalDate, till: LocalDate): Netflow2LoadResult {
         val startNanos = System.nanoTime()
         var maxDate: LocalDate? = null
+        var cancelled = false
         try {
             if (sec.isBlank()) {
                 throw Netflow2LoaderError.ValidationError("sec must not be blank")
@@ -84,16 +85,21 @@ class Netflow2Loader(
                 maxDate = maxDate,
             )
         } catch (ex: Throwable) {
-            if (ex is CancellationException) throw ex
+            if (ex is CancellationException) {
+                cancelled = true
+                throw ex
+            }
             throw when (ex) {
                 is Netflow2LoaderError -> ex
                 is Netflow2ClientError -> ex
                 else -> Netflow2LoaderError.PullFailed(ex)
             }
         } finally {
-            val elapsed = System.nanoTime() - startNanos
-            metrics.pullLatency.record(Duration.ofNanos(elapsed))
-            maxDate?.let { metrics.updateLastTimestamp(it.atStartOfDay(ZoneOffset.UTC).toEpochSecond()) }
+            if (!cancelled) {
+                val elapsed = System.nanoTime() - startNanos
+                metrics.pullLatency.record(Duration.ofNanos(elapsed))
+                maxDate?.let { metrics.updateLastTimestamp(it.atStartOfDay(ZoneOffset.UTC).toEpochSecond()) }
+            }
         }
     }
 }
