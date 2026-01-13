@@ -78,11 +78,6 @@ class Netflow2Client(
             }
 
             val payload = response.bodyAsText()
-
-            when (response.status) {
-                HttpStatusCode.NotFound -> throw Netflow2ClientError.NotFound(normalizedTicker)
-                HttpStatusCode.BadRequest -> throw Netflow2ClientError.ValidationError("invalid sec: $normalizedTicker")
-            }
             ensureSuccess(response, endpoint, payload)
 
             when (config.format) {
