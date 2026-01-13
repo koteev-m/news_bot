@@ -142,7 +142,7 @@ class Netflow2Client(
 
         return dataLines.mapNotNull { line ->
             if (line.isBlank()) return@mapNotNull null
-            val columns = line.split(';')
+            val columns = line.split(';').map<String?> { it }
             try {
                 val ticker = columns.getOrNull(tickerIdx)?.let(::cleanCsvToken)?.ifBlank { null }?.let(::normalizeTicker)
                     ?: expectedTicker
@@ -373,11 +373,6 @@ class Netflow2Client(
         return delayed.coerceAtLeast(0L)
     }
 
-    private fun List<String>.longAt(index: Int?): Long? = index?.let { idx ->
-        getOrNull(idx)?.let(::cleanCsvToken)?.takeIf { it.isNotEmpty() }?.toLongOrNull()
-    }
-
-    @JvmName("longAtNullable")
     private fun List<String?>.longAt(index: Int?): Long? = index?.let { idx ->
         getOrNull(idx)?.takeIf { !it.isNullOrBlank() }?.let(::cleanCsvToken)?.takeIf { it.isNotEmpty() }?.toLongOrNull()
     }
@@ -401,7 +396,7 @@ class Netflow2Client(
         private const val NETFLOW_PATH = "/iss/analyticalproducts/netflow2/securities/"
         private const val MAX_ERROR_SNIPPET = 512
         private val NETFLOW_SEC_REGEX = Regex(
-            "/iss/analyticalproducts/netflow2/securities/([^/?#]+)\\.(csv|json)",
+            "${Regex.escape(NETFLOW_PATH)}([^/?#]+)\\.(csv|json)",
             RegexOption.IGNORE_CASE
         )
     }

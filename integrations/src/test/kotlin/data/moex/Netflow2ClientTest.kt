@@ -545,6 +545,8 @@ class Netflow2ClientTest {
             val validation = assertIs<Netflow2ClientError.ValidationError>(error)
             assertTrue(validation.details.contains("invalid sec"))
             assertTrue(validation.details.contains("SBER"))
+            val origin = assertIs<HttpClientError.HttpStatusError>(validation.origin)
+            assertTrue(origin.requestUrl.contains("/iss/analyticalproducts/netflow2/securities/"))
         } finally {
             httpClient.close()
         }
