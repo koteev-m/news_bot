@@ -414,7 +414,10 @@ class Netflow2ClientTest {
             assertTrue(result.isFailure)
             assertEquals(1, attempts)
             val error = result.exceptionOrNull()
-            assertIs<Netflow2ClientError.NotFound>(error)
+            val notFound = assertIs<Netflow2ClientError.NotFound>(error)
+            val origin = assertIs<HttpClientError.HttpStatusError>(notFound.origin)
+            assertEquals(HttpStatusCode.NotFound, origin.status)
+            assertTrue(origin.requestUrl.contains("/iss/analyticalproducts/netflow2/securities/"))
         } finally {
             httpClient.close()
         }
@@ -458,6 +461,9 @@ class Netflow2ClientTest {
             val error = result.exceptionOrNull()
             val notFound = assertIs<Netflow2ClientError.NotFound>(error)
             assertEquals("SBER", notFound.sec)
+            val origin = assertIs<HttpClientError.HttpStatusError>(notFound.origin)
+            assertEquals(HttpStatusCode.NotFound, origin.status)
+            assertTrue(origin.requestUrl.contains("/iss/analyticalproducts/netflow2/securities/"))
         } finally {
             httpClient.close()
         }
@@ -501,6 +507,54 @@ class Netflow2ClientTest {
             val error = result.exceptionOrNull()
             val notFound = assertIs<Netflow2ClientError.NotFound>(error)
             assertEquals("ABC.DEF", notFound.sec)
+            val origin = assertIs<HttpClientError.HttpStatusError>(notFound.origin)
+            assertEquals(HttpStatusCode.NotFound, origin.status)
+            assertTrue(origin.requestUrl.contains("/iss/analyticalproducts/netflow2/securities/"))
+        } finally {
+            httpClient.close()
+        }
+    }
+
+    @Test
+    fun `maps 400 response to validation error with http status origin`() = runTest {
+        val metrics = IntegrationsMetrics(SimpleMeterRegistry())
+        val httpConfig = IntegrationsHttpConfig(
+            userAgent = "test-agent",
+            timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
+            retry = RetryCfg(maxAttempts = 3, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
+            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+        )
+
+        var attempts = 0
+        val httpClient = HttpClient(MockEngine) {
+            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            engine {
+                addHandler {
+                    attempts += 1
+                    respondError(HttpStatusCode.BadRequest)
+                }
+            }
+        }
+
+        try {
+            val client = Netflow2Client(
+                client = httpClient,
+                circuitBreaker = CircuitBreaker("netflow2", httpConfig.circuitBreaker, metrics, Clock.systemUTC()),
+                metrics = metrics,
+                retryCfg = httpConfig.retry
+            )
+
+            val window = Netflow2PullWindow.ofInclusive(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 3))
+            val result = client.fetchWindow("SBER", window)
+
+            assertTrue(result.isFailure)
+            assertEquals(1, attempts)
+            val error = result.exceptionOrNull()
+            val validation = assertIs<Netflow2ClientError.ValidationError>(error)
+            assertTrue(validation.details.contains("invalid sec"))
+            val origin = assertIs<HttpClientError.HttpStatusError>(validation.origin)
+            assertEquals(HttpStatusCode.BadRequest, origin.status)
+            assertTrue(origin.requestUrl.contains("/iss/analyticalproducts/netflow2/securities/"))
         } finally {
             httpClient.close()
         }
