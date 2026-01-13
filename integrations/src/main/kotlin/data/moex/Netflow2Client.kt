@@ -8,6 +8,7 @@ import http.IntegrationsMetrics
 import http.RetryCfg
 import http.toHttpClientError
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.HttpResponse
@@ -72,9 +73,23 @@ class Netflow2Client(
 
         val endpoint = buildEndpoint(normalizedTicker)
         return runResilient(endpoint) {
-            val response = client.get(endpoint) {
-                parameter("from", from)
-                parameter("till", tillInclusive)
+            val response = try {
+                client.get(endpoint) {
+                    parameter("from", from)
+                    parameter("till", tillInclusive)
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (ex: ResponseException) {
+                val payload = try {
+                    ex.response.bodyAsText()
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Throwable) {
+                    null
+                }
+                ensureSuccess(ex.response, endpoint, payload)
+                throw ex
             }
 
             val payload = response.bodyAsText()

@@ -607,6 +607,51 @@ class Netflow2ClientTest {
     }
 
     @Test
+    fun `maps response exception to not found with sanitized body snippet`() = runTest {
+        val metrics = IntegrationsMetrics(SimpleMeterRegistry())
+        val httpConfig = IntegrationsHttpConfig(
+            userAgent = "test-agent",
+            timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
+            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
+            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+        )
+
+        val body = "missing\tsec\nnot found"
+        val httpClient = HttpClient(MockEngine) {
+            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            engine {
+                addHandler { respond(body, status = HttpStatusCode.NotFound) }
+            }
+        }
+
+        try {
+            val client = Netflow2Client(
+                client = httpClient,
+                circuitBreaker = CircuitBreaker("netflow2", httpConfig.circuitBreaker, metrics, Clock.systemUTC()),
+                metrics = metrics,
+                retryCfg = httpConfig.retry
+            )
+
+            val window = Netflow2PullWindow.ofInclusive(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 2))
+            val result = client.fetchWindow("SBER", window)
+
+            assertTrue(result.isFailure)
+            val error = result.exceptionOrNull()
+            val notFound = assertIs<Netflow2ClientError.NotFound>(error)
+            val origin = assertIs<HttpClientError.HttpStatusError>(notFound.origin)
+            assertEquals(HttpStatusCode.NotFound, origin.status)
+            assertTrue(origin.requestUrl.contains("/iss/analyticalproducts/netflow2/securities/"))
+            val snippet = assertNotNull(origin.bodySnippet)
+            assertTrue(!snippet.contains("\n"))
+            assertTrue(!snippet.contains("\r"))
+            assertTrue(!snippet.contains("\t"))
+            assertTrue(snippet.contains("missing sec"))
+        } finally {
+            httpClient.close()
+        }
+    }
+
+    @Test
     fun `includes sanitized body snippet in http status error`() = runTest {
         val metrics = IntegrationsMetrics(SimpleMeterRegistry())
         val httpConfig = IntegrationsHttpConfig(
