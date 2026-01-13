@@ -142,7 +142,7 @@ class Netflow2Client(
 
         return dataLines.mapNotNull { line ->
             if (line.isBlank()) return@mapNotNull null
-            val columns = line.split(';').map<String?> { it }
+            val columns: List<String?> = line.split(';')
             try {
                 val ticker = columns.getOrNull(tickerIdx)?.let(::cleanCsvToken)?.ifBlank { null }?.let(::normalizeTicker)
                     ?: expectedTicker
@@ -333,7 +333,7 @@ class Netflow2Client(
             val sec = extractSecFromUrl(error.requestUrl) ?: extractSecFromUrl(url)
             when {
                 error.status == HttpStatusCode.NotFound && sec != null ->
-                    Netflow2ClientError.NotFound(sec)
+                    Netflow2ClientError.NotFound(sec, error)
                 error.status == HttpStatusCode.BadRequest && sec != null ->
                     Netflow2ClientError.ValidationError("invalid sec: $sec", error)
                 else -> Netflow2ClientError.UpstreamError(
@@ -381,7 +381,7 @@ class Netflow2Client(
 
     private fun safeSnippet(raw: String?): String? {
         val normalized = raw
-            ?.replace(Regex("[\\r\\n\\t]+"), " ")
+            ?.replace(SNIPPET_NORMALIZE_REGEX, " ")
             ?.trim()
             .orEmpty()
         if (normalized.isEmpty()) return null
@@ -395,6 +395,7 @@ class Netflow2Client(
         private const val SERVICE = "netflow2"
         private const val NETFLOW_PATH = "/iss/analyticalproducts/netflow2/securities/"
         private const val MAX_ERROR_SNIPPET = 512
+        private val SNIPPET_NORMALIZE_REGEX = Regex("[\\r\\n\\t]+")
         private val NETFLOW_SEC_REGEX = Regex(
             "${Regex.escape(NETFLOW_PATH)}([^/?#]+)\\.(csv|json)",
             RegexOption.IGNORE_CASE
@@ -418,8 +419,8 @@ sealed class Netflow2ClientError(message: String, cause: Throwable? = null) : Ru
     data class ValidationError(val details: String, val origin: Throwable? = null) :
         Netflow2ClientError(details, origin)
 
-    data class NotFound(val sec: String) :
-        Netflow2ClientError("sec not found: $sec")
+    data class NotFound(val sec: String, val origin: Throwable? = null) :
+        Netflow2ClientError("sec not found: $sec", origin)
 
     data class UpstreamError(val details: String, val origin: Throwable? = null) :
         Netflow2ClientError(details, origin)
