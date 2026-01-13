@@ -2,6 +2,9 @@ package integrations
 
 import cbr.CbrClient
 import coingecko.CoinGeckoClient
+import data.moex.Netflow2Client
+import data.moex.Netflow2ClientConfig
+import data.moex.Netflow2Format
 import http.CircuitBreaker
 import http.CircuitBreakerCfg
 import http.HttpClients
@@ -22,6 +25,8 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.prometheus.PrometheusConfig
 import io.micrometer.prometheus.PrometheusMeterRegistry
 import java.time.Clock
+import java.time.Duration
+import java.util.Locale
 import moex.MoexIssClient
 
 private val IntegrationsProviderKey = AttributeKey<IntegrationsProvider>("IntegrationsProvider")
@@ -33,6 +38,7 @@ class IntegrationsProvider(
     val moexClient: MoexIssClient,
     val coinGeckoClient: CoinGeckoClient,
     val cbrClient: CbrClient,
+    val netflow2Client: Netflow2Client,
     val circuitBreakers: Map<String, CircuitBreaker>
 )
 
@@ -47,10 +53,12 @@ object IntegrationsModule {
         val clock = Clock.systemUTC()
         val httpClient = HttpClients.build(httpConfig, poolConfig, metrics, clock)
         val cbCfg = httpConfig.circuitBreaker
+        val netflow2Cfg = env.netflow2ClientConfig()
 
         val moexCb = newCircuitBreaker("moex", cbCfg, metrics, clock)
         val coingeckoCb = newCircuitBreaker("coingecko", cbCfg, metrics, clock)
         val cbrCb = newCircuitBreaker("cbr", cbCfg, metrics, clock)
+        val netflow2Cb = newCircuitBreaker("netflow2", cbCfg, metrics, clock)
 
         val moexClient = MoexIssClient(
             client = httpClient,
@@ -80,6 +88,14 @@ object IntegrationsModule {
         ).apply {
             setBaseUrl(integrationsConfig.baseUrl("cbr", "https://www.cbr.ru"))
         }
+        val netflow2Client = Netflow2Client(
+            client = httpClient,
+            circuitBreaker = netflow2Cb,
+            metrics = metrics,
+            retryCfg = httpConfig.retry,
+            config = netflow2Cfg,
+            clock = clock
+        )
 
         return IntegrationsProvider(
             httpClient = httpClient,
@@ -88,10 +104,12 @@ object IntegrationsModule {
             moexClient = moexClient,
             coinGeckoClient = coinGeckoClient,
             cbrClient = cbrClient,
+            netflow2Client = netflow2Client,
             circuitBreakers = mapOf(
                 "moex" to moexCb,
                 "coingecko" to coingeckoCb,
-                "cbr" to cbrCb
+                "cbr" to cbrCb,
+                "netflow2" to netflow2Cb
             )
         )
     }
@@ -154,6 +172,20 @@ private fun ApplicationEnvironment.integrationsHttpConfig(): IntegrationsHttpCon
             halfOpenMaxCalls = cb.property("halfOpenMaxCalls").getString().toInt()
         )
     )
+}
+
+private fun ApplicationEnvironment.netflow2ClientConfig(): Netflow2ClientConfig {
+    val defaults = Netflow2ClientConfig()
+    val netflowRoot = config.configOrNull("integrations")?.configOrNull("netflow2") ?: return defaults
+
+    val baseUrl = netflowRoot.propertyOrNull("baseUrl")?.getString()?.takeIf { it.isNotBlank() } ?: defaults.baseUrl
+    val format = netflowRoot.propertyOrNull("format")?.getString()?.let { raw ->
+        Netflow2Format.values().firstOrNull { it.name == raw.trim().uppercase(Locale.ROOT) }
+    } ?: defaults.format
+    val timeout = netflowRoot.propertyOrNull("requestTimeoutMs")?.getString()?.toLongOrNull()?.let(Duration::ofMillis)
+        ?: defaults.requestTimeout
+
+    return defaults.copy(baseUrl = baseUrl, format = format, requestTimeout = timeout)
 }
 
 private data class CacheTtlConfig(

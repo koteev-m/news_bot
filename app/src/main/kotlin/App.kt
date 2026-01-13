@@ -57,6 +57,7 @@ import di.PrivacyModule
 import di.ensureTelegramBot
 import demo.demoRoutes
 import di.installPortfolioModule
+import integrations.integrationsModule
 import features.FeatureFlagsService
 import health.healthRoutes
 import io.ktor.http.HttpStatusCode
@@ -85,6 +86,7 @@ import observability.WebVitals
 import observability.WebhookMetrics
 import observability.adapters.AlertMetricsAdapter
 import observability.adapters.NewsMetricsAdapter
+import observability.feed.Netflow2Metrics
 import observability.installMdcTrace
 import observability.installSentry
 import observability.installTracing
@@ -93,6 +95,7 @@ import io.ktor.server.config.ApplicationConfig
 import repo.AnalyticsRepository
 import repo.BillingRepositoryImpl
 import repo.PricingRepository
+import repo.PostgresNetflow2Repository
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
 import routes.ChaosState
@@ -102,6 +105,7 @@ import routes.adminPrivacyRoutes
 import routes.authRoutes
 import routes.adminPricingRoutes
 import routes.billingRoutes
+import routes.netflow2AdminRoutes
 import routes.portfolioImportRoutes
 import routes.portfolioPositionsTradesRoutes
 import routes.portfolioRoutes
@@ -116,6 +120,7 @@ import security.installUploadGuard
 import security.RateLimitConfig
 import security.SupportRateLimit
 import java.time.Clock
+import netflow2.Netflow2Loader
 import webhook.OverflowMode
 import webhook.WebhookQueue
 
@@ -135,6 +140,10 @@ fun Application.module() {
     val alertsConfig = loadAlertsConfig(appConfig)
     val alertsRepository = createAlertsRepository(appConfig)
     val alertsService = AlertsService(alertsRepository, alertsConfig.engine, prometheusRegistry)
+    val integrations = integrationsModule()
+    val netflow2Metrics = Netflow2Metrics(prometheusRegistry)
+    val netflow2Repository = PostgresNetflow2Repository()
+    val netflow2Loader = Netflow2Loader(integrations.netflow2Client, netflow2Repository, netflow2Metrics)
 
     installSecurity()
     installUploadGuard()
@@ -219,6 +228,7 @@ fun Application.module() {
     routing {
         webVitalsRoutes(vitals)
         alertsRoutes(alertsService, alertsConfig.internalToken)
+        netflow2AdminRoutes(netflow2Loader, alertsConfig.internalToken)
         apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)

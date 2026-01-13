@@ -2,6 +2,10 @@ import org.flywaydb.gradle.FlywayExtension
 import org.flywaydb.gradle.task.AbstractFlywayTask
 import org.gradle.api.tasks.testing.Test
 
+plugins {
+    id("java-test-fixtures")
+}
+
 buildscript {
     repositories {
         mavenCentral()
@@ -45,7 +49,6 @@ dependencies {
     add("flyway", libs.flyway.core)
 
     testImplementation(platform(libs.junit.bom))
-    testImplementation(project(":app"))
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
     testImplementation(platform(libs.testcontainers.bom))
@@ -54,8 +57,25 @@ dependencies {
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.flyway.postgresql)
     testImplementation(libs.coroutines.core)
+    testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("com.h2database:h2:2.2.224")
     testRuntimeOnly(libs.logback.classic)
+
+    testFixturesImplementation(platform(libs.junit.bom))
+    testFixturesImplementation(libs.junit.jupiter.api)
+    testFixturesImplementation(platform(libs.testcontainers.bom))
+    testFixturesImplementation(libs.testcontainers.core)
+    testFixturesImplementation(libs.testcontainers.postgresql)
+    testFixturesImplementation(libs.testcontainers.junit)
+    testFixturesImplementation(libs.flyway.postgresql)
+    testFixturesImplementation(libs.flyway.core)
+    testFixturesImplementation(libs.exposed.core)
+    testFixturesImplementation(libs.exposed.dao)
+    testFixturesImplementation(libs.exposed.jdbc)
+    testFixturesImplementation(libs.exposed.java.time)
+    testFixturesImplementation(libs.exposed.json)
+    testFixturesImplementation(libs.hikaricp)
+    testFixturesImplementation(libs.coroutines.core)
 }
 
 if (withDb) {
