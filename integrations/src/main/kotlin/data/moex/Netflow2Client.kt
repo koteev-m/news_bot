@@ -335,7 +335,7 @@ class Netflow2Client(
                 error.status == HttpStatusCode.NotFound && sec != null ->
                     Netflow2ClientError.NotFound(sec)
                 error.status == HttpStatusCode.BadRequest && sec != null ->
-                    Netflow2ClientError.ValidationError("invalid sec: $sec", origin)
+                    Netflow2ClientError.ValidationError("invalid sec: $sec", error)
                 else -> Netflow2ClientError.UpstreamError(
                     error.message ?: "HTTP error for $url",
                     error
@@ -358,7 +358,8 @@ class Netflow2Client(
     private fun extractSecFromUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
         val match = NETFLOW_SEC_REGEX.find(url) ?: return null
-        return match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }
+        val raw = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { normalizeTicker(raw) }.getOrNull()
     }
 
     private fun computeBackoff(attempt: Int): Long {
@@ -376,6 +377,7 @@ class Netflow2Client(
         getOrNull(idx)?.let(::cleanCsvToken)?.takeIf { it.isNotEmpty() }?.toLongOrNull()
     }
 
+    @JvmName("longAtNullable")
     private fun List<String?>.longAt(index: Int?): Long? = index?.let { idx ->
         getOrNull(idx)?.takeIf { !it.isNullOrBlank() }?.let(::cleanCsvToken)?.takeIf { it.isNotEmpty() }?.toLongOrNull()
     }
@@ -399,7 +401,7 @@ class Netflow2Client(
         private const val NETFLOW_PATH = "/iss/analyticalproducts/netflow2/securities/"
         private const val MAX_ERROR_SNIPPET = 512
         private val NETFLOW_SEC_REGEX = Regex(
-            "/iss/analyticalproducts/netflow2/securities/([^/?#.]+)\\.(csv|json)",
+            "/iss/analyticalproducts/netflow2/securities/([^/?#]+)\\.(csv|json)",
             RegexOption.IGNORE_CASE
         )
     }
