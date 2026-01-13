@@ -88,8 +88,12 @@ class Netflow2Client(
                 } catch (_: Throwable) {
                     null
                 }
-                ensureSuccess(ex.response, endpoint, payload)
-                throw ex
+                throw HttpClientError.HttpStatusError(
+                    status = ex.response.status,
+                    requestUrl = endpoint,
+                    bodySnippet = safeSnippet(payload),
+                    origin = ex
+                )
             }
 
             val payload = response.bodyAsText()
