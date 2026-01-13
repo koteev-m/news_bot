@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.ktor)
 }
@@ -49,6 +51,8 @@ dependencies {
     testImplementation("org.junit.platform:junit-platform-suite:1.11.3")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")
     testImplementation(libs.opentelemetry.sdk.testing)
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation(testFixtures(project(":storage")))
 }
 
 application {
@@ -61,4 +65,20 @@ tasks.register<JavaExec>("runRecon") {
     mainClass.set("billing.recon.ReconciliationRunnerKt")
     classpath = sourceSets["main"].runtimeClasspath
     dependsOn(tasks.named("classes"))
+}
+
+tasks.test {
+    useJUnitPlatform {
+        excludeTags("integration")
+    }
+}
+
+val integrationTest by tasks.registering(Test::class) {
+    description = "Runs integration tests"
+    group = "verification"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform {
+        includeTags("integration")
+    }
 }
