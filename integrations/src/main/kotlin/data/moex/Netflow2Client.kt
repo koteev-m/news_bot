@@ -110,7 +110,11 @@ class Netflow2Client(
     private fun ensureSuccess(response: HttpResponse, url: String, snippet: String? = null) {
         if (response.status.isSuccess()) return
         val payloadHint = safeSnippet(snippet)
-        throw HttpClientError.HttpStatusError(response.status, url, payloadHint)
+        throw HttpClientError.HttpStatusError(
+            status = response.status,
+            requestUrl = url,
+            bodySnippet = payloadHint
+        )
     }
 
     private fun parseCsv(payload: String, expectedTicker: String): List<Netflow2Row> {
@@ -311,20 +315,35 @@ class Netflow2Client(
         val root = cause ?: return Netflow2ClientError.UpstreamError("Netflow2 request failed for $url")
         return when (root) {
             is Netflow2ClientError -> root
-            is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, root)
-            is HttpClientError -> Netflow2ClientError.UpstreamError(root.message ?: "HTTP error for $url", root)
+            is HttpClientError -> wrapHttpClientError(url, root)
             is DateTimeParseException -> Netflow2ClientError.UpstreamError("Invalid date in Netflow2 payload", root)
             else -> {
                 val httpError = root.toHttpClientError()
-                when (httpError) {
-                    is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, httpError)
-                    else -> Netflow2ClientError.UpstreamError(
-                        httpError.message ?: "Netflow2 upstream error",
-                        root
-                    )
-                }
+                wrapHttpClientError(url, httpError, root)
             }
         }
+    }
+
+    private fun wrapHttpClientError(
+        url: String,
+        error: HttpClientError,
+        origin: Throwable? = error
+    ): Netflow2ClientError = when (error) {
+        is HttpClientError.HttpStatusError -> Netflow2ClientError.UpstreamError(
+            error.message ?: "HTTP error for $url",
+            error
+        )
+        is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, error)
+        is HttpClientError.ValidationError -> Netflow2ClientError.ValidationError(
+            requestFailedDetails(url, error.message),
+            origin
+        )
+        else -> Netflow2ClientError.UpstreamError(requestFailedDetails(url, error.message), origin)
+    }
+
+    private fun requestFailedDetails(url: String, message: String?): String {
+        val suffix = message?.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()
+        return "Netflow2 request failed for $url$suffix"
     }
 
     private fun computeBackoff(attempt: Int): Long {

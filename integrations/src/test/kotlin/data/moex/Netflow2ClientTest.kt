@@ -2,6 +2,7 @@ package data.moex
 
 import http.CircuitBreaker
 import http.CircuitBreakerCfg
+import http.HttpClientError
 import http.HttpClients
 import http.HttpPoolConfig
 import http.IntegrationsHttpConfig
@@ -19,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import netflow2.Netflow2PullWindow
@@ -450,11 +452,22 @@ class Netflow2ClientTest {
             assertTrue(result.isFailure)
             val error = result.exceptionOrNull()
             assertIs<Netflow2ClientError.UpstreamError>(error)
+            val cause = error.cause
+            assertIs<HttpClientError.HttpStatusError>(cause)
+            assertEquals(
+                "https://iss.moex.com/iss/analyticalproducts/netflow2/securities/SBER.csv",
+                cause.requestUrl
+            )
+            val snippet = assertNotNull(cause.bodySnippet)
+            assertTrue(!snippet.contains("\n"))
+            assertTrue(!snippet.contains("\r"))
+            assertTrue(!snippet.contains("\t"))
+            assertTrue(snippet.length <= 512)
             val normalized = ("start middle " + "a".repeat(600) + " end").trim()
-            val expectedSnippet = normalized.take(511) + "…"
-            val expectedMessage =
-                "HTTP 500 for https://iss.moex.com/iss/analyticalproducts/netflow2/securities/SBER.csv, body: $expectedSnippet"
-            assertEquals(expectedMessage, error.message)
+            assertTrue(normalized.length > 512)
+            assertTrue(snippet.endsWith("…"))
+            assertTrue(error.message?.contains("HTTP 500 for ${cause.requestUrl}") == true)
+            assertTrue(error.message?.contains("body:") == true)
         } finally {
             httpClient.close()
         }

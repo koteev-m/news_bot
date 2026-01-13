@@ -251,7 +251,11 @@ internal fun Throwable.toHttpClientError(): HttpClientError = when (this) {
     is HttpRequestTimeoutException -> HttpClientError.TimeoutError(null, this)
     is io.ktor.client.plugins.ResponseException -> {
         val requestUrl = runCatching { response.call.request.url.toString() }.getOrNull() ?: "unknown"
-        HttpClientError.HttpStatusError(response.status, requestUrl, origin = this)
+        HttpClientError.HttpStatusError(
+            status = response.status,
+            requestUrl = requestUrl,
+            origin = this
+        )
     }
     is SerializationException -> HttpClientError.DeserializationError(message ?: "serialization error", this)
     is IOException -> HttpClientError.NetworkError(null, this)
