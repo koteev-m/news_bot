@@ -329,10 +329,19 @@ class Netflow2Client(
         error: HttpClientError,
         origin: Throwable? = error
     ): Netflow2ClientError = when (error) {
-        is HttpClientError.HttpStatusError -> Netflow2ClientError.UpstreamError(
-            error.message ?: "HTTP error for $url",
-            error
-        )
+        is HttpClientError.HttpStatusError -> {
+            val sec = extractSecFromUrl(error.requestUrl) ?: extractSecFromUrl(url)
+            when {
+                error.status == HttpStatusCode.NotFound && sec != null ->
+                    Netflow2ClientError.NotFound(sec)
+                error.status == HttpStatusCode.BadRequest && sec != null ->
+                    Netflow2ClientError.ValidationError("invalid sec: $sec", origin)
+                else -> Netflow2ClientError.UpstreamError(
+                    error.message ?: "HTTP error for $url",
+                    error
+                )
+            }
+        }
         is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, error)
         is HttpClientError.ValidationError -> Netflow2ClientError.ValidationError(
             requestFailedDetails(url, error.message),
@@ -344,6 +353,12 @@ class Netflow2Client(
     private fun requestFailedDetails(url: String, message: String?): String {
         val suffix = message?.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()
         return "Netflow2 request failed for $url$suffix"
+    }
+
+    private fun extractSecFromUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val match = NETFLOW_SEC_REGEX.find(url) ?: return null
+        return match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }
     }
 
     private fun computeBackoff(attempt: Int): Long {
@@ -383,6 +398,10 @@ class Netflow2Client(
         private const val SERVICE = "netflow2"
         private const val NETFLOW_PATH = "/iss/analyticalproducts/netflow2/securities/"
         private const val MAX_ERROR_SNIPPET = 512
+        private val NETFLOW_SEC_REGEX = Regex(
+            "/iss/analyticalproducts/netflow2/securities/([^/?#.]+)\\.(csv|json)",
+            RegexOption.IGNORE_CASE
+        )
     }
 }
 
