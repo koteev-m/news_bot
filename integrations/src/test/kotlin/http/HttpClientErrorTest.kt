@@ -1,11 +1,14 @@
 package http
 
 import io.ktor.http.HttpStatusCode
+import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Test
+import kotlinx.coroutines.CancellationException
 
 class HttpClientErrorTest {
     @Test
@@ -16,7 +19,7 @@ class HttpClientErrorTest {
             rawBody = null
         )
 
-        assertEquals(null, error.bodySnippet)
+        assertNull(error.bodySnippet)
     }
 
     @Test
@@ -58,6 +61,20 @@ class HttpClientErrorTest {
             rawBody = rawBody
         )
 
-        assertEquals(null, error.bodySnippet)
+        assertNull(error.bodySnippet)
+    }
+
+    @Test
+    fun `toHttpClientError rethrows cancellation`() {
+        assertFailsWith<CancellationException> {
+            CancellationException().toHttpClientError()
+        }
+    }
+
+    @Test
+    fun `toHttpClientError rethrows errors`() {
+        assertFailsWith<AssertionError> {
+            AssertionError("boom").toHttpClientError()
+        }
     }
 }
