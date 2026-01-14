@@ -391,6 +391,8 @@ class Netflow2Client(
         response.bodyAsText()
     } catch (ce: CancellationException) {
         throw ce
+    } catch (err: Error) {
+        throw err
     } catch (_: Throwable) {
         null
     }
