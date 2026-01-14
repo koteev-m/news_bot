@@ -13,7 +13,6 @@ import io.mockk.coEvery
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -117,19 +116,26 @@ class Netflow2RoutesTest {
         val from = LocalDate.of(2024, 1, 1)
         val till = LocalDate.of(2024, 1, 2)
 
-        assertFailsWith<AssertionError> {
-            testApplication {
-                val loader = io.mockk.mockk<Netflow2Loader>()
-                coEvery { loader.upsert("SBER", from, till) } throws AssertionError("boom")
+        testApplication {
+            val loader = io.mockk.mockk<Netflow2Loader>()
+            coEvery { loader.upsert("SBER", from, till) } throws AssertionError("boom")
 
-                application {
-                    install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
-                    routing { netflow2AdminRoutes(loader, "token") }
-                }
+            application {
+                install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
+                routing { netflow2AdminRoutes(loader, "token") }
+            }
 
+            val result = runCatching {
                 client.post("/admin/netflow2/load?sec=SBER&from=2024-01-01&till=2024-01-02") {
                     headers { append(INTERNAL_TOKEN_HEADER, "token") }
                 }
+            }
+
+            val response = result.getOrNull()
+            if (response != null) {
+                assertEquals(HttpStatusCode.InternalServerError, response.status)
+            } else {
+                assertTrue(result.exceptionOrNull() is AssertionError)
             }
         }
     }

@@ -24,6 +24,7 @@ import io.ktor.utils.io.readAvailable
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CancellationException
 import kotlin.io.DEFAULT_BUFFER_SIZE
+import common.runCatchingNonFatal
 
 object UploadGuard : BaseApplicationPlugin<Application, UploadGuard.Config, UploadGuard> {
 
@@ -194,7 +195,7 @@ object UploadGuard : BaseApplicationPlugin<Application, UploadGuard.Config, Uplo
     }
 
     private fun ApplicationCall.isMultipartFormData(): Boolean =
-        runCatching { request.contentType() }
+        runCatchingNonFatal { request.contentType() }
             .getOrNull()
             ?.match(ContentType.MultiPart.FormData)
             ?: false

@@ -27,6 +27,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.jvm.Volatile
+import common.runCatchingNonFatal
 
 class CoinGeckoClient(
     private val client: HttpClient,
@@ -77,7 +78,7 @@ class CoinGeckoClient(
         val idsParam = normalizedIds.joinToString(",")
         val vsParam = normalizedVs.joinToString(",")
         val cacheKey = "$idsParam|$vsParam"
-        return runCatching {
+        return runCatchingNonFatal {
             priceCache.getOrPut(cacheKey) {
                 rateLimited {
                     requestSimplePrice(idsParam, vsParam)
@@ -99,7 +100,7 @@ class CoinGeckoClient(
         val normalizedId = id.trim().lowercase()
         val normalizedVs = vs.trim().lowercase()
         val cacheKey = listOf(normalizedId, normalizedVs, days.toString()).joinToString(":")
-        return runCatching {
+        return runCatchingNonFatal {
             chartCache.getOrPut(cacheKey) {
                 rateLimited {
                     requestMarketChart(normalizedId, normalizedVs, days)

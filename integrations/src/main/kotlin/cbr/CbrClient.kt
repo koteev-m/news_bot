@@ -28,6 +28,7 @@ import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
 import kotlin.jvm.Volatile
+import common.runCatchingNonFatal
 
 class CbrClient(
     private val client: HttpClient,
@@ -51,7 +52,7 @@ class CbrClient(
 
     suspend fun getXmlDaily(date: LocalDate?): HttpResult<List<CbrRate>> {
         val cacheKey = date?.toString() ?: "latest"
-        return runCatching {
+        return runCatchingNonFatal {
             cache.getOrPut(cacheKey) {
                 requestXmlDaily(date)
             }

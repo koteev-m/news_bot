@@ -34,6 +34,7 @@ import kotlinx.coroutines.CoroutineScope
 import repo.AlertsSettingsRepositoryImpl
 import security.requireTierAtLeast
 import security.userIdOrNull
+import common.runCatchingNonFatal
 
 private const val ALERTS_CONFIG_PATH = "alerts"
 
@@ -46,7 +47,7 @@ fun Route.alertsSettingsRoutes() {
                 call.respondUnauthorized()
                 return@get
             }
-            val result = runCatching { deps.settingsService.effectiveFor(subject) }
+            val result = runCatchingNonFatal { deps.settingsService.effectiveFor(subject) }
                 .onFailure { throwable ->
                     call.application.environment.log.error("alerts.settings.fetch_failed", throwable)
                 }
@@ -97,7 +98,7 @@ private suspend fun ApplicationCall.handleOverrideUpdate(isPatch: Boolean) {
         return
     }
 
-    val updateSucceeded = runCatching { deps.settingsService.upsert(subject, patch) }
+    val updateSucceeded = runCatchingNonFatal { deps.settingsService.upsert(subject, patch) }
         .onFailure { throwable ->
             application.environment.log.error("alerts.settings.update_failed", throwable)
         }

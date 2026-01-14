@@ -12,6 +12,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import common.runCatchingNonFatal
 
 object WebAppVerify {
     private const val HASH_KEY = "hash"
@@ -64,7 +65,7 @@ object WebAppVerify {
         var username: String? = null
         var firstName: String? = null
         if (!userRaw.isNullOrBlank()) {
-            runCatching { json.parseToJsonElement(userRaw) }
+            runCatchingNonFatal { json.parseToJsonElement(userRaw) }
                 .map { it.jsonObject }
                 .onSuccess { userObject ->
                     userId = userObject["id"]?.jsonPrimitive?.longOrNull
@@ -89,7 +90,7 @@ object WebAppVerify {
         ttlMinutes: Int,
         now: Instant = Instant.now(),
     ): Boolean {
-        val parsed = runCatching { parse(initData) }.getOrElse { return false }
+        val parsed = runCatchingNonFatal { parse(initData) }.getOrElse { return false }
         return isValid(parsed, botToken, ttlMinutes, now)
     }
 

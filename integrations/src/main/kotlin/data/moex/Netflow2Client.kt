@@ -34,6 +34,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import netflow2.Netflow2PullWindow
 import netflow2.normalizeTicker
 import netflow2.Netflow2Row
+import common.runCatchingNonFatal
 
 class Netflow2Client(
     private val client: HttpClient,
@@ -376,7 +377,7 @@ class Netflow2Client(
         if (url.isNullOrBlank()) return null
         val match = NETFLOW_SEC_REGEX.find(url) ?: return null
         val raw = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
-        return runCatching { normalizeTicker(raw) }.getOrNull()
+        return runCatchingNonFatal { normalizeTicker(raw) }.getOrNull()
     }
 
     private fun computeBackoff(attempt: Int): Long {

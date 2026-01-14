@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import common.runCatchingNonFatal
 
 object StarsBotCommands {
     private val logger = LoggerFactory.getLogger(StarsBotCommands::class.java)
@@ -182,6 +183,6 @@ object StarsBotCommands {
 
     private fun parseTier(raw: String): Tier? {
         val normalized = raw.trim().uppercase(Locale.ROOT)
-        return runCatching { Tier.valueOf(normalized) }.getOrNull()
+        return runCatchingNonFatal { Tier.valueOf(normalized) }.getOrNull()
     }
 }

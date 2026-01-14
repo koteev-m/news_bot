@@ -6,6 +6,7 @@ import news.model.Article
 import news.nlp.TextNormalize
 import news.rss.RssFetcher
 import news.rss.RssItem
+import common.runCatchingNonFatal
 
 class MoexSource(
     private val fetcher: RssFetcher,
@@ -18,7 +19,7 @@ class MoexSource(
     }
 
     private fun RssItem.toArticle(): Article {
-        val linkDomain = runCatching { URI(link).host }.getOrNull() ?: name
+        val linkDomain = runCatchingNonFatal { URI(link).host }.getOrNull() ?: name
         val rawSummary = description ?: content ?: ""
         val combinedText = TextNormalize.combineText(title, rawSummary)
         val tickers = TextNormalize.extractTickers(combinedText, linkDomain)

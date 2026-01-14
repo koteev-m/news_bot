@@ -27,6 +27,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import kotlin.math.min
+import common.runCatchingNonFatal
 
 class TelegramStarsGateway(
     private val botToken: String,
@@ -53,7 +54,7 @@ class TelegramStarsGateway(
             append("prices", pricesJson(prices))
         }
 
-        return runCatching {
+        return runCatchingNonFatal {
             val response: HttpResponse = httpClient.post("$baseUrl/bot$botToken/createInvoiceLink") {
                 setBody(FormDataContent(formParameters))
             }
@@ -107,11 +108,11 @@ class TelegramStarsGateway(
         }
 
         install(ContentEncoding) {
-            runCatching {
+            runCatchingNonFatal {
                 val method = this::class.java.methods.firstOrNull { it.name == "gzip" && it.parameterCount == 0 }
                 method?.invoke(this)
             }
-            runCatching {
+            runCatchingNonFatal {
                 val method = this::class.java.methods.firstOrNull { it.name == "brotli" && it.parameterCount == 0 }
                 method?.invoke(this)
             }

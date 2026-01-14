@@ -17,6 +17,7 @@ import repo.PaywallCopy
 import repo.PriceOverride
 import repo.PricingRepository
 import security.userIdOrNull
+import common.runCatchingNonFatal
 
 @Serializable
 data class OverrideUpsertRequest(
@@ -153,7 +154,7 @@ private suspend fun assignVariant(
     userId: Long,
     key: String,
     fallback: String,
-): String = runCatching { experiments.assign(userId, key).variant }.getOrDefault(fallback)
+): String = runCatchingNonFatal { experiments.assign(userId, key).variant }.getOrDefault(fallback)
 
 private const val PRICE_BUNDLE_KEY = "price_bundle"
 private const val PAYWALL_COPY_KEY = "paywall_copy"

@@ -15,6 +15,7 @@ import news.publisher.TelegramPublisher
 import news.sources.NewsSource
 import org.slf4j.LoggerFactory
 import kotlin.text.Charsets
+import common.runCatchingNonFatal
 
 class NewsPipeline(
     private val config: NewsConfig,
@@ -54,7 +55,7 @@ class NewsPipeline(
     private suspend fun fetchSources(): List<Article> = coroutineScope {
         sources.map { source ->
             async {
-                runCatching { source.fetch() }
+                runCatchingNonFatal { source.fetch() }
                     .onFailure { logger.warn("Source {} failed", source.name, it) }
                     .getOrDefault(emptyList())
             }

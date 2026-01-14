@@ -35,6 +35,7 @@ import repo.model.ValuationDailyRecord
 import repo.tables.ValuationsDailyTable
 import routes.dto.toResponse
 import security.userIdOrNull
+import common.runCatchingNonFatal
 
 private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 
@@ -152,7 +153,7 @@ private class DatabaseReportStorage(
     private val defaultValuationMethod: ValuationMethod,
 ) : ReportService.Storage {
     override suspend fun valuationMethod(portfolioId: UUID): DomainResult<ValuationMethod> {
-        val portfolio = runCatching { portfolioRepository.findById(portfolioId) }
+        val portfolio = runCatchingNonFatal { portfolioRepository.findById(portfolioId) }
             .getOrElse { throwable -> return DomainResult.failure(throwable) }
         return if (portfolio == null) {
             DomainResult.failure(portfolioNotFound(portfolioId))
@@ -165,7 +166,7 @@ private class DatabaseReportStorage(
         portfolioId: UUID,
         range: DateRange,
     ): DomainResult<List<ReportService.Storage.ValuationRecord>> {
-        val records = runCatching { valuationRepository.listRange(portfolioId, range, Int.MAX_VALUE) }
+        val records = runCatchingNonFatal { valuationRepository.listRange(portfolioId, range, Int.MAX_VALUE) }
             .getOrElse { throwable -> return DomainResult.failure(throwable) }
         return DomainResult.success(records.map { it.toStorageRecord() })
     }
@@ -174,7 +175,7 @@ private class DatabaseReportStorage(
         portfolioId: UUID,
         date: LocalDate,
     ): DomainResult<ReportService.Storage.ValuationRecord?> {
-        val record = runCatching {
+        val record = runCatchingNonFatal {
             DatabaseFactory.dbQuery {
                 ValuationsDailyTable
                     .selectAll()

@@ -9,6 +9,7 @@ import news.cta.CtaBuilder
 import news.model.Cluster
 import news.publisher.ChannelPublisher
 import news.render.PostTemplates
+import common.runCatchingNonFatal
 
 class PublishBreaking(
     private val cfg: NewsConfig,
@@ -37,6 +38,6 @@ class PublishBreaking(
     private suspend fun resolveVariant(): String? {
         val service = experiments ?: return null
         val subject = cfg.channelId.takeIf { it != 0L } ?: 0L
-        return runCatching { service.assign(subject, "cta_copy").variant }.getOrNull()
+        return runCatchingNonFatal { service.assign(subject, "cta_copy").variant }.getOrNull()
     }
 }

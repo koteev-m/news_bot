@@ -7,6 +7,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import tenancy.TenantContext
+import common.runCatchingNonFatal
 
 interface SegmentProvider {
     suspend fun fetchUserIds(segment: Segment, tenantId: Long): List<Long>
@@ -45,7 +46,7 @@ class GrowthEngine(
             if (sentToday >= cap.perDay) continue
             val text = render(template.bodyMd, mapOf("userId" to u.toString(), "tenant" to ctx.tenant.slug))
             val id = deliveryRepo.enqueue(campaign.id, null, u, ctx.tenant.tenantId, campaign.channel, null)
-            runCatching {
+            runCatchingNonFatal {
                 val ok = messenger.sendTelegram(u, text, campaign.locale)
                 if (ok) deliveryRepo.markSent(id) else deliveryRepo.markFailed(id, "send_failed")
             }.onFailure { deliveryRepo.markFailed(id, "exception:${it::class.simpleName}") }

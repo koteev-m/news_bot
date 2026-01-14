@@ -39,6 +39,7 @@ import routes.dto.EntitlementDto
 import routes.dto.UserSubscriptionDto
 import routes.dto.toDto
 import security.userIdOrNull
+import common.runCatchingNonFatal
 
 fun Route.billingRoutes() {
     route("/api/billing") {
@@ -75,7 +76,7 @@ fun Route.billingRoutes() {
                 return@post
             }
 
-            val tier = runCatching { Tier.parse(request.tier) }.getOrElse {
+            val tier = runCatchingNonFatal { Tier.parse(request.tier) }.getOrElse {
                 call.respondBadRequest(listOf("tier invalid"))
                 return@post
             }
@@ -120,7 +121,7 @@ fun Route.billingRoutes() {
                         )
                     }
 
-                val result = runCatching { starsClient.getBotStarAmount() }
+                val result = runCatchingNonFatal { starsClient.getBotStarAmount() }
                 result.fold(
                     onSuccess = { amount: StarAmount ->
                         record(StarsPublicResults.OK)
@@ -283,7 +284,7 @@ fun Route.billingRoutes() {
 
                     else -> Unit
                 }
-                val result = runCatching { service.getBotStarBalance() }
+                val result = runCatchingNonFatal { service.getBotStarBalance() }
                 result.fold(
                     onSuccess = { balanceResult ->
                         registry?.counter(
