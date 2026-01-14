@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import org.slf4j.LoggerFactory
 import java.util.Base64
+import common.runCatchingNonFatal
 
 /**
  * Реестр deeplink-пейлоадов (?start / ?startapp) с безопасной валидацией.
@@ -92,16 +93,16 @@ class DeepLinkRegistry(
         return Parsed.StartApp(decoded = decoded, raw = raw)
     }
 
-    private fun decodeBase64Url(value: String): String? = runCatching {
+    private fun decodeBase64Url(value: String): String? = runCatchingNonFatal {
         val bytes = Base64.getUrlDecoder().decode(value)
         String(bytes, Charsets.UTF_8)
     }.getOrNull()
 
     /** Канонический ID (для метрик/каталога), без утечки сырых данных. */
-    private fun canonicalIdForStart(decodedJson: String): String = runCatching {
+    private fun canonicalIdForStart(decodedJson: String): String = runCatchingNonFatal {
         val elem = json.parseToJsonElement(decodedJson)
         val v = elem.jsonObject["v"]?.jsonPrimitive?.intOrNull ?: 1
-        if (v != 1) return@runCatching "UNKNOWN_V$v"
+        if (v != 1) return@runCatchingNonFatal "UNKNOWN_V$v"
         val payload = json.decodeFromJsonElement<StartV1>(elem)
         when (payload.t) {
             "w" -> payload.s?.let { "TICKER_${it.uppercase()}" } ?: "TICKER_UNKNOWN"

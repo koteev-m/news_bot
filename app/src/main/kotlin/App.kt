@@ -123,6 +123,7 @@ import java.time.Clock
 import netflow2.Netflow2Loader
 import webhook.OverflowMode
 import webhook.WebhookQueue
+import common.runCatchingNonFatal
 
 @Suppress("unused")
 private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
@@ -247,12 +248,12 @@ fun Application.module() {
                 return@post
             }
 
-            val rawUpdate = runCatching { call.receiveText() }.getOrElse {
+            val rawUpdate = runCatchingNonFatal { call.receiveText() }.getOrElse {
                 call.respond(HttpStatusCode.OK)
                 return@post
             }
 
-            val tgUpdate = runCatching { StarsWebhookHandler.json.decodeFromString<TgUpdate>(rawUpdate) }.getOrElse {
+            val tgUpdate = runCatchingNonFatal { StarsWebhookHandler.json.decodeFromString<TgUpdate>(rawUpdate) }.getOrElse {
                 call.respond(HttpStatusCode.OK)
                 return@post
             }
@@ -261,7 +262,7 @@ fun Application.module() {
             call.respond(HttpStatusCode.OK)
 
             val servicesAttr = this@module.attributes[Services.Key]
-            val botUpdate = runCatching { BotUtils.parseUpdate(rawUpdate) }.getOrNull()
+            val botUpdate = runCatchingNonFatal { BotUtils.parseUpdate(rawUpdate) }.getOrNull()
             if (botUpdate == null) {
                 return@post
             }
@@ -308,7 +309,7 @@ private fun Application.createAlertsRepository(config: ApplicationConfig): Alert
         return AlertsRepositoryMemory()
     }
 
-    return runCatching {
+    return runCatchingNonFatal {
         DatabaseFactory.init()
         runBlocking { DatabaseFactory.ping() }
         AlertsRepositoryPostgres()
@@ -331,7 +332,7 @@ private fun configureCioWorkerThreads(): Int {
         return existing
     }
     val config = ConfigFactory.load()
-    val fromConfig = runCatching { config.getInt("performance.workerThreads") }.getOrNull()
+    val fromConfig = runCatchingNonFatal { config.getInt("performance.workerThreads") }.getOrNull()
     val resolved = (fromConfig ?: Runtime.getRuntime().availableProcessors()).coerceAtLeast(1)
     System.setProperty("ktor.server.cio.workerCount", resolved.toString())
     return resolved
@@ -479,7 +480,7 @@ private fun Application.billingDefaultDuration(): Long {
 }
 
 private fun Application.starsClientConfig(): StarsClientConfig {
-    val httpConfig = runCatching { environment.config.config("billing.stars.http") }.getOrNull()
+    val httpConfig = runCatchingNonFatal { environment.config.config("billing.stars.http") }.getOrNull()
     return StarsClientConfig(
         connectTimeoutMs = httpConfig?.propertyOrNull("connectTimeoutMs")?.getString()?.toLongOrNull() ?: 2000L,
         readTimeoutMs = httpConfig?.propertyOrNull("readTimeoutMs")?.getString()?.toLongOrNull() ?: 3000L,
@@ -581,7 +582,7 @@ private fun parsePayload(payload: String?): Pair<Long, billing.model.Tier>? {
     val parts = payload.split(':')
     if (parts.size < 3) return null
     val userId = parts[0].toLongOrNull() ?: return null
-    val tier = runCatching { billing.model.Tier.valueOf(parts[1].uppercase()) }.getOrNull() ?: return null
+    val tier = runCatchingNonFatal { billing.model.Tier.valueOf(parts[1].uppercase()) }.getOrNull() ?: return null
     return userId to tier
 }
 

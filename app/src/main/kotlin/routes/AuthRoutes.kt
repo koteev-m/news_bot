@@ -13,10 +13,11 @@ import java.time.temporal.ChronoUnit
 import kotlinx.serialization.Serializable
 import security.JwtSupport
 import kotlin.collections.buildMap
+import common.runCatchingNonFatal
 
 fun Route.authRoutes(analytics: AnalyticsPort = AnalyticsPort.Noop) {
     post("/api/auth/telegram/verify") {
-        val request = runCatching { call.receive<TelegramVerifyRequest>() }.getOrElse {
+        val request = runCatchingNonFatal { call.receive<TelegramVerifyRequest>() }.getOrElse {
             call.respond(HttpStatusCode.BadRequest, ErrorResponse("bad_request"))
             return@post
         }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import common.runCatchingNonFatal
 
 class RetentionScheduler(
     private val app: Application,
@@ -27,7 +28,7 @@ class RetentionScheduler(
         job = scope.launch {
             while (isActive) {
                 val now = Instant.now(clock)
-                runCatching { service.runRetention(now) }
+                runCatchingNonFatal { service.runRetention(now) }
                 delay(interval.toMillis())
             }
         }

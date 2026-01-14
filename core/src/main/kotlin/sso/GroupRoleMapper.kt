@@ -1,6 +1,7 @@
 package sso
 
 import tenancy.Role
+import common.runCatchingNonFatal
 
 /**
  * Маппер групп из IdP в платформенные роли.
@@ -11,7 +12,7 @@ class GroupRoleMapper(private val repo: GroupMappingRepo) {
         val mappings = repo.mappingsForTenant(tenantId, idpId)
         val resolved = mappings
             .filter { it.extGroup in groups }
-            .mapNotNull { runCatching { Role.valueOf(it.role) }.getOrNull() }
+            .mapNotNull { runCatchingNonFatal { Role.valueOf(it.role) }.getOrNull() }
             .toSet()
         return if (resolved.isNotEmpty()) resolved else setOf(Role.VIEWER)
     }

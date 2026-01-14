@@ -44,6 +44,7 @@ import repo.tables.TradesTable
 import repo.tables.ValuationsDailyTable
 import repo.model.NewValuationDaily
 import repo.model.ValuationDailyRecord
+import common.runCatchingNonFatal
 
 private val PortfolioModuleKey = AttributeKey<PortfolioModule>("PortfolioModule")
 
@@ -232,11 +233,11 @@ private open class StoredPriceProvider(
     private val priceRepository: PriceRepository,
 ) : portfolio.service.PriceProvider {
     override suspend fun closePrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
-        runCatching { priceRepository.findClosePrice(source, instrumentId, on) }
+        runCatchingNonFatal { priceRepository.findClosePrice(source, instrumentId, on) }
             .fold(onSuccess = { DomainResult.success(it) }, onFailure = { DomainResult.failure(it) })
 
     override suspend fun lastPrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
-        runCatching { priceRepository.findLastPrice(source, instrumentId, on) }
+        runCatchingNonFatal { priceRepository.findLastPrice(source, instrumentId, on) }
             .fold(onSuccess = { DomainResult.success(it) }, onFailure = { DomainResult.failure(it) })
 }
 
@@ -253,7 +254,7 @@ private class DatabaseValuationStorage(
     private val valuationRepository: ValuationRepository,
 ) : ValuationService.Storage {
     override suspend fun listPositions(portfolioId: java.util.UUID): DomainResult<List<ValuationService.Storage.PositionSnapshot>> =
-        runCatching {
+        runCatchingNonFatal {
             positionRepository.list(portfolioId, Int.MAX_VALUE).map { dto ->
                 ValuationService.Storage.PositionSnapshot(
                     instrumentId = dto.instrumentId,
@@ -273,7 +274,7 @@ private class DatabaseValuationStorage(
         portfolioId: java.util.UUID,
         date: LocalDate,
     ): DomainResult<ValuationService.Storage.ValuationRecord?> =
-        runCatching {
+        runCatchingNonFatal {
             DatabaseFactory.dbQuery {
                 ValuationsDailyTable
                     .selectAll()
@@ -295,7 +296,7 @@ private class DatabaseValuationStorage(
     override suspend fun upsertValuation(
         record: ValuationService.Storage.ValuationRecord,
     ): DomainResult<ValuationService.Storage.ValuationRecord> =
-        runCatching {
+        runCatchingNonFatal {
             valuationRepository.upsert(
                 NewValuationDaily(
                     portfolioId = record.portfolioId,
@@ -332,7 +333,7 @@ private class DatabasePortfolioStorage(
     override suspend fun <T> transaction(
         block: suspend PortfolioService.Storage.Transaction.() -> DomainResult<T>,
     ): DomainResult<T> =
-        runCatching {
+        runCatchingNonFatal {
             DatabaseFactory.dbQuery {
                 val tx = TransactionImpl(fallbackCurrency, clock)
                 tx.block()
@@ -343,7 +344,7 @@ private class DatabasePortfolioStorage(
         )
 
     override suspend fun listPositions(portfolioId: java.util.UUID): DomainResult<List<PortfolioService.PositionSummary>> =
-        runCatching {
+        runCatchingNonFatal {
             positionRepository.list(portfolioId, Int.MAX_VALUE).map { dto ->
                 val instrument = instrumentRepository.findById(dto.instrumentId)
                 val instrumentName = instrument?.symbol ?: "Instrument ${dto.instrumentId}"
@@ -374,7 +375,7 @@ private class DatabasePortfolioStorage(
             instrumentId: Long,
             method: ValuationMethod,
         ): DomainResult<PortfolioService.StoredPosition?> =
-            runCatching {
+            runCatchingNonFatal {
                 PositionsTable
                     .selectAll()
                     .where {
@@ -406,7 +407,7 @@ private class DatabasePortfolioStorage(
         override suspend fun savePosition(
             position: PortfolioService.StoredPosition,
         ): DomainResult<Unit> =
-            runCatching {
+            runCatchingNonFatal {
                 val predicate =
                     (PositionsTable.portfolioId eq position.portfolioId) and (PositionsTable.instrumentId eq position.instrumentId)
                 val average = position.position.averagePrice
@@ -432,7 +433,7 @@ private class DatabasePortfolioStorage(
             )
 
         override suspend fun recordTrade(trade: PortfolioService.StoredTrade): DomainResult<Unit> =
-            runCatching {
+            runCatchingNonFatal {
                 TradesTable.insert { statement ->
                     statement[TradesTable.portfolioId] = trade.portfolioId
                     statement[TradesTable.instrumentId] = trade.instrumentId

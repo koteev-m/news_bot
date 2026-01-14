@@ -9,6 +9,7 @@ import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import observability.WebVitals
+import common.runCatchingNonFatal
 
 @Serializable
 private data class VitalEvent(
@@ -23,7 +24,7 @@ private val json = Json { ignoreUnknownKeys = true }
 fun Route.webVitalsRoutes(vitals: WebVitals) {
     post("/vitals") {
         val text = call.receiveText()
-        val events = runCatching {
+        val events = runCatchingNonFatal {
             json.decodeFromString<List<VitalEvent>>(text)
         }.getOrElse {
             listOf(json.decodeFromString<VitalEvent>(text))

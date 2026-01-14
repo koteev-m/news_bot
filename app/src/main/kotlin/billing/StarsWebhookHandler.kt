@@ -14,6 +14,7 @@ import kotlinx.serialization.json.Json
 import observability.DomainMetrics
 import java.util.UUID
 import org.slf4j.LoggerFactory
+import common.runCatchingNonFatal
 
 @Serializable
 data class TgUpdate(val message: TgMessage? = null)
@@ -52,12 +53,12 @@ object StarsWebhookHandler {
         analytics: AnalyticsPort = AnalyticsPort.Noop
     ): Boolean {
         val requestId = requestId()
-        val body = runCatching { call.receiveText() }.getOrElse {
+        val body = runCatchingNonFatal { call.receiveText() }.getOrElse {
             call.respond(HttpStatusCode.OK)
             return false
         }
 
-        val update = runCatching { json.decodeFromString(TgUpdate.serializer(), body) }.getOrElse {
+        val update = runCatchingNonFatal { json.decodeFromString(TgUpdate.serializer(), body) }.getOrElse {
             call.respond(HttpStatusCode.OK)
             return false
         }
@@ -163,7 +164,7 @@ object StarsWebhookHandler {
         val parts = payload.split(':')
         if (parts.size < 3) return null
         val userId = parts[0].toLongOrNull() ?: return null
-        val tier = runCatching { Tier.valueOf(parts[1].uppercase()) }.getOrNull() ?: return null
+        val tier = runCatchingNonFatal { Tier.valueOf(parts[1].uppercase()) }.getOrNull() ?: return null
         return userId to tier
     }
 

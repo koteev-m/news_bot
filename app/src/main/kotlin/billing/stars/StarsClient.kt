@@ -23,6 +23,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import common.runCatchingNonFatal
 
 data class StarsClientConfig(
     val connectTimeoutMs: Long,
@@ -82,7 +83,7 @@ open class StarsClient(
         )
 
         val payload = response.bodyAsText()
-        val decoded = runCatching { json.decodeFromString(TgBalanceResponse.serializer(), payload) }.getOrNull()
+        val decoded = runCatchingNonFatal { json.decodeFromString(TgBalanceResponse.serializer(), payload) }.getOrNull()
         val retryAfterSeconds = decoded?.parameters?.retryAfter ?: parseRetryAfter(response.headers[HttpHeaders.RetryAfter])
 
         if (response.status == HttpStatusCode.TooManyRequests) {
@@ -170,7 +171,7 @@ open class StarsClient(
         if (raw.isNullOrBlank()) return null
         raw.toLongOrNull()?.let { return it.coerceAtLeast(1) }
 
-        return runCatching {
+        return runCatchingNonFatal {
             val date = ZonedDateTime.parse(raw, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()
             val now = Instant.now()
             val diff = Duration.between(now, date).seconds

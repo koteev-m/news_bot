@@ -6,6 +6,7 @@ import java.time.LocalDate
 import kotlinx.serialization.json.Json
 import javax.sql.DataSource
 import org.slf4j.LoggerFactory
+import common.runCatchingNonFatal
 
 class AlertsRepositoryPostgres(
     private val dataSource: DataSource? = null,
@@ -98,7 +99,7 @@ class AlertsRepositoryPostgres(
             result
         } catch (e: Exception) {
             if (!autoCommit) {
-                runCatching { conn.rollback() }
+                runCatchingNonFatal { conn.rollback() }
                     .onFailure { rollbackError ->
                         logger.warn("Failed to rollback transaction after error", rollbackError)
                     }

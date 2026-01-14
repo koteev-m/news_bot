@@ -32,6 +32,7 @@ import routes.dto.validate
 import security.userIdOrNull
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
+import common.runCatchingNonFatal
 
 @Serializable
 data class ApiErrorResponse(
@@ -173,9 +174,9 @@ internal suspend fun processPortfolioList(
     onError: (Throwable) -> Unit = {},
 ): PortfolioRouteResult {
     val tgUserId = subject?.toLongOrNull() ?: return unauthorizedResult()
-    val userId = runCatching { deps.resolveUser(tgUserId) }
+    val userId = runCatchingNonFatal { deps.resolveUser(tgUserId) }
         .getOrElse { return mapException(it, onError) }
-    val records = runCatching { deps.listPortfolios(userId) }
+    val records = runCatchingNonFatal { deps.listPortfolios(userId) }
         .getOrElse { return mapException(it, onError) }
     return PortfolioRouteResult(HttpStatusCode.OK, records.map { it.toResponse() })
 }
@@ -202,9 +203,9 @@ internal suspend fun processPortfolioCreate(
         }
     }
 
-    val userId = runCatching { deps.resolveUser(tgUserId) }
+    val userId = runCatchingNonFatal { deps.resolveUser(tgUserId) }
         .getOrElse { return mapException(it, onError) }
-    val record = runCatching { deps.createPortfolio(userId, validated) }
+    val record = runCatchingNonFatal { deps.createPortfolio(userId, validated) }
         .getOrElse { throwable ->
             if (isUniqueViolation(throwable)) {
                 return PortfolioRouteResult(

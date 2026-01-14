@@ -60,6 +60,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
 import org.slf4j.Logger
+import common.runCatchingNonFatal
 
 private const val MAX_LINES = 100_000
 private const val MAX_LINE_LENGTH = 64_000
@@ -207,7 +208,7 @@ fun Route.portfolioImportRoutes() {
             call.respondBadRequest(listOf("url must not be empty"))
             return@post
         }
-        val httpsUrl = runCatching { java.net.URI(rawUrl) }.getOrNull()
+        val httpsUrl = runCatchingNonFatal { java.net.URI(rawUrl) }.getOrNull()
         if (httpsUrl == null || httpsUrl.scheme == null || httpsUrl.scheme.lowercase() != "https") {
             call.respondBadRequest(listOf("url must use https"))
             return@post
@@ -290,7 +291,7 @@ private suspend fun ApplicationCall.respondImportResult(result: DomainResult<Csv
 }
 
 private fun String?.toPortfolioIdOrNull(): UUID? = this?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
-    runCatching { UUID.fromString(value) }.getOrNull()
+    runCatchingNonFatal { UUID.fromString(value) }.getOrNull()
 }
 
 internal val PortfolioImportDepsKey = AttributeKey<PortfolioImportDeps>("PortfolioImportDeps")
@@ -521,7 +522,7 @@ private fun decodePreview(bytes: ByteArray): String? {
     val decoder = Charsets.UTF_8.newDecoder()
         .onMalformedInput(CodingErrorAction.REPORT)
         .onUnmappableCharacter(CodingErrorAction.REPORT)
-    return runCatching { decoder.decode(buffer).toString() }.getOrNull()
+    return runCatchingNonFatal { decoder.decode(buffer).toString() }.getOrNull()
 }
 
 private class HttpCsvFetcher(
@@ -591,14 +592,14 @@ private class DatabaseInstrumentResolver(
         exchange: String,
         board: String?,
         symbol: String,
-    ): DomainResult<CsvImportService.InstrumentRef?> = runCatching {
+    ): DomainResult<CsvImportService.InstrumentRef?> = runCatchingNonFatal {
         repository.findBySymbol(exchange, board, symbol)?.let { CsvImportService.InstrumentRef(it.instrumentId) }
     }
 
     override suspend fun findByAlias(
         alias: String,
         source: String,
-    ): DomainResult<CsvImportService.InstrumentRef?> = runCatching {
+    ): DomainResult<CsvImportService.InstrumentRef?> = runCatchingNonFatal {
         repository.findAlias(alias, source)?.let { aliasEntity ->
             repository.findById(aliasEntity.instrumentId)?.let { CsvImportService.InstrumentRef(it.instrumentId) }
         }
@@ -611,11 +612,11 @@ private class DatabaseTradeLookup(
     override suspend fun existsByExternalId(
         portfolioId: UUID,
         externalId: String,
-    ): DomainResult<Boolean> = runCatching {
+    ): DomainResult<Boolean> = runCatchingNonFatal {
         repository.findByExternalId(externalId)?.portfolioId == portfolioId
     }
 
-    override suspend fun existsBySoftKey(key: CsvImportService.SoftTradeKey): DomainResult<Boolean> = runCatching {
+    override suspend fun existsBySoftKey(key: CsvImportService.SoftTradeKey): DomainResult<Boolean> = runCatchingNonFatal {
         dbQuery {
             TradesTable
                 .select {

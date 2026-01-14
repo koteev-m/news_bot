@@ -18,6 +18,7 @@ import kotlinx.serialization.json.put
 import observability.currentTraceIdOrNull
 import security.userIdOrNull
 import tenancy.TenantContextKey
+import common.runCatchingNonFatal
 
 class AuditPluginConfig {
     lateinit var auditService: AuditService
@@ -44,7 +45,7 @@ val AuditPlugin = createApplicationPlugin(name = "AuditPlugin", createConfigurat
             val meta = buildMeta(call, statusCode)
             val logger = call.application.environment.log
             val task: suspend () -> Unit = {
-                runCatching {
+                runCatchingNonFatal {
                     logEvent(service, actor, action, call.request.uri, meta, tenantId)
                 }.onFailure { throwable ->
                     logger.warn("Audit log failed", throwable)

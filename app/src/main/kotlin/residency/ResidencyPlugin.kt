@@ -6,6 +6,7 @@ import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.response.respond
 import repo.ResidencyRepository
 import tenancy.TenantContextKey
+import common.runCatchingNonFatal
 
 /**
  * Плагин, который валидирует «гео-политику» перед записью PII/FIN.
@@ -23,7 +24,7 @@ val ResidencyPlugin = createApplicationPlugin(name = "ResidencyPlugin", createCo
     val dataClassOf = pluginConfig.dataClassProvider
 
     onCall { call ->
-        val ctx = runCatching { call.attributes[TenantContextKey] }.getOrNull() ?: return@onCall
+        val ctx = runCatchingNonFatal { call.attributes[TenantContextKey] }.getOrNull() ?: return@onCall
         val policy = repo.getPolicy(ctx.tenant.tenantId) ?: return@onCall
         val served = regionOf(call)
         val dc = dataClassOf(call) ?: return@onCall

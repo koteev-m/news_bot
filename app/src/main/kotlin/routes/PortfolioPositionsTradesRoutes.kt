@@ -39,6 +39,7 @@ import routes.dto.paramSort
 import repo.mapper.toTradeDto
 import repo.tables.TradesTable
 import security.userIdOrNull
+import common.runCatchingNonFatal
 
 fun Route.portfolioPositionsTradesRoutes() {
     route("/api/portfolio/{id}") {
@@ -50,11 +51,11 @@ fun Route.portfolioPositionsTradesRoutes() {
             }
 
             val portfolioId = call.requirePortfolioId() ?: return@get
-            val sort = runCatching { call.paramSort() }.getOrElse {
+            val sort = runCatchingNonFatal { call.paramSort() }.getOrElse {
                 call.respondBadRequest(listOf(it.message ?: "invalid_request"))
                 return@get
             }
-            val order = runCatching { call.paramOrder() }.getOrElse {
+            val order = runCatchingNonFatal { call.paramOrder() }.getOrElse {
                 call.respondBadRequest(listOf(it.message ?: "invalid_request"))
                 return@get
             }
@@ -78,23 +79,23 @@ fun Route.portfolioPositionsTradesRoutes() {
             }
 
             val portfolioId = call.requirePortfolioId() ?: return@get
-            val limit = runCatching { call.paramLimit() }.getOrElse {
+            val limit = runCatchingNonFatal { call.paramLimit() }.getOrElse {
                 call.respondBadRequest(listOf(it.message ?: "invalid_request"))
                 return@get
             }
-            val offset = runCatching { call.paramOffset() }.getOrElse {
+            val offset = runCatchingNonFatal { call.paramOffset() }.getOrElse {
                 call.respondBadRequest(listOf(it.message ?: "invalid_request"))
                 return@get
             }
-            val from = runCatching { call.paramDate("from") }.getOrElse {
+            val from = runCatchingNonFatal { call.paramDate("from") }.getOrElse {
                 call.respondBadRequest(listOf(it.message ?: "invalid_request"))
                 return@get
             }
-            val to = runCatching { call.paramDate("to") }.getOrElse {
+            val to = runCatchingNonFatal { call.paramDate("to") }.getOrElse {
                 call.respondBadRequest(listOf(it.message ?: "invalid_request"))
                 return@get
             }
-            val side = runCatching { call.paramSide() }.getOrElse {
+            val side = runCatchingNonFatal { call.paramSide() }.getOrElse {
                 call.respondBadRequest(listOf(it.message ?: "invalid_request"))
                 return@get
             }
@@ -187,7 +188,7 @@ private fun ApplicationCall.buildPositionsTradesDeps(): PortfolioPositionsTrades
 }
 
 private suspend fun fetchTrades(portfolioId: UUID, query: TradesQuery): Result<TradesData> =
-    runCatching {
+    runCatchingNonFatal {
         DatabaseFactory.dbQuery {
             val condition = buildTradeCondition(portfolioId, query)
             val total = TradesTable.select { condition }.count()
@@ -226,7 +227,7 @@ private suspend fun ApplicationCall.requirePortfolioId(): UUID? {
         respondBadRequest(listOf("portfolioId invalid"))
         return null
     }
-    return runCatching { UUID.fromString(raw) }.getOrElse {
+    return runCatchingNonFatal { UUID.fromString(raw) }.getOrElse {
         respondBadRequest(listOf("portfolioId invalid"))
         null
     }

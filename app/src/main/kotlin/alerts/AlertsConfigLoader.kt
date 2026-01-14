@@ -4,6 +4,7 @@ import io.ktor.server.config.ApplicationConfig
 import java.time.ZoneId
 import kotlin.time.Duration.Companion.minutes
 import org.slf4j.LoggerFactory
+import common.runCatchingNonFatal
 
 data class AlertsConfig(val engine: EngineConfig, val internalToken: String?)
 
@@ -52,13 +53,13 @@ fun loadAlertsConfig(config: ApplicationConfig): AlertsConfig {
 
 private fun loadThresholds(config: ApplicationConfig, defaults: ThresholdMatrix): ThresholdMatrix {
     val base = defaults.entries.toMutableMap()
-    val thresholdsConfig = runCatching { config.config("alerts.thresholds") }.getOrNull()
+    val thresholdsConfig = runCatchingNonFatal { config.config("alerts.thresholds") }.getOrNull()
         ?: return defaults
     val classIds = thresholdsConfig.keys() ?: emptySet()
     var overridesApplied = false
 
     classIds.forEach { classId ->
-        val entry = runCatching { thresholdsConfig.config(classId) }.getOrNull() ?: return@forEach
+        val entry = runCatchingNonFatal { thresholdsConfig.config(classId) }.getOrNull() ?: return@forEach
         val fast = entry.propertyOrNull("fast")?.getString()?.toDoubleOrNull()
         val daily = entry.propertyOrNull("daily")?.getString()?.toDoubleOrNull()
         val defaultThresholds = defaults.entries[classId]

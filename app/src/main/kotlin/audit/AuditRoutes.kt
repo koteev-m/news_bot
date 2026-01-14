@@ -12,6 +12,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import repo.AuditLedgerRepository
+import common.runCatchingNonFatal
 
 fun Route.auditRoutes(repository: AuditLedgerRepository) {
     route("/api/audit") {
@@ -26,7 +27,7 @@ fun Route.auditRoutes(repository: AuditLedgerRepository) {
 
         get("/checkpoint/{day}") {
             val dayParam = call.parameters["day"]
-            val day = dayParam?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            val day = dayParam?.let { runCatchingNonFatal { LocalDate.parse(it) }.getOrNull() }
             if (day == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid_day"))
                 return@get

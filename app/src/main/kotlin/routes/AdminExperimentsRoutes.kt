@@ -12,6 +12,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 import security.userIdOrNull
+import common.runCatchingNonFatal
 
 @Serializable
 data class ExperimentUpsert(val key: String, val enabled: Boolean, val traffic: Map<String, Int>)
@@ -28,7 +29,7 @@ fun Route.adminExperimentsRoutes(port: ExperimentsPort, adminUserIds: Set<Long>)
                 call.respond(HttpStatusCode.Forbidden, mapOf("error" to "forbidden"))
                 return@post
             }
-            val request = runCatching { call.receive<ExperimentUpsert>() }
+            val request = runCatchingNonFatal { call.receive<ExperimentUpsert>() }
                 .getOrElse { exception ->
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to (exception.message ?: "invalid payload")))
                     return@post

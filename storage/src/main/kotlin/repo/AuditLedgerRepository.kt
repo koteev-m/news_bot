@@ -22,6 +22,7 @@ import org.jetbrains.exposed.sql.json.jsonb
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import common.runCatchingNonFatal
 
 private const val GENESIS_HASH = "GENESIS"
 
@@ -171,7 +172,7 @@ class AuditLedgerRepository : AuditLedgerPort {
         val seq = this[AuditLedgerTable.seqId]
         val timestamp = this[AuditLedgerTable.ts].toInstant()
         val actorTypeValue = this[AuditLedgerTable.actorType]
-        val actorType = runCatching { AuditActorType.valueOf(actorTypeValue.uppercase()) }
+        val actorType = runCatchingNonFatal { AuditActorType.valueOf(actorTypeValue.uppercase()) }
             .getOrDefault(AuditActorType.SYSTEM)
         val meta = this[AuditLedgerTable.metaJson]
         return LedgerRecord(

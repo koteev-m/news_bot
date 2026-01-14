@@ -6,6 +6,7 @@ import news.model.Article
 import news.nlp.TextNormalize
 import news.rss.RssFetcher
 import news.rss.RssItem
+import common.runCatchingNonFatal
 
 interface NewsSource {
     val name: String
@@ -23,7 +24,7 @@ class CbrSource(
     }
 
     private fun RssItem.toArticle(): Article {
-        val linkDomain = runCatching { URI(link).host }.getOrNull() ?: name
+        val linkDomain = runCatchingNonFatal { URI(link).host }.getOrNull() ?: name
         val cleanedSummary = TextNormalize.clean(description ?: content)
         val tickers = emptySet<String>()
         val entities = TextNormalize.extractEntities(linkDomain, tickers)

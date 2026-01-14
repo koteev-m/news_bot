@@ -25,6 +25,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlin.jvm.Volatile
+import common.runCatchingNonFatal
 
 class MoexIssClient(
     private val client: HttpClient,
@@ -58,7 +59,7 @@ class MoexIssClient(
             return Result.failure(HttpClientError.ValidationError("securities list must contain non-blank values"))
         }
         val cacheKey = normalized.sorted().joinToString(",")
-        return runCatching {
+        return runCatchingNonFatal {
             securitiesCache.getOrPut(cacheKey) {
                 requestSecurities(cacheKey)
             }
@@ -74,14 +75,14 @@ class MoexIssClient(
         }
         val normalizedTicker = ticker.trim().uppercase()
         val cacheKey = listOf(normalizedTicker, from.toString(), till.toString()).joinToString(":")
-        return runCatching {
+        return runCatchingNonFatal {
             candlesCache.getOrPut(cacheKey) {
                 requestCandles(normalizedTicker, from, till)
             }
         }
     }
 
-    suspend fun getMarketStatus(): HttpResult<MoexStatusResponse> = runCatching {
+    suspend fun getMarketStatus(): HttpResult<MoexStatusResponse> = runCatchingNonFatal {
         statusCache.getOrPut("status") {
             requestMarketStatus()
         }

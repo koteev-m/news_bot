@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
+import common.runCatchingNonFatal
 
 private const val DEMO_USER_TG_ID = 10001L
 private const val DEMO_PORTFOLIO_NAME = "Demo RUB"
@@ -50,7 +51,7 @@ fun Route.demoRoutes() {
                 return@post
             }
 
-            val result = runCatching { truncateDemoData() }
+            val result = runCatchingNonFatal { truncateDemoData() }
             if (result.isFailure) {
                 app.log.error("demo reset failed", result.exceptionOrNull())
                 call.respond(
@@ -96,7 +97,7 @@ private suspend fun runSeedScriptOrCheck(app: Application): Pair<HttpStatusCode,
         )
     }
 
-    val execution = runCatching {
+    val execution = runCatchingNonFatal {
         withContext(Dispatchers.IO) {
             val process = ProcessBuilder(scriptPath.toAbsolutePath().toString())
                 .directory(projectRoot.toFile())

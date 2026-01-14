@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import org.jetbrains.exposed.sql.selectAll
 import repo.mapper.toFxRate
 import repo.tables.FxRatesTable
+import common.runCatchingNonFatal
 
 fun Route.healthRoutes() {
     get("/health/db") {
@@ -42,7 +43,7 @@ fun Route.healthRoutes() {
 
         val fxStatus = try {
             val fxRepo = module.repositories.fxRateRepository
-            val fxRate = runCatching { fxRepo.findLatest("USD") }.getOrNull()
+            val fxRate = runCatchingNonFatal { fxRepo.findLatest("USD") }.getOrNull()
                 ?: DatabaseFactory.dbQuery {
                     FxRatesTable.selectAll().limit(1).singleOrNull()?.toFxRate()
                 }

@@ -5,6 +5,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import common.runCatchingNonFatal
 
 class SubscriptionsService(
     private val repo: StarSubscriptionsRepository,
@@ -16,7 +17,7 @@ class SubscriptionsService(
 
     init {
         meter?.gauge(GAUGE_PAID_ACTIVE, this) { svc ->
-            runCatching { runBlocking { repo.countPaidActive().toDouble() } }.getOrDefault(0.0)
+            runCatchingNonFatal { runBlocking { repo.countPaidActive().toDouble() } }.getOrDefault(0.0)
         }
     }
 

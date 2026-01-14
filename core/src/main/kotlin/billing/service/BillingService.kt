@@ -15,6 +15,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import org.slf4j.LoggerFactory
+import common.runCatchingNonFatal
 
 interface BillingService {
     /** Активные планы, отсортированы по возрастанию уровня tier. */
@@ -84,11 +85,11 @@ class BillingServiceImpl(
         require(defaultDurationDays >= 1) { "defaultDurationDays must be >= 1" }
     }
 
-    override suspend fun listPlans(): Result<List<BillingPlan>> = runCatching {
+    override suspend fun listPlans(): Result<List<BillingPlan>> = runCatchingNonFatal {
         repo.getActivePlans().sortedBy { it.tier.level() }
     }
 
-    override suspend fun createInvoiceFor(userId: Long, tier: Tier): Result<String> = runCatching {
+    override suspend fun createInvoiceFor(userId: Long, tier: Tier): Result<String> = runCatchingNonFatal {
         require(tier != Tier.FREE) { "Cannot create invoice for FREE tier" }
         val plan = repo.getActivePlans().firstOrNull { it.tier == tier && it.isActive }
             ?: throw NoSuchElementException("plan not found: $tier")
@@ -115,7 +116,7 @@ class BillingServiceImpl(
         amountXtr: Long,
         providerPaymentId: String?,
         payload: String?
-    ): Result<ApplyPaymentOutcome> = runCatching {
+    ): Result<ApplyPaymentOutcome> = runCatchingNonFatal {
         require(amountXtr >= 0) { "amountXtr must be >= 0" }
 
         val pid = providerPaymentId ?: deterministicChargeId(userId, tier, payload)
@@ -134,7 +135,7 @@ class BillingServiceImpl(
         if (!isNew) {
             ledger.append(LedgerEntry(userId, tier.name, "DUPLICATE", pid, payloadHash))
             logger.info("stars-payment reason=duplicate")
-            return@runCatching ApplyPaymentOutcome(duplicate = true)
+            return@runCatchingNonFatal ApplyPaymentOutcome(duplicate = true)
         }
 
         val expiresAt = now().plus(Duration.ofDays(defaultDurationDays))
@@ -151,7 +152,7 @@ class BillingServiceImpl(
     }
 
     override suspend fun getMySubscription(userId: Long): Result<UserSubscription?> =
-        runCatching { repo.findSubscription(userId) }
+        runCatchingNonFatal { repo.findSubscription(userId) }
 
     private fun buildPayload(userId: Long, tier: Tier): String {
         val raw = "$userId:${tier.name}:${UUID.randomUUID().toString().replace("-", "")}"
