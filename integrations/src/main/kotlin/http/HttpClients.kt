@@ -211,6 +211,37 @@ sealed class HttpClientError(message: String, cause: Throwable? = null) : Runtim
     abstract val category: String
     open val metricsTag: String get() = category
 
+    companion object {
+        private const val MAX_ERROR_SNIPPET = 512
+        private const val MAX_RAW_SNIPPET_INPUT = 4096
+        private val SNIPPET_NORMALIZE_REGEX = Regex("[\\r\\n\\t]+")
+
+        fun httpStatusError(
+            status: HttpStatusCode,
+            requestUrl: String,
+            rawBody: String?,
+            origin: Throwable? = null
+        ): HttpStatusError = HttpStatusError(
+            status = status,
+            requestUrl = requestUrl,
+            bodySnippet = sanitizeSnippet(rawBody),
+            origin = origin
+        )
+
+        private fun sanitizeSnippet(rawBody: String?): String? {
+            val normalized = rawBody
+                ?.take(MAX_RAW_SNIPPET_INPUT)
+                ?.replace(SNIPPET_NORMALIZE_REGEX, " ")
+                ?.trim()
+                .orEmpty()
+            if (normalized.isEmpty()) return null
+            if (normalized.length <= MAX_ERROR_SNIPPET) return normalized
+            val limit = (MAX_ERROR_SNIPPET - 1).coerceAtLeast(0)
+            val clipped = normalized.take(limit).trimEnd()
+            return "${clipped}…"
+        }
+    }
+
     data class HttpStatusError(
         val status: HttpStatusCode,
         val requestUrl: String,
