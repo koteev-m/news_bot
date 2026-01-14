@@ -82,12 +82,7 @@ class Netflow2Client(
                 throw ce
             } catch (ex: ResponseException) {
                 val payload = readBodyOrNull(ex.response)
-                throw HttpClientError.HttpStatusError(
-                    status = ex.response.status,
-                    requestUrl = endpoint,
-                    bodySnippet = safeSnippet(payload),
-                    origin = ex
-                )
+                throwHttpStatusError(ex.response.status, endpoint, payload, origin = ex)
             }
 
             val payload = response.bodyAsText()
@@ -117,12 +112,7 @@ class Netflow2Client(
 
     private fun ensureSuccess(response: HttpResponse, url: String, snippet: String? = null) {
         if (response.status.isSuccess()) return
-        val payloadHint = safeSnippet(snippet)
-        throw HttpClientError.HttpStatusError(
-            status = response.status,
-            requestUrl = url,
-            bodySnippet = payloadHint
-        )
+        throwHttpStatusError(response.status, url, snippet, origin = null)
     }
 
     private fun parseCsv(payload: String, expectedTicker: String): List<Netflow2Row> {
@@ -407,6 +397,20 @@ class Netflow2Client(
         val limit = (MAX_ERROR_SNIPPET - 1).coerceAtLeast(0)
         val clipped = normalized.take(limit).trimEnd()
         return "${clipped}…"
+    }
+
+    private fun throwHttpStatusError(
+        status: HttpStatusCode,
+        requestUrl: String,
+        body: String?,
+        origin: Throwable? = null
+    ): Nothing {
+        throw HttpClientError.HttpStatusError(
+            status = status,
+            requestUrl = requestUrl,
+            bodySnippet = safeSnippet(body),
+            origin = origin
+        )
     }
 
     companion object {
