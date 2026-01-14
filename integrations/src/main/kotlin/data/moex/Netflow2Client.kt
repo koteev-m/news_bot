@@ -389,6 +389,7 @@ class Netflow2Client(
 
     private fun safeSnippet(raw: String?): String? {
         val normalized = raw
+            ?.take(MAX_RAW_SNIPPET_INPUT)
             ?.replace(SNIPPET_NORMALIZE_REGEX, " ")
             ?.trim()
             .orEmpty()
@@ -417,6 +418,7 @@ class Netflow2Client(
         private const val SERVICE = "netflow2"
         private const val NETFLOW_PATH = "/iss/analyticalproducts/netflow2/securities/"
         private const val MAX_ERROR_SNIPPET = 512
+        private const val MAX_RAW_SNIPPET_INPUT = 4096
         private val SNIPPET_NORMALIZE_REGEX = Regex("[\\r\\n\\t]+")
         private val NETFLOW_SEC_REGEX = Regex(
             "${Regex.escape(NETFLOW_PATH)}([^/?#]+)\\.(csv|json)",
