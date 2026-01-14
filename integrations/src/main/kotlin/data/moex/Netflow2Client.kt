@@ -81,13 +81,7 @@ class Netflow2Client(
             } catch (ce: CancellationException) {
                 throw ce
             } catch (ex: ResponseException) {
-                val payload = try {
-                    ex.response.bodyAsText()
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Throwable) {
-                    null
-                }
+                val payload = readBodyOrNull(ex.response)
                 throw HttpClientError.HttpStatusError(
                     status = ex.response.status,
                     requestUrl = endpoint,
@@ -392,6 +386,14 @@ class Netflow2Client(
     }
 
     private fun cleanCsvToken(raw: String): String = raw.trim().removePrefix("\uFEFF").trim()
+
+    private suspend fun readBodyOrNull(response: HttpResponse): String? = try {
+        response.bodyAsText()
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (_: Throwable) {
+        null
+    }
 
     private fun safeSnippet(raw: String?): String? {
         val normalized = raw

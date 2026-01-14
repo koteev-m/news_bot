@@ -656,6 +656,53 @@ class Netflow2ClientTest {
     }
 
     @Test
+    fun `maps response exception 400 to validation error with sanitized body snippet`() = runTest {
+        val metrics = IntegrationsMetrics(SimpleMeterRegistry())
+        val httpConfig = IntegrationsHttpConfig(
+            userAgent = "test-agent",
+            timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
+            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
+            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+        )
+
+        val body = "invalid\tsec\nbad request"
+        val httpClient = HttpClient(MockEngine) {
+            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            expectSuccess = true
+            engine {
+                addHandler { respond(body, status = HttpStatusCode.BadRequest) }
+            }
+        }
+
+        try {
+            val client = Netflow2Client(
+                client = httpClient,
+                circuitBreaker = CircuitBreaker("netflow2", httpConfig.circuitBreaker, metrics, Clock.systemUTC()),
+                metrics = metrics,
+                retryCfg = httpConfig.retry
+            )
+
+            val window = Netflow2PullWindow.ofInclusive(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 2))
+            val result = client.fetchWindow("SBER", window)
+
+            assertTrue(result.isFailure)
+            val error = result.exceptionOrNull()
+            val validation = assertIs<Netflow2ClientError.ValidationError>(error)
+            val origin = assertIs<HttpClientError.HttpStatusError>(validation.origin)
+            val responseException = assertIs<ResponseException>(origin.origin)
+            val snippet = assertNotNull(origin.bodySnippet)
+            assertTrue(!snippet.contains("\n"))
+            assertTrue(!snippet.contains("\r"))
+            assertTrue(!snippet.contains("\t"))
+            assertTrue(snippet.contains("invalid sec"))
+            assertTrue(snippet.contains("bad request"))
+            assertEquals(HttpStatusCode.BadRequest, responseException.response.status)
+        } finally {
+            httpClient.close()
+        }
+    }
+
+    @Test
     fun `includes sanitized body snippet in http status error`() = runTest {
         val metrics = IntegrationsMetrics(SimpleMeterRegistry())
         val httpConfig = IntegrationsHttpConfig(
