@@ -82,7 +82,7 @@ class Netflow2Client(
                 throw ce
             } catch (ex: ResponseException) {
                 val payload = readBodyOrNull(ex.response)
-                throwHttpStatusError(ex.response.status, endpoint, payload, origin = ex)
+                throw HttpClientError.httpStatusError(ex.response.status, endpoint, payload, origin = ex)
             }
 
             val payload = response.bodyAsText()
@@ -112,7 +112,7 @@ class Netflow2Client(
 
     private fun ensureSuccess(response: HttpResponse, url: String, snippet: String? = null) {
         if (response.status.isSuccess()) return
-        throwHttpStatusError(response.status, url, snippet, origin = null)
+        throw HttpClientError.httpStatusError(response.status, url, snippet)
     }
 
     private fun parseCsv(payload: String, expectedTicker: String): List<Netflow2Row> {
@@ -387,39 +387,9 @@ class Netflow2Client(
         null
     }
 
-    private fun safeSnippet(raw: String?): String? {
-        val normalized = raw
-            ?.take(MAX_RAW_SNIPPET_INPUT)
-            ?.replace(SNIPPET_NORMALIZE_REGEX, " ")
-            ?.trim()
-            .orEmpty()
-        if (normalized.isEmpty()) return null
-        if (normalized.length <= MAX_ERROR_SNIPPET) return normalized
-        val limit = (MAX_ERROR_SNIPPET - 1).coerceAtLeast(0)
-        val clipped = normalized.take(limit).trimEnd()
-        return "${clipped}…"
-    }
-
-    private fun throwHttpStatusError(
-        status: HttpStatusCode,
-        requestUrl: String,
-        body: String?,
-        origin: Throwable? = null
-    ): Nothing {
-        throw HttpClientError.HttpStatusError(
-            status = status,
-            requestUrl = requestUrl,
-            bodySnippet = safeSnippet(body),
-            origin = origin
-        )
-    }
-
     companion object {
         private const val SERVICE = "netflow2"
         private const val NETFLOW_PATH = "/iss/analyticalproducts/netflow2/securities/"
-        private const val MAX_ERROR_SNIPPET = 512
-        private const val MAX_RAW_SNIPPET_INPUT = 4096
-        private val SNIPPET_NORMALIZE_REGEX = Regex("[\\r\\n\\t]+")
         private val NETFLOW_SEC_REGEX = Regex(
             "${Regex.escape(NETFLOW_PATH)}([^/?#]+)\\.(csv|json)",
             RegexOption.IGNORE_CASE
