@@ -13,6 +13,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
+import io.ktor.client.plugins.ResponseException
 import io.ktor.http.HttpStatusCode
 import java.time.Clock
 import java.time.LocalDate
@@ -619,6 +620,7 @@ class Netflow2ClientTest {
         val body = "missing\tsec\nnot found"
         val httpClient = HttpClient(MockEngine) {
             HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            expectSuccess = true
             engine {
                 addHandler { respond(body, status = HttpStatusCode.NotFound) }
             }
@@ -639,6 +641,7 @@ class Netflow2ClientTest {
             val error = result.exceptionOrNull()
             val notFound = assertIs<Netflow2ClientError.NotFound>(error)
             val origin = assertIs<HttpClientError.HttpStatusError>(notFound.origin)
+            val responseException = assertIs<ResponseException>(origin.origin)
             assertEquals(HttpStatusCode.NotFound, origin.status)
             assertTrue(origin.requestUrl.contains("/iss/analyticalproducts/netflow2/securities/"))
             val snippet = assertNotNull(origin.bodySnippet)
@@ -646,6 +649,7 @@ class Netflow2ClientTest {
             assertTrue(!snippet.contains("\r"))
             assertTrue(!snippet.contains("\t"))
             assertTrue(snippet.contains("missing sec"))
+            assertEquals(HttpStatusCode.NotFound, responseException.response.status)
         } finally {
             httpClient.close()
         }
