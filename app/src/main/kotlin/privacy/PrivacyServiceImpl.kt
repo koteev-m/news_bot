@@ -4,6 +4,7 @@ import db.DatabaseFactory.dbQuery
 import java.sql.Timestamp
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.CancellationException
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import repo.PrivacyRepository
 
@@ -50,6 +51,10 @@ class PrivacyServiceImpl(
 
             val finalStatus = if (effectiveDryRun) "DRYRUN" else "DONE"
             repo.markResult(userId, finalStatus, null)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             repo.markResult(userId, "ERROR", ex::class.simpleName ?: "UnknownError")
             throw ex

@@ -3,6 +3,7 @@ package routes
 import db.DatabaseFactory
 import di.portfolioModule
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
@@ -54,6 +55,10 @@ fun Route.portfolioRoutes() {
         post {
             val request = try {
                 call.receive<CreatePortfolioRequest>()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
             } catch (_: Throwable) {
                 call.respondBadRequest(listOf("Invalid JSON payload"))
                 return@post

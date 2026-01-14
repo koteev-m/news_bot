@@ -54,6 +54,8 @@ class Netflow2Client(
             normalizeTicker(ticker)
         } catch (ce: CancellationException) {
             throw ce
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             return Result.failure(Netflow2ClientError.ValidationError(ex.message ?: "invalid ticker", ex))
         }
@@ -62,6 +64,8 @@ class Netflow2Client(
             window.toMoexQueryParams()
         } catch (ce: CancellationException) {
             throw ce
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             return Result.failure(
                 Netflow2ClientError.ValidationError(
@@ -80,6 +84,8 @@ class Netflow2Client(
                 }
             } catch (ce: CancellationException) {
                 throw ce
+            } catch (err: Error) {
+                throw err
             } catch (ex: ResponseException) {
                 val payload = readBodyOrNull(ex.response)
                 throw HttpClientError.httpStatusError(ex.response.status, endpoint, payload, origin = ex)
@@ -159,8 +165,11 @@ class Netflow2Client(
                     vol = columns.longAt(index["VOL"]),
                     oi = columns.longAt(index["OI"])
                 )
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (err: Error) {
+                throw err
             } catch (ex: Throwable) {
-                if (ex is CancellationException) throw ex
                 throw Netflow2ClientError.UpstreamError(
                     "Failed to parse Netflow2 CSV line: $line",
                     ex
@@ -174,6 +183,8 @@ class Netflow2Client(
             json.parseToJsonElement(payload)
         } catch (ce: CancellationException) {
             throw ce
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             throw Netflow2ClientError.UpstreamError("Unable to parse Netflow2 JSON payload", ex)
         }
@@ -203,6 +214,8 @@ class Netflow2Client(
                     LocalDate.parse(dateRaw)
                 } catch (ce: CancellationException) {
                     throw ce
+                } catch (err: Error) {
+                    throw err
                 } catch (parseEx: Throwable) {
                     throw Netflow2ClientError.UpstreamError("Invalid date '$dateRaw' in Netflow2 JSON", parseEx)
                 }
@@ -219,8 +232,11 @@ class Netflow2Client(
                     vol = row.longAt(index["VOL"]),
                     oi = row.longAt(index["OI"])
                 )
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (err: Error) {
+                throw err
             } catch (ex: Throwable) {
-                if (ex is CancellationException) throw ex
                 throw Netflow2ClientError.UpstreamError("Failed to parse Netflow2 JSON row: $row", ex)
             }
         }
@@ -268,8 +284,11 @@ class Netflow2Client(
             try {
                 val result = circuitBreaker.withPermit { HttpClients.measure(SERVICE) { block() } }
                 return Result.success(result)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (err: Error) {
+                throw err
             } catch (ex: Throwable) {
-                if (ex is CancellationException) throw ex
                 lastError = ex
                 val now = clock.instant()
                 if (!shouldRetry(ex)) {

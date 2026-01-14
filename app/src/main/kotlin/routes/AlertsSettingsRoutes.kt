@@ -29,6 +29,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.util.AttributeKey
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import repo.AlertsSettingsRepositoryImpl
 import security.requireTierAtLeast
@@ -76,6 +77,10 @@ private suspend fun ApplicationCall.handleOverrideUpdate(isPatch: Boolean) {
 
     val patch = try {
         receive<AlertsOverridePatch>()
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (err: Error) {
+        throw err
     } catch (exception: Throwable) {
         application.environment.log.warn("alerts.settings.invalid_payload", exception)
         respondBadRequest(listOf("Invalid JSON payload"))

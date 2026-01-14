@@ -4,6 +4,7 @@ import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
 
@@ -44,6 +45,12 @@ class TtlCache<K : Any, V : Any>(
             }
             deferred.complete(value)
             return value
+        } catch (cancellation: CancellationException) {
+            deferred.completeExceptionally(cancellation)
+            throw cancellation
+        } catch (err: Error) {
+            deferred.completeExceptionally(err)
+            throw err
         } catch (t: Throwable) {
             deferred.completeExceptionally(t)
             throw t

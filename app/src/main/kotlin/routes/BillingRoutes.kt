@@ -33,6 +33,7 @@ import io.ktor.server.routing.route
 import io.ktor.util.AttributeKey
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import routes.dto.EntitlementDto
 import routes.dto.UserSubscriptionDto
@@ -65,6 +66,10 @@ fun Route.billingRoutes() {
             val svc = call.billingService()
             val request = try {
                 call.receive<CreateInvoiceRequest>()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
             } catch (_: Throwable) {
                 call.respondBadRequest(listOf("body invalid"))
                 return@post

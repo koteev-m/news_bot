@@ -22,6 +22,7 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.readAvailable
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CancellationException
 import kotlin.io.DEFAULT_BUFFER_SIZE
 
 object UploadGuard : BaseApplicationPlugin<Application, UploadGuard.Config, UploadGuard> {
@@ -111,6 +112,12 @@ object UploadGuard : BaseApplicationPlugin<Application, UploadGuard.Config, Uplo
 
             val bytes = try {
                 part.provider().readBytesWithin(limit)
+            } catch (cancellation: CancellationException) {
+                part.dispose()
+                throw cancellation
+            } catch (err: Error) {
+                part.dispose()
+                throw err
             } catch (cause: Throwable) {
                 part.dispose()
                 throw cause
@@ -217,6 +224,10 @@ private fun ApplicationConfig.contentTypeSet(name: String): Set<ContentType>? {
     val parsed = values.map { value ->
         try {
             ContentType.parse(value)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (cause: Throwable) {
             throw IllegalArgumentException("upload.$name contains invalid content type: $value", cause)
         }

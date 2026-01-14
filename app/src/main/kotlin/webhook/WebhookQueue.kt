@@ -66,6 +66,9 @@ class WebhookQueue(
                     } catch (ce: CancellationException) {
                         sample.stop(metrics.handleTimer)
                         throw ce
+                    } catch (err: Error) {
+                        sample.stop(metrics.handleTimer)
+                        throw err
                     } catch (t: Throwable) {
                         logger.error("webhook-queue worker failed", t)
                     } finally {

@@ -29,6 +29,7 @@ import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 import io.opentelemetry.sdk.trace.samplers.Sampler
 import java.time.Duration
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import io.ktor.util.pipeline.PipelineContext
 
@@ -137,6 +138,14 @@ suspend fun PipelineContext<Unit, PipelineCall>.withServerSpan(
         call.response.status()?.value?.let { status ->
             span.setAttribute(httpResponseStatusKey, status.toLong())
         }
+    } catch (cancellation: CancellationException) {
+        span.recordException(cancellation)
+        span.setStatus(StatusCode.ERROR)
+        throw cancellation
+    } catch (err: Error) {
+        span.recordException(err)
+        span.setStatus(StatusCode.ERROR)
+        throw err
     } catch (t: Throwable) {
         span.recordException(t)
         span.setStatus(StatusCode.ERROR)
