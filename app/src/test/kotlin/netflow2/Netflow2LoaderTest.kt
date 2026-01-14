@@ -145,4 +145,22 @@ class Netflow2LoaderTest {
 
         assertTrue(ex.message?.startsWith("sec:") == true)
     }
+
+    @Test
+    fun `propagates assertion error from client`() = runTest {
+        val metrics = Netflow2Metrics(SimpleMeterRegistry())
+        val client = io.mockk.mockk<Netflow2Client>()
+        val repository = io.mockk.mockk<Netflow2Repository>()
+        val loader = Netflow2Loader(client, repository, metrics)
+
+        val from = LocalDate.of(2024, 1, 1)
+        val till = LocalDate.of(2024, 1, 1)
+        val window = Netflow2PullWindow.ofInclusive(from, till)
+
+        coEvery { client.fetchWindow("SBER", window) } throws AssertionError("boom")
+
+        assertFailsWith<AssertionError> {
+            loader.upsert("SBER", from, till)
+        }
+    }
 }

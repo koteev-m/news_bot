@@ -84,6 +84,10 @@ fun Route.portfolioImportRoutes() {
         val uploadSettings = deps.uploadSettings
         val multipart = try {
             call.receiveMultipart()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (cause: Throwable) {
             call.application.environment.log.error("csv_multipart_error", cause)
             call.respondInternal()
@@ -130,6 +134,12 @@ fun Route.portfolioImportRoutes() {
                         part.dispose()
                         call.respondBadRequest(listOf("file must be UTF-8 encoded"))
                         return@post
+                    } catch (cancellation: CancellationException) {
+                        part.dispose()
+                        throw cancellation
+                    } catch (err: Error) {
+                        part.dispose()
+                        throw err
                     } catch (cause: Throwable) {
                         part.dispose()
                         call.application.environment.log.error("csv_import_failed", cause)
@@ -183,6 +193,10 @@ fun Route.portfolioImportRoutes() {
 
         val request = try {
             call.receive<ImportByUrlRequest>()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (_: Throwable) {
             call.respondBadRequest(listOf("invalid json"))
             return@post
@@ -212,6 +226,8 @@ fun Route.portfolioImportRoutes() {
             return@post
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (cause: Throwable) {
             call.application.environment.log.error("csv_download_error", cause)
             call.respondInternal()
@@ -243,6 +259,10 @@ fun Route.portfolioImportRoutes() {
         } catch (coding: CharacterCodingException) {
             call.respondBadRequest(listOf("file must be UTF-8 encoded"))
             return@post
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (cause: Throwable) {
             call.application.environment.log.error("csv_import_failed", cause)
             call.respondInternal()
@@ -523,6 +543,8 @@ private class HttpCsvFetcher(
             throw RemoteCsvDownloadException("http_${serverError.response.status.value}", serverError)
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (cause: Throwable) {
             throw RemoteCsvDownloadException("network", cause)
         }
@@ -537,6 +559,8 @@ private class HttpCsvFetcher(
             return RemoteCsv(contentType = response.contentType(), bytes = bytes)
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (tooLarge: RemoteCsvTooLargeException) {
             throw tooLarge
         } catch (download: RemoteCsvDownloadException) {

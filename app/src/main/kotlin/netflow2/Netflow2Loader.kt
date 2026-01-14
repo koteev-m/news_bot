@@ -40,6 +40,8 @@ class Netflow2Loader(
                 normalizeTicker(sec)
             } catch (ce: CancellationException) {
                 throw ce
+            } catch (err: Error) {
+                throw err
             } catch (ex: Throwable) {
                 val message = ex.message ?: "invalid ticker"
                 throw Netflow2LoaderError.ValidationError("sec: $message")
@@ -51,8 +53,11 @@ class Netflow2Loader(
             for (window in windows) {
                 val rows = try {
                     client.fetchWindow(normalizedTicker, window).getOrElse { throw it }
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (err: Error) {
+                    throw err
                 } catch (ex: Throwable) {
-                    if (ex is CancellationException) throw ex
                     metrics.pullError.increment()
                     throw ex
                 }
@@ -68,8 +73,11 @@ class Netflow2Loader(
                         maxDate = maxDate?.let { existing -> maxOf(existing, windowMax) } ?: windowMax
                     }
                     metrics.pullSuccess.increment()
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (err: Error) {
+                    throw err
                 } catch (ex: Throwable) {
-                    if (ex is CancellationException) throw ex
                     metrics.pullError.increment()
                     throw ex
                 }
@@ -84,11 +92,12 @@ class Netflow2Loader(
                 rowsUpserted = upsertedRows,
                 maxDate = maxDate,
             )
+        } catch (ce: CancellationException) {
+            cancelled = true
+            throw ce
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
-            if (ex is CancellationException) {
-                cancelled = true
-                throw ex
-            }
             throw when (ex) {
                 is Netflow2LoaderError -> ex
                 is Netflow2ClientError -> ex

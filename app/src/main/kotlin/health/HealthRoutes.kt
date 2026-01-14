@@ -9,6 +9,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import java.time.Instant
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.CancellationException
 import org.jetbrains.exposed.sql.selectAll
 import repo.mapper.toFxRate
 import repo.tables.FxRatesTable
@@ -20,6 +21,10 @@ fun Route.healthRoutes() {
 
         try {
             DatabaseFactory.dbQuery { exec("select 1") { } }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             call.application.environment.log.error("Database ping failed", ex)
             call.respond(
@@ -42,6 +47,10 @@ fun Route.healthRoutes() {
                     FxRatesTable.selectAll().limit(1).singleOrNull()?.toFxRate()
                 }
             if (fxRate != null) "ok" else "skip"
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             call.application.environment.log.error("FX warm-up failed", ex)
             call.respond(
@@ -60,6 +69,10 @@ fun Route.healthRoutes() {
         val instrumentStatus = try {
             val instrument = module.repositories.instrumentRepository.listAll(limit = 1).firstOrNull()
             if (instrument != null) "ok" else "skip"
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             call.application.environment.log.error("Instrument warm-up failed", ex)
             call.respond(

@@ -8,6 +8,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.OffsetDateTime
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import portfolio.errors.DomainResult
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -135,6 +136,10 @@ private class RepositoryPortfolioStorage(
             val tx = TransactionImpl(fallbackCurrency, clock)
             tx.block()
         }
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (err: Error) {
+        throw err
     } catch (ex: Throwable) {
         DomainResult.failure(ex)
     }
@@ -162,6 +167,10 @@ private class RepositoryPortfolioStorage(
                 }
         }
         DomainResult.success(summaries)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (err: Error) {
+        throw err
     } catch (ex: Throwable) {
         DomainResult.failure(ex)
     }
@@ -198,6 +207,10 @@ private class RepositoryPortfolioStorage(
                     )
                 }
             DomainResult.success(result)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             DomainResult.failure(ex)
         }
@@ -223,6 +236,10 @@ private class RepositoryPortfolioStorage(
                 }
             }
             DomainResult.success(Unit)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             DomainResult.failure(ex)
         }
@@ -246,6 +263,10 @@ private class RepositoryPortfolioStorage(
                 statement[TradesTable.createdAt] = clock.instant().toUtcTimestamp()
             }
             DomainResult.success(Unit)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             DomainResult.failure(ex)
         }
@@ -270,6 +291,10 @@ private class DatabaseInstrumentResolver(
     ): DomainResult<CsvImportService.InstrumentRef?> = try {
         val instrument = instrumentRepository.findBySymbol(exchange, board, symbol)
         DomainResult.success(instrument?.let { CsvImportService.InstrumentRef(it.instrumentId) })
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (err: Error) {
+        throw err
     } catch (ex: Throwable) {
         DomainResult.failure(ex)
     }
@@ -279,6 +304,10 @@ private class DatabaseInstrumentResolver(
             instrumentRepository.findById(it.instrumentId)
         }
         DomainResult.success(instrument?.let { CsvImportService.InstrumentRef(it.instrumentId) })
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (err: Error) {
+        throw err
     } catch (ex: Throwable) {
         DomainResult.failure(ex)
     }
@@ -290,6 +319,10 @@ private class DatabaseTradeLookup(
     override suspend fun existsByExternalId(portfolioId: UUID, externalId: String): DomainResult<Boolean> = try {
         val exists = tradeRepository.findByExternalId(externalId)?.portfolioId == portfolioId
         DomainResult.success(exists)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (err: Error) {
+        throw err
     } catch (ex: Throwable) {
         DomainResult.failure(ex)
     }
@@ -310,6 +343,10 @@ private class DatabaseTradeLookup(
                 .any()
         }
         DomainResult.success(exists)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (err: Error) {
+        throw err
     } catch (ex: Throwable) {
         DomainResult.failure(ex)
     }

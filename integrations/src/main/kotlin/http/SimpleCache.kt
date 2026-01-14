@@ -3,6 +3,7 @@ package http
 import java.time.Clock
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 
 class SimpleCache<K : Any, V : Any>(
     private val ttlMillis: Long,
@@ -42,6 +43,12 @@ class SimpleCache<K : Any, V : Any>(
             }
             newDeferred.complete(value)
             return value
+        } catch (cancellation: CancellationException) {
+            newDeferred.completeExceptionally(cancellation)
+            throw cancellation
+        } catch (err: Error) {
+            newDeferred.completeExceptionally(err)
+            throw err
         } catch (t: Throwable) {
             newDeferred.completeExceptionally(t)
             throw t

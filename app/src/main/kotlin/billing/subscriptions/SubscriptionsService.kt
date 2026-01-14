@@ -3,6 +3,7 @@ package billing.subscriptions
 import io.micrometer.core.instrument.MeterRegistry
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 
 class SubscriptionsService(
@@ -48,6 +49,10 @@ class SubscriptionsService(
                 repo.upsertActive(sub.userId, sub.plan, true, next, sub.trialUntil)
                 meter?.counter(CNT_RENEW_ATTEMPT, "result", "success")?.increment()
                 ok++
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
             } catch (t: Throwable) {
                 meter?.counter(CNT_RENEW_ATTEMPT, "result", "failed")?.increment()
                 skipped++

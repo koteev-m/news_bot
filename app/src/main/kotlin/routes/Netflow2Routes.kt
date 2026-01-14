@@ -48,8 +48,11 @@ fun Route.netflow2AdminRoutes(loader: Netflow2Loader, internalToken: String?) {
 
         val result = try {
             loader.upsert(sec, from, till)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
-            if (ex is CancellationException) throw ex
             val (status, message) = ex.toHttpError()
             call.respond(status, mapOf("error" to message))
             return@post
@@ -82,6 +85,8 @@ private fun String.toLocalDateOrNull(): LocalDate? = try {
     LocalDate.parse(this)
 } catch (ce: CancellationException) {
     throw ce
+} catch (err: Error) {
+    throw err
 } catch (_: Throwable) {
     null
 }

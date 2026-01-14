@@ -2,6 +2,7 @@ package it
 
 import java.math.BigDecimal
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import model.PositionDto
 import org.jetbrains.exposed.exceptions.ExposedSQLException
@@ -112,6 +113,10 @@ class PortfolioRepositoryIT {
                     )
 
                     trade
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (err: Error) {
+                    throw err
                 } catch (ex: Throwable) {
                     positionState = previousState
                     throw ex

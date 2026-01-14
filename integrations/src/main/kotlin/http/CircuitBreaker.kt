@@ -42,6 +42,10 @@ class CircuitBreaker(
             val result = block()
             onSuccess()
             result
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (err: Error) {
+            throw err
         } catch (ex: Throwable) {
             onFailure(ex)
             throw ex
