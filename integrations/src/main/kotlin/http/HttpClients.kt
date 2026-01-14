@@ -282,9 +282,10 @@ internal fun Throwable.toHttpClientError(): HttpClientError = when (this) {
     is HttpRequestTimeoutException -> HttpClientError.TimeoutError(null, this)
     is io.ktor.client.plugins.ResponseException -> {
         val requestUrl = runCatching { response.call.request.url.toString() }.getOrNull() ?: "unknown"
-        HttpClientError.HttpStatusError(
+        HttpClientError.httpStatusError(
             status = response.status,
             requestUrl = requestUrl,
+            rawBody = null,
             origin = this
         )
     }
