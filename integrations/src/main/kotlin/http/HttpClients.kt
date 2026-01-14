@@ -28,6 +28,7 @@ import java.time.format.DateTimeParseException
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -277,21 +278,25 @@ sealed class HttpClientError(message: String, cause: Throwable? = null) : Runtim
     }
 }
 
-internal fun Throwable.toHttpClientError(): HttpClientError = when (this) {
-    is HttpClientError -> this
-    is HttpRequestTimeoutException -> HttpClientError.TimeoutError(null, this)
-    is io.ktor.client.plugins.ResponseException -> {
-        val requestUrl = runCatching { response.call.request.url.toString() }.getOrNull() ?: "unknown"
-        HttpClientError.httpStatusError(
-            status = response.status,
-            requestUrl = requestUrl,
-            rawBody = null,
-            origin = this
-        )
+internal fun Throwable.toHttpClientError(): HttpClientError {
+    if (this is CancellationException) throw this
+    if (this is Error) throw this
+    return when (this) {
+        is HttpClientError -> this
+        is HttpRequestTimeoutException -> HttpClientError.TimeoutError(null, this)
+        is io.ktor.client.plugins.ResponseException -> {
+            val requestUrl = runCatching { response.call.request.url.toString() }.getOrNull() ?: "unknown"
+            HttpClientError.httpStatusError(
+                status = response.status,
+                requestUrl = requestUrl,
+                rawBody = null,
+                origin = this
+            )
+        }
+        is SerializationException -> HttpClientError.DeserializationError(message ?: "serialization error", this)
+        is IOException -> HttpClientError.NetworkError(null, this)
+        else -> HttpClientError.UnexpectedError(null, this)
     }
-    is SerializationException -> HttpClientError.DeserializationError(message ?: "serialization error", this)
-    is IOException -> HttpClientError.NetworkError(null, this)
-    else -> HttpClientError.UnexpectedError(null, this)
 }
 
 typealias HttpResult<T> = Result<T>
