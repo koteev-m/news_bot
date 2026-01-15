@@ -114,7 +114,7 @@ class ErrorPagesTest {
         val response = result.getOrNull()
         if (response != null) {
             assertEquals(HttpStatusCode.InternalServerError, response.status)
-            assertNotInternalErrorResponse(response.bodyAsText(), response.headers[HttpHeaders.ContentType])
+            assertNotInternalErrorResponse(response.bodyAsText())
         } else {
             assertIs<CancellationException>(result.exceptionOrNull())
         }
@@ -136,14 +136,13 @@ class ErrorPagesTest {
         val response = result.getOrNull()
         if (response != null) {
             assertEquals(HttpStatusCode.InternalServerError, response.status)
-            assertNotInternalErrorResponse(response.bodyAsText(), response.headers[HttpHeaders.ContentType])
+            assertNotInternalErrorResponse(response.bodyAsText())
         } else {
             assertIs<AssertionError>(result.exceptionOrNull())
         }
     }
 
-    private fun assertNotInternalErrorResponse(payload: String, contentType: String?) {
-        if (contentType?.startsWith("application/json") != true) return
+    private fun assertNotInternalErrorResponse(payload: String) {
         val parsed = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
         val code = parsed?.get("code")?.jsonPrimitive?.contentOrNull
         assertTrue(code != "INTERNAL")
