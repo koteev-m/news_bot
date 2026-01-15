@@ -176,8 +176,8 @@ object HttpClients {
                 metrics.stopTimer(sample, service, "success")
                 result
             } catch (t: Throwable) {
-                rethrowIfFatal(t)
                 metrics.stopTimer(sample, service, "error")
+                rethrowIfFatal(t)
                 throw t
             }
         }
