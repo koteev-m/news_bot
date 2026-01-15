@@ -8,6 +8,7 @@ import java.time.ZoneOffset
 import kotlinx.coroutines.CancellationException
 import observability.feed.Netflow2Metrics
 import repo.Netflow2Repository
+import common.rethrowIfFatal
 
 data class Netflow2LoadResult(
     val sec: String,
@@ -38,12 +39,9 @@ class Netflow2Loader(
 
             val normalizedTicker = try {
                 normalizeTicker(sec)
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (err: Error) {
-                throw err
-            } catch (ex: Throwable) {
-                val message = ex.message ?: "invalid ticker"
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                val message = t.message ?: "invalid ticker"
                 throw Netflow2LoaderError.ValidationError("sec: $message")
             }
             val windows = Netflow2PullWindow.splitInclusive(from, till)
@@ -53,13 +51,10 @@ class Netflow2Loader(
             for (window in windows) {
                 val rows = try {
                     client.fetchWindow(normalizedTicker, window).getOrElse { throw it }
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (err: Error) {
-                    throw err
-                } catch (ex: Throwable) {
+                } catch (t: Throwable) {
+                    rethrowIfFatal(t)
                     metrics.pullError.increment()
-                    throw ex
+                    throw t
                 }
 
                 val normalizedRows = rows.map { it.copy(ticker = normalizedTicker) }
@@ -73,13 +68,10 @@ class Netflow2Loader(
                         maxDate = maxDate?.let { existing -> maxOf(existing, windowMax) } ?: windowMax
                     }
                     metrics.pullSuccess.increment()
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (err: Error) {
-                    throw err
-                } catch (ex: Throwable) {
+                } catch (t: Throwable) {
+                    rethrowIfFatal(t)
                     metrics.pullError.increment()
-                    throw ex
+                    throw t
                 }
             }
 
@@ -92,16 +84,16 @@ class Netflow2Loader(
                 rowsUpserted = upsertedRows,
                 maxDate = maxDate,
             )
-        } catch (ce: CancellationException) {
-            cancelled = true
-            throw ce
-        } catch (err: Error) {
-            throw err
-        } catch (ex: Throwable) {
-            throw when (ex) {
-                is Netflow2LoaderError -> ex
-                is Netflow2ClientError -> ex
-                else -> Netflow2LoaderError.PullFailed(ex)
+        } catch (t: Throwable) {
+            if (t is CancellationException) {
+                cancelled = true
+                throw t
+            }
+            rethrowIfFatal(t)
+            throw when (t) {
+                is Netflow2LoaderError -> t
+                is Netflow2ClientError -> t
+                else -> Netflow2LoaderError.PullFailed(t)
             }
         } finally {
             if (!cancelled) {

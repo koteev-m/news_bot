@@ -12,8 +12,8 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.plugins.statuspages.exception
 import io.ktor.server.request.header
 import io.ktor.server.response.respond
-import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerializationException
+import common.rethrowIfFatal
 
 fun Application.installErrorPages() {
     install(StatusPages) {
@@ -44,8 +44,7 @@ fun Application.installErrorPages() {
             call.respondError(ErrorCode.NOT_FOUND, HttpStatusCode.NotFound)
         }
         exception<Throwable> { call, cause ->
-            if (cause is CancellationException) throw cause
-            if (cause is Error) throw cause
+            rethrowIfFatal(cause)
             call.respondError(ErrorCode.INTERNAL, HttpStatusCode.InternalServerError)
         }
     }
