@@ -2,26 +2,34 @@ package common
 
 import kotlinx.coroutines.CancellationException
 
+/**
+ * Ловим только non-fatal, CancellationException/Error пробрасываем.
+ */
 inline fun <T> runCatchingNonFatal(block: () -> T): Result<T> {
     return try {
         Result.success(block())
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (err: Error) {
-        throw err
     } catch (t: Throwable) {
+        rethrowIfFatal(t)
         Result.failure(t)
     }
 }
 
-suspend inline fun <T> runCatchingNonFatal(crossinline block: suspend () -> T): Result<T> {
+/**
+ * Ловим только non-fatal, CancellationException/Error пробрасываем.
+ */
+@Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
+@kotlin.internal.LowPriorityInOverloadResolution
+suspend inline fun <T> runCatchingNonFatal(block: suspend () -> T): Result<T> {
     return try {
         Result.success(block())
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (err: Error) {
-        throw err
     } catch (t: Throwable) {
+        rethrowIfFatal(t)
         Result.failure(t)
     }
+}
+
+@PublishedApi
+internal fun rethrowIfFatal(t: Throwable) {
+    if (t is CancellationException) throw t
+    if (t is Error) throw t
 }

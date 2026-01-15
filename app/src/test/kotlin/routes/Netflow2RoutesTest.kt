@@ -13,6 +13,7 @@ import io.mockk.coEvery
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -125,17 +126,10 @@ class Netflow2RoutesTest {
                 routing { netflow2AdminRoutes(loader, "token") }
             }
 
-            val result = runCatching {
+            assertFailsWith<AssertionError> {
                 client.post("/admin/netflow2/load?sec=SBER&from=2024-01-01&till=2024-01-02") {
                     headers { append(INTERNAL_TOKEN_HEADER, "token") }
                 }
-            }
-
-            val response = result.getOrNull()
-            if (response != null) {
-                assertEquals(HttpStatusCode.InternalServerError, response.status)
-            } else {
-                assertTrue(result.exceptionOrNull() is AssertionError)
             }
         }
     }

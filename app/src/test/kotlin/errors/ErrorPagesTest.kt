@@ -14,7 +14,9 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -93,5 +95,39 @@ class ErrorPagesTest {
             "Unexpected error. Please try again later.",
             payload.getValue("message").jsonPrimitive.content
         )
+    }
+
+    @Test
+    fun `cancellation exceptions are rethrown`() = testApplication {
+        application {
+            install(ContentNegotiation) { json() }
+            installErrorPages()
+            routing {
+                get("/cancel") {
+                    throw CancellationException("cancelled")
+                }
+            }
+        }
+
+        assertFailsWith<CancellationException> {
+            client.get("/cancel")
+        }
+    }
+
+    @Test
+    fun `errors are rethrown`() = testApplication {
+        application {
+            install(ContentNegotiation) { json() }
+            installErrorPages()
+            routing {
+                get("/assert") {
+                    throw AssertionError("boom")
+                }
+            }
+        }
+
+        assertFailsWith<AssertionError> {
+            client.get("/assert")
+        }
     }
 }
