@@ -50,7 +50,7 @@ class AppWiringSmokeTest {
 
     @Test
     fun `public endpoints respond as expected`() = testApplication {
-        environment { config = ApplicationConfig("application.conf") }
+        environment { config = ApplicationConfig("application-test.conf") }
 
         application {
             configureFakeDatabase()
@@ -70,12 +70,14 @@ class AppWiringSmokeTest {
         assertEquals("RUB", quotePayload.ccy)
 
         val authResponse = client.post("/api/auth/telegram/verify")
-        assertTrue(authResponse.status == HttpStatusCode.BadRequest || authResponse.status == HttpStatusCode.Unauthorized)
+        assertTrue(
+            authResponse.status == HttpStatusCode.BadRequest || authResponse.status == HttpStatusCode.Unauthorized
+        )
     }
 
     @Test
     fun `protected endpoints require jwt`() = testApplication {
-        environment { config = ApplicationConfig("application.conf") }
+        environment { config = ApplicationConfig("application-test.conf") }
 
         application {
             configureFakeDatabase()

@@ -123,7 +123,7 @@ class Netflow2Client(
     }
 
     private fun parseCsv(payload: String, expectedTicker: String): List<Netflow2Row> {
-        val lines = payload.lineSequence().filter { it.isNotBlank() }.toList()
+        val lines = payload.replace("\uFEFF", "").lineSequence().filter { it.isNotBlank() }.toList()
         if (lines.isEmpty()) return emptyList()
 
         val headerIndex = lines.indexOfFirst { it.isHeaderLine() }
@@ -132,7 +132,7 @@ class Netflow2Client(
         }
 
         val header = lines[headerIndex]
-            .split(';')
+            .split(';', ignoreCase = false, limit = Int.MAX_VALUE)
             .map { cleanCsvToken(it).uppercase(Locale.ROOT) }
         val index = header.withIndex().associate { it.value to it.index }
         val dateIdx = index["DATE"] ?: index["TRADEDATE"] ?: throw Netflow2ClientError.UpstreamError(
@@ -147,7 +147,7 @@ class Netflow2Client(
 
         return dataLines.mapNotNull { line ->
             if (line.isBlank()) return@mapNotNull null
-            val columns: List<String?> = line.split(';')
+            val columns: List<String?> = line.split(';', ignoreCase = false, limit = Int.MAX_VALUE)
             try {
                 val ticker = columns.getOrNull(tickerIdx)?.let(::cleanCsvToken)?.ifBlank { null }?.let(::normalizeTicker)
                     ?: expectedTicker
@@ -266,13 +266,9 @@ class Netflow2Client(
     private fun JsonObject.hasDataAndColumns(): Boolean = containsKey("data") && containsKey("columns")
 
     private fun String.isHeaderLine(): Boolean {
-        val tokens = split(';')
-            .map { cleanCsvToken(it).uppercase(Locale.ROOT) }
-            .filter { it.isNotEmpty() }
-        if (tokens.size < 2) return false
-        val hasDate = tokens.any { it == "DATE" || it == "TRADEDATE" }
-        val hasTicker = tokens.any { it == "SECID" || it == "TICKER" }
-        return hasDate && hasTicker
+        val normalized = replace("\uFEFF", "").uppercase(Locale.ROOT)
+        return (normalized.contains("DATE") || normalized.contains("TRADEDATE")) &&
+            (normalized.contains("SECID") || normalized.contains("TICKER"))
     }
 
     private suspend fun <T> runResilient(url: String, block: suspend () -> T): HttpResult<T> {
@@ -395,7 +391,7 @@ class Netflow2Client(
         getOrNull(idx)?.takeIf { !it.isNullOrBlank() }?.let(::cleanCsvToken)?.takeIf { it.isNotEmpty() }?.toLongOrNull()
     }
 
-    private fun cleanCsvToken(raw: String): String = raw.trim().removePrefix("\uFEFF").trim()
+    private fun cleanCsvToken(raw: String): String = raw.replace("\uFEFF", "").trim()
 
     private suspend fun readBodyOrNull(response: HttpResponse): String? = try {
         response.bodyAsText()

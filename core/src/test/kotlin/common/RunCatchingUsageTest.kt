@@ -2,6 +2,7 @@ package common
 
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.streams.asSequence
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.io.path.readText
@@ -12,6 +13,7 @@ class RunCatchingUsageTest {
         val root = Path.of("").toAbsolutePath()
         val matches = Files.walk(root).use { paths ->
             paths
+                .asSequence()
                 .filter { path -> path.toString().contains("${Path.of("src", "main")}") }
                 .filter { path -> path.toString().endsWith(".kt") }
                 .filterNot { path -> path.toString().contains("${Path.of("build")}") }

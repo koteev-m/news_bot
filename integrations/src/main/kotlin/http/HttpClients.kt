@@ -69,6 +69,22 @@ object HttpClients {
         return client
     }
 
+    fun <T : HttpClientEngineConfig> build(
+        cfg: IntegrationsHttpConfig,
+        pool: HttpPoolConfig,
+        metrics: IntegrationsMetrics,
+        clock: Clock = Clock.systemUTC(),
+        engineFactory: HttpClientEngineFactory<T>,
+        engineConfig: T.() -> Unit
+    ): HttpClient {
+        val client = HttpClient(engineFactory) {
+            configure(cfg, pool, metrics, clock)
+            engine(engineConfig)
+        }
+        registerRetryMonitor(client, metrics)
+        return client
+    }
+
     internal fun <T : HttpClientEngineConfig> HttpClientConfig<T>.configure(
         cfg: IntegrationsHttpConfig,
         pool: HttpPoolConfig,
@@ -246,7 +262,7 @@ sealed class HttpClientError(message: String, cause: Throwable? = null) : Runtim
             if (normalized.length <= MAX_ERROR_SNIPPET) return normalized
             val limit = (MAX_ERROR_SNIPPET - 1).coerceAtLeast(0)
             val clipped = normalized.take(limit).trimEnd()
-            return "${clipped}…"
+            return "$clipped…"
         }
     }
 

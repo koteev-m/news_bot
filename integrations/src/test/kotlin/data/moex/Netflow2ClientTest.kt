@@ -3,7 +3,7 @@ package data.moex
 import http.CircuitBreaker
 import http.CircuitBreakerCfg
 import http.HttpClientError
-import http.HttpClients
+import http.HttpClients.configure
 import http.HttpPoolConfig
 import http.IntegrationsHttpConfig
 import http.IntegrationsMetrics
@@ -17,7 +17,7 @@ import io.ktor.client.plugins.ResponseException
 import io.ktor.http.HttpStatusCode
 import java.time.Clock
 import java.time.LocalDate
-import kotlin.test.Test
+import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -28,6 +28,8 @@ import netflow2.Netflow2PullWindow
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 
 class Netflow2ClientTest {
+    private val bom = "\uFEFF"
+
     @Test
     fun `parses csv payload with nullable columns`() = runTest {
         val csvPayload = """
@@ -35,19 +37,35 @@ class Netflow2ClientTest {
             meta;ignored
             SECID;DATE;P30;P70;P100;PV30;PV70;PV100;VOL;OI
             SBER;2024-01-01;1;;3;4; ; ;7;8
-            SBER;2024-01-02;;;;;;;100;
+            SBER;2024-01-02;;;;;;;;100
         """.trimIndent()
 
         val metrics = IntegrationsMetrics(SimpleMeterRegistry())
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 2, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 2,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { request ->
                     assertEquals("/iss/analyticalproducts/netflow2/securities/SBER.csv", request.url.encodedPath)
@@ -69,26 +87,26 @@ class Netflow2ClientTest {
             val window = Netflow2PullWindow.ofInclusive(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 3))
             val rows = client.fetchWindow("sber", window).getOrThrow()
 
-        assertEquals(2, rows.size)
-        val first = rows.first()
-        val second = rows.last()
+            assertEquals(2, rows.size)
+            val first = rows.first()
+            val second = rows.last()
 
-        assertEquals(LocalDate.of(2024, 1, 1), first.date)
-        assertEquals("SBER", first.ticker)
-        assertEquals(1L, first.p30)
-        assertNull(first.p70)
-        assertEquals(3L, first.p100)
-        assertEquals(4L, first.pv30)
-        assertNull(first.pv70)
-        assertNull(first.pv100)
-        assertEquals(7L, first.vol)
-        assertEquals(8L, first.oi)
+            assertEquals(LocalDate.of(2024, 1, 1), first.date)
+            assertEquals("SBER", first.ticker)
+            assertEquals(1L, first.p30)
+            assertNull(first.p70)
+            assertEquals(3L, first.p100)
+            assertEquals(4L, first.pv30)
+            assertNull(first.pv70)
+            assertNull(first.pv100)
+            assertEquals(7L, first.vol)
+            assertEquals(8L, first.oi)
 
-        assertEquals(LocalDate.of(2024, 1, 2), second.date)
-        assertNull(second.p30)
-        assertNull(second.p70)
-        assertNull(second.pv30)
-        assertNull(second.vol)
+            assertEquals(LocalDate.of(2024, 1, 2), second.date)
+            assertNull(second.p30)
+            assertNull(second.p70)
+            assertNull(second.pv30)
+            assertNull(second.vol)
             assertEquals(100L, second.oi)
         } finally {
             httpClient.close()
@@ -109,12 +127,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { respond(csvPayload) }
             }
@@ -152,12 +186,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine { addHandler { respond(csvPayload) } }
         }
 
@@ -186,7 +236,7 @@ class Netflow2ClientTest {
     fun `parses csv payload with bom header`() = runTest {
         val csvPayload = """
             random meta
-            \uFEFFSECID;DATE;P30;OI
+            ${bom}SECID;DATE;P30;OI
             SBER;2024-02-01;11;12
         """.trimIndent()
 
@@ -194,12 +244,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine { addHandler { respond(csvPayload) } }
         }
 
@@ -229,7 +295,7 @@ class Netflow2ClientTest {
     fun `parses csv payload with bom and space before header`() = runTest {
         val csvPayload = """
             notice
-             \uFEFF SECID;DATE;P30;OI
+             ${bom} SECID;DATE;P30;OI
             SBER;2024-03-01;13;14
         """.trimIndent()
 
@@ -237,12 +303,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine { addHandler { respond(csvPayload) } }
         }
 
@@ -290,12 +372,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 2, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 2,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { request ->
                     assertEquals("/iss/analyticalproducts/netflow2/securities/SBER.json", request.url.encodedPath)
@@ -318,13 +416,13 @@ class Netflow2ClientTest {
             val window = Netflow2PullWindow.ofInclusive(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 3))
             val rows = client.fetchWindow("sber", window).getOrThrow()
 
-        assertEquals(2, rows.size)
-        val first = rows.first()
-        val second = rows.last()
+            assertEquals(2, rows.size)
+            val first = rows.first()
+            val second = rows.last()
 
-        assertEquals("SBER", first.ticker)
-        assertEquals(5L, first.p30)
-        assertEquals(10L, first.oi)
+            assertEquals("SBER", first.ticker)
+            assertEquals(5L, first.p30)
+            assertEquals(10L, first.oi)
 
             assertEquals(LocalDate.of(2024, 1, 2), second.date)
             assertEquals("SBER", second.ticker)
@@ -349,12 +447,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine { addHandler { respond(jsonPayload) } }
         }
 
@@ -386,13 +500,29 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 3, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 3,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         var attempts = 0
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler {
                     attempts += 1
@@ -430,12 +560,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { request ->
                     throw HttpClientError.HttpStatusError(
@@ -476,12 +622,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { request ->
                     throw HttpClientError.HttpStatusError(
@@ -522,13 +684,29 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 3, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 3,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         var attempts = 0
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler {
                     attempts += 1
@@ -567,12 +745,28 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { request ->
                     throw HttpClientError.HttpStatusError(
@@ -613,13 +807,29 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val body = "missing\tsec\nnot found"
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             expectSuccess = true
             engine {
                 addHandler { respond(body, status = HttpStatusCode.NotFound) }
@@ -661,13 +871,29 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val body = "invalid\tsec\nbad request"
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             expectSuccess = true
             engine {
                 addHandler { respond(body, status = HttpStatusCode.BadRequest) }
@@ -712,13 +938,29 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val body = "start\tmiddle\n" + "a".repeat(600) + "\n end "
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { respond(body, status = HttpStatusCode.InternalServerError) }
             }
@@ -765,13 +1007,29 @@ class Netflow2ClientTest {
         val httpConfig = IntegrationsHttpConfig(
             userAgent = "test-agent",
             timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-            retry = RetryCfg(maxAttempts = 1, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-            circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
         )
 
         val body = "prefix\tline\n" + "x".repeat(50_000) + "\r\nsuffix"
         val httpClient = HttpClient(MockEngine) {
-            HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), metrics, Clock.systemUTC())
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
             engine {
                 addHandler { respond(body, status = HttpStatusCode.InternalServerError) }
             }

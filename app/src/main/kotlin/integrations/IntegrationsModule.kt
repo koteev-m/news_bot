@@ -46,7 +46,7 @@ object IntegrationsModule {
     fun provide(env: ApplicationEnvironment, registry: MeterRegistry): IntegrationsProvider {
         val integrationsConfig = env.config.config("integrations")
         val httpConfig = env.integrationsHttpConfig()
-        val performanceConfig = env.config.configOrNull("performance")
+        val performanceConfig = runCatching { env.config.config("performance") }.getOrNull()
         val poolConfig = performanceConfig.httpPoolConfig()
         val cacheTtlConfig = performanceConfig.cacheTtlConfig()
         val metrics = IntegrationsMetrics(registry)
@@ -176,7 +176,7 @@ private fun ApplicationEnvironment.integrationsHttpConfig(): IntegrationsHttpCon
 
 private fun ApplicationEnvironment.netflow2ClientConfig(): Netflow2ClientConfig {
     val defaults = Netflow2ClientConfig()
-    val netflowRoot = config.configOrNull("integrations")?.configOrNull("netflow2") ?: return defaults
+    val netflowRoot = runCatching { config.config("integrations").config("netflow2") }.getOrNull() ?: return defaults
 
     val baseUrl = netflowRoot.propertyOrNull("baseUrl")?.getString()?.takeIf { it.isNotBlank() } ?: defaults.baseUrl
     val format = netflowRoot.propertyOrNull("format")?.getString()?.let { raw ->
