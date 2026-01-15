@@ -266,9 +266,12 @@ class Netflow2Client(
     private fun JsonObject.hasDataAndColumns(): Boolean = containsKey("data") && containsKey("columns")
 
     private fun String.isHeaderLine(): Boolean {
-        val normalized = replace("\uFEFF", "").uppercase(Locale.ROOT)
-        return (normalized.contains("DATE") || normalized.contains("TRADEDATE")) &&
-            (normalized.contains("SECID") || normalized.contains("TICKER"))
+        if (!contains(';')) return false
+        val tokens = split(';', ignoreCase = false, limit = Int.MAX_VALUE)
+            .map { cleanCsvToken(it).uppercase(Locale.ROOT) }
+        val hasDate = tokens.any { it == "DATE" || it == "TRADEDATE" }
+        val hasTicker = tokens.any { it == "SECID" || it == "TICKER" }
+        return hasDate && hasTicker
     }
 
     private suspend fun <T> runResilient(url: String, block: suspend () -> T): HttpResult<T> {
