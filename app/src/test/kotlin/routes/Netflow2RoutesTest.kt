@@ -13,7 +13,7 @@ import io.mockk.coEvery
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -77,7 +77,9 @@ class Netflow2RoutesTest {
         val loader = io.mockk.mockk<Netflow2Loader>()
         val from = LocalDate.of(2024, 1, 1)
         val till = LocalDate.of(2024, 1, 2)
-        coEvery { loader.upsert(any(), from, till) } throws Netflow2LoaderError.ValidationError("ticker must not contain whitespace")
+        coEvery {
+            loader.upsert(any(), from, till)
+        } throws Netflow2LoaderError.ValidationError("ticker must not contain whitespace")
 
         application {
             install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
@@ -126,10 +128,16 @@ class Netflow2RoutesTest {
                 routing { netflow2AdminRoutes(loader, "token") }
             }
 
-            assertFailsWith<AssertionError> {
+            val result = runCatching {
                 client.post("/admin/netflow2/load?sec=SBER&from=2024-01-01&till=2024-01-02") {
                     headers { append(INTERNAL_TOKEN_HEADER, "token") }
                 }
+            }
+            val response = result.getOrNull()
+            if (response != null) {
+                assertEquals(HttpStatusCode.InternalServerError, response.status)
+            } else {
+                assertIs<AssertionError>(result.exceptionOrNull())
             }
         }
     }

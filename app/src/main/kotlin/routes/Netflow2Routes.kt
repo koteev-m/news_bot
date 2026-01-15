@@ -10,6 +10,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
 import netflow2.Netflow2Loader
 import netflow2.Netflow2LoaderError
 
@@ -59,17 +60,27 @@ fun Route.netflow2AdminRoutes(loader: Netflow2Loader, internalToken: String?) {
         }
 
         call.respond(
-            mapOf(
-                "sec" to result.sec,
-                "from" to result.from.toString(),
-                "till" to result.till.toString(),
-                "windows" to result.windows,
-                "rows" to result.rowsUpserted,
-                "maxDate" to result.maxDate?.toString(),
+            Netflow2LoadResponse(
+                sec = result.sec,
+                from = result.from.toString(),
+                till = result.till.toString(),
+                windows = result.windows,
+                rows = result.rowsUpserted,
+                maxDate = result.maxDate?.toString(),
             )
         )
     }
 }
+
+@Serializable
+private data class Netflow2LoadResponse(
+    val sec: String,
+    val from: String,
+    val till: String,
+    val windows: Int,
+    val rows: Int,
+    val maxDate: String?
+)
 
 private fun Throwable.toHttpError(): Pair<HttpStatusCode, String> = when (this) {
     is Netflow2LoaderError.ValidationError -> HttpStatusCode.BadRequest to (message ?: "validation error")

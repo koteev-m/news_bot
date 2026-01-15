@@ -9,7 +9,6 @@ import http.IntegrationsHttpConfig
 import http.IntegrationsMetrics
 import http.RetryCfg
 import http.TimeoutMs
-import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -39,8 +38,19 @@ class Netflow2EndToEndIT {
             val httpConfig = IntegrationsHttpConfig(
                 userAgent = "test-agent",
                 timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
-                retry = RetryCfg(maxAttempts = 2, baseBackoffMs = 1, jitterMs = 0, respectRetryAfter = false, retryOn = listOf()),
-                circuitBreaker = CircuitBreakerCfg(failuresThreshold = 5, windowSeconds = 60, openSeconds = 10, halfOpenMaxCalls = 1)
+                retry = RetryCfg(
+                    maxAttempts = 2,
+                    baseBackoffMs = 1,
+                    jitterMs = 0,
+                    respectRetryAfter = false,
+                    retryOn = listOf()
+                ),
+                circuitBreaker = CircuitBreakerCfg(
+                    failuresThreshold = 5,
+                    windowSeconds = 60,
+                    openSeconds = 10,
+                    halfOpenMaxCalls = 1
+                )
             )
             val integrationsMetrics = IntegrationsMetrics(integrationsRegistry)
             val feedMetrics = Netflow2Metrics(feedRegistry)
@@ -69,23 +79,31 @@ class Netflow2EndToEndIT {
                 ("2021-01-01" to "2021-01-02") to secondWindowPayload
             )
 
-            val httpClient = HttpClient(MockEngine) {
-                HttpClients.configure(httpConfig, HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30), integrationsMetrics, Clock.systemUTC())
-                engine {
-                    addHandler { request ->
-                        assertEquals("/iss/analyticalproducts/netflow2/securities/SBER.csv", request.url.encodedPath)
-                        val from = request.url.parameters["from"] ?: error("from missing")
-                        val till = request.url.parameters["till"] ?: error("till missing")
-                        val payload = payloads[from to till] ?: error("unexpected window $from-$till")
-                        respond(payload)
-                    }
+            val httpClient = HttpClients.build(
+                cfg = httpConfig,
+                pool = HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics = integrationsMetrics,
+                clock = Clock.systemUTC(),
+                engineFactory = MockEngine
+            ) {
+                addHandler { request ->
+                    assertEquals("/iss/analyticalproducts/netflow2/securities/SBER.csv", request.url.encodedPath)
+                    val from = request.url.parameters["from"] ?: error("from missing")
+                    val till = request.url.parameters["till"] ?: error("till missing")
+                    val payload = payloads[from to till] ?: error("unexpected window $from-$till")
+                    respond(payload)
                 }
             }
 
             try {
                 val client = Netflow2Client(
                     client = httpClient,
-                    circuitBreaker = CircuitBreaker("netflow2", httpConfig.circuitBreaker, integrationsMetrics, Clock.systemUTC()),
+                    circuitBreaker = CircuitBreaker(
+                        "netflow2",
+                        httpConfig.circuitBreaker,
+                        integrationsMetrics,
+                        Clock.systemUTC()
+                    ),
                     metrics = integrationsMetrics,
                     retryCfg = httpConfig.retry
                 )

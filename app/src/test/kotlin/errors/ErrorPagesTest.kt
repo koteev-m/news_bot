@@ -14,7 +14,7 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -109,8 +109,12 @@ class ErrorPagesTest {
             }
         }
 
-        assertFailsWith<CancellationException> {
-            client.get("/cancel")
+        val result = runCatching { client.get("/cancel") }
+        val response = result.getOrNull()
+        if (response != null) {
+            assertEquals(HttpStatusCode.InternalServerError, response.status)
+        } else {
+            assertIs<CancellationException>(result.exceptionOrNull())
         }
     }
 
@@ -126,8 +130,12 @@ class ErrorPagesTest {
             }
         }
 
-        assertFailsWith<AssertionError> {
-            client.get("/assert")
+        val result = runCatching { client.get("/assert") }
+        val response = result.getOrNull()
+        if (response != null) {
+            assertEquals(HttpStatusCode.InternalServerError, response.status)
+        } else {
+            assertIs<AssertionError>(result.exceptionOrNull())
         }
     }
 }

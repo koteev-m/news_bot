@@ -17,7 +17,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
-import io.ktor.server.config.MapApplicationConfig
+import io.ktor.server.config.ApplicationConfig
 import io.ktor.server.testing.testApplication
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -39,23 +39,7 @@ class WebhookIntegrationTest {
         val billing = TestBillingService()
 
         environment {
-            config = MapApplicationConfig().apply {
-                put("telegram.webhookSecret", secret)
-                put("webhook.queue.capacity", "3")
-                put("webhook.queue.workers", "1")
-                put("webhook.queue.overflow", "drop_latest")
-                put("security.jwtSecret", "integration-test-secret")
-                put("security.issuer", "test-issuer")
-                put("security.audience", "test-audience")
-                put("security.realm", "test-realm")
-                put("security.accessTtlMinutes", "60")
-                put("privacy.retention.analyticsDays", "90")
-                put("privacy.retention.alertsDays", "30")
-                put("privacy.retention.botStartsDays", "30")
-                put("privacy.erasure.enabled", "true")
-                put("privacy.erasure.dryRun", "false")
-                put("privacy.erasure.batchSize", "5000")
-            }
+            config = ApplicationConfig("application-test.conf")
         }
 
         application {
