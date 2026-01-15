@@ -18,6 +18,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -113,6 +114,7 @@ class ErrorPagesTest {
         val response = result.getOrNull()
         if (response != null) {
             assertEquals(HttpStatusCode.InternalServerError, response.status)
+            assertNotInternalErrorResponse(response.bodyAsText(), response.headers[HttpHeaders.ContentType])
         } else {
             assertIs<CancellationException>(result.exceptionOrNull())
         }
@@ -134,8 +136,16 @@ class ErrorPagesTest {
         val response = result.getOrNull()
         if (response != null) {
             assertEquals(HttpStatusCode.InternalServerError, response.status)
+            assertNotInternalErrorResponse(response.bodyAsText(), response.headers[HttpHeaders.ContentType])
         } else {
             assertIs<AssertionError>(result.exceptionOrNull())
         }
+    }
+
+    private fun assertNotInternalErrorResponse(payload: String, contentType: String?) {
+        if (contentType?.startsWith("application/json") != true) return
+        val parsed = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
+        val code = parsed?.get("code")?.jsonPrimitive?.contentOrNull
+        assertTrue(code != "INTERNAL")
     }
 }

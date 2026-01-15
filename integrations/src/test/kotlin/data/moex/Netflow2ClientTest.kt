@@ -233,6 +233,65 @@ class Netflow2ClientTest {
     }
 
     @Test
+    fun `ignores meta line that mentions secid date without delimiter`() = runTest {
+        val csvPayload = """
+            report: SECID DATE columns below
+            SECID;DATE;P30;OI
+            SBER;2024-01-10;15;16
+        """.trimIndent()
+
+        val metrics = IntegrationsMetrics(SimpleMeterRegistry())
+        val httpConfig = IntegrationsHttpConfig(
+            userAgent = "test-agent",
+            timeoutMs = TimeoutMs(connect = 1_000, socket = 1_000, request = 1_000),
+            retry = RetryCfg(
+                maxAttempts = 1,
+                baseBackoffMs = 1,
+                jitterMs = 0,
+                respectRetryAfter = false,
+                retryOn = listOf()
+            ),
+            circuitBreaker = CircuitBreakerCfg(
+                failuresThreshold = 5,
+                windowSeconds = 60,
+                openSeconds = 10,
+                halfOpenMaxCalls = 1
+            )
+        )
+
+        val httpClient = HttpClient(MockEngine) {
+            configure(
+                httpConfig,
+                HttpPoolConfig(maxConnectionsPerRoute = 4, keepAliveSeconds = 30),
+                metrics,
+                Clock.systemUTC()
+            )
+            engine { addHandler { respond(csvPayload) } }
+        }
+
+        try {
+            val client = Netflow2Client(
+                client = httpClient,
+                circuitBreaker = CircuitBreaker("netflow2", httpConfig.circuitBreaker, metrics, Clock.systemUTC()),
+                metrics = metrics,
+                retryCfg = httpConfig.retry
+            )
+
+            val window = Netflow2PullWindow.ofInclusive(LocalDate.of(2024, 1, 10), LocalDate.of(2024, 1, 11))
+            val rows = client.fetchWindow("sber", window).getOrThrow()
+
+            assertEquals(1, rows.size)
+            val row = rows.single()
+            assertEquals(LocalDate.of(2024, 1, 10), row.date)
+            assertEquals("SBER", row.ticker)
+            assertEquals(15L, row.p30)
+            assertEquals(16L, row.oi)
+        } finally {
+            httpClient.close()
+        }
+    }
+
+    @Test
     fun `parses csv payload with bom header`() = runTest {
         val csvPayload = """
             random meta
