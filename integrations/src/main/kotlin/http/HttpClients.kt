@@ -33,6 +33,7 @@ import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import common.runCatchingNonFatal
+import common.rethrowIfFatal
 
 object HttpClients {
     private val currentService: ThreadLocal<String?> = ThreadLocal()
@@ -174,15 +175,10 @@ object HttpClients {
                 val result = block()
                 metrics.stopTimer(sample, service, "success")
                 result
-            } catch (cancellation: CancellationException) {
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
                 metrics.stopTimer(sample, service, "error")
-                throw cancellation
-            } catch (err: Error) {
-                metrics.stopTimer(sample, service, "error")
-                throw err
-            } catch (ex: Throwable) {
-                metrics.stopTimer(sample, service, "error")
-                throw ex
+                throw t
             }
         }
     }

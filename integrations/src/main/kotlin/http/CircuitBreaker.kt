@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.jvm.Volatile
+import common.rethrowIfFatal
 
 enum class CbState {
     CLOSED,
@@ -42,13 +43,10 @@ class CircuitBreaker(
             val result = block()
             onSuccess()
             result
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (err: Error) {
-            throw err
-        } catch (ex: Throwable) {
-            onFailure(ex)
-            throw ex
+        } catch (t: Throwable) {
+            rethrowIfFatal(t)
+            onFailure(t)
+            throw t
         } finally {
             if (callState == CbState.HALF_OPEN) {
                 releaseHalfOpenPermit()

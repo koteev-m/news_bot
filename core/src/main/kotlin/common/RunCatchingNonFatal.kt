@@ -28,8 +28,7 @@ suspend inline fun <T> runCatchingNonFatal(block: suspend () -> T): Result<T> {
     }
 }
 
-@PublishedApi
-internal fun rethrowIfFatal(t: Throwable) {
+fun rethrowIfFatal(t: Throwable) {
     if (t is CancellationException) throw t
     if (t is Error) throw t
 }

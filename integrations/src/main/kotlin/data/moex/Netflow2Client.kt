@@ -15,7 +15,6 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
-import kotlinx.coroutines.CancellationException
 import java.time.Clock
 import java.time.Duration
 import java.time.LocalDate
@@ -35,6 +34,7 @@ import netflow2.Netflow2PullWindow
 import netflow2.normalizeTicker
 import netflow2.Netflow2Row
 import common.runCatchingNonFatal
+import common.rethrowIfFatal
 
 class Netflow2Client(
     private val client: HttpClient,
@@ -53,25 +53,19 @@ class Netflow2Client(
     suspend fun fetchWindow(ticker: String, window: Netflow2PullWindow): HttpResult<List<Netflow2Row>> {
         val normalizedTicker = try {
             normalizeTicker(ticker)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (err: Error) {
-            throw err
-        } catch (ex: Throwable) {
-            return Result.failure(Netflow2ClientError.ValidationError(ex.message ?: "invalid ticker", ex))
+        } catch (t: Throwable) {
+            rethrowIfFatal(t)
+            return Result.failure(Netflow2ClientError.ValidationError(t.message ?: "invalid ticker", t))
         }
 
         val (from, tillInclusive) = try {
             window.toMoexQueryParams()
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (err: Error) {
-            throw err
-        } catch (ex: Throwable) {
+        } catch (t: Throwable) {
+            rethrowIfFatal(t)
             return Result.failure(
                 Netflow2ClientError.ValidationError(
-                    ex.message ?: "invalid window for Netflow2",
-                    ex
+                    t.message ?: "invalid window for Netflow2",
+                    t
                 )
             )
         }
@@ -83,13 +77,13 @@ class Netflow2Client(
                     parameter("from", from)
                     parameter("till", tillInclusive)
                 }
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (err: Error) {
-                throw err
-            } catch (ex: ResponseException) {
-                val payload = readBodyOrNull(ex.response)
-                throw HttpClientError.httpStatusError(ex.response.status, endpoint, payload, origin = ex)
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                if (t is ResponseException) {
+                    val payload = readBodyOrNull(t.response)
+                    throw HttpClientError.httpStatusError(t.response.status, endpoint, payload, origin = t)
+                }
+                throw t
             }
 
             val payload = response.bodyAsText()
@@ -166,14 +160,11 @@ class Netflow2Client(
                     vol = columns.longAt(index["VOL"]),
                     oi = columns.longAt(index["OI"])
                 )
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (err: Error) {
-                throw err
-            } catch (ex: Throwable) {
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
                 throw Netflow2ClientError.UpstreamError(
                     "Failed to parse Netflow2 CSV line: $line",
-                    ex
+                    t
                 )
             }
         }
@@ -182,12 +173,9 @@ class Netflow2Client(
     private fun parseJson(payload: String, expectedTicker: String): List<Netflow2Row> {
         val root = try {
             json.parseToJsonElement(payload)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (err: Error) {
-            throw err
-        } catch (ex: Throwable) {
-            throw Netflow2ClientError.UpstreamError("Unable to parse Netflow2 JSON payload", ex)
+        } catch (t: Throwable) {
+            rethrowIfFatal(t)
+            throw Netflow2ClientError.UpstreamError("Unable to parse Netflow2 JSON payload", t)
         }
 
         val dataset = extractDataset(root) ?: return emptyList()
@@ -213,12 +201,9 @@ class Netflow2Client(
                     ?: throw Netflow2ClientError.UpstreamError("Missing date column in Netflow2 JSON row: $row")
                 val date = try {
                     LocalDate.parse(dateRaw)
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (err: Error) {
-                    throw err
-                } catch (parseEx: Throwable) {
-                    throw Netflow2ClientError.UpstreamError("Invalid date '$dateRaw' in Netflow2 JSON", parseEx)
+                } catch (t: Throwable) {
+                    rethrowIfFatal(t)
+                    throw Netflow2ClientError.UpstreamError("Invalid date '$dateRaw' in Netflow2 JSON", t)
                 }
 
                 Netflow2Row(
@@ -233,12 +218,9 @@ class Netflow2Client(
                     vol = row.longAt(index["VOL"]),
                     oi = row.longAt(index["OI"])
                 )
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (err: Error) {
-                throw err
-            } catch (ex: Throwable) {
-                throw Netflow2ClientError.UpstreamError("Failed to parse Netflow2 JSON row: $row", ex)
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                throw Netflow2ClientError.UpstreamError("Failed to parse Netflow2 JSON row: $row", t)
             }
         }
     }
@@ -284,18 +266,15 @@ class Netflow2Client(
             try {
                 val result = circuitBreaker.withPermit { HttpClients.measure(SERVICE) { block() } }
                 return Result.success(result)
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (err: Error) {
-                throw err
-            } catch (ex: Throwable) {
-                lastError = ex
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                lastError = t
                 val now = clock.instant()
-                if (!shouldRetry(ex)) {
-                    return Result.failure(wrapError(url, ex))
+                if (!shouldRetry(t)) {
+                    return Result.failure(wrapError(url, t))
                 }
                 if (now.isAfter(deadline)) {
-                    return Result.failure(Netflow2ClientError.TimeoutError(url, ex))
+                    return Result.failure(Netflow2ClientError.TimeoutError(url, t))
                 }
                 attempt += 1
                 if (attempt >= maxAttempts) break
@@ -398,11 +377,8 @@ class Netflow2Client(
 
     private suspend fun readBodyOrNull(response: HttpResponse): String? = try {
         response.bodyAsText()
-    } catch (ce: CancellationException) {
-        throw ce
-    } catch (err: Error) {
-        throw err
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        rethrowIfFatal(t)
         null
     }
 

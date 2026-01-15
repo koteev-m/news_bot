@@ -143,8 +143,14 @@ class ErrorPagesTest {
     }
 
     private fun assertNotInternalErrorResponse(payload: String) {
-        val parsed = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
-        val code = parsed?.get("code")?.jsonPrimitive?.contentOrNull
-        assertTrue(code != "INTERNAL")
+        val parsed = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: return
+        val code = parsed["code"]?.jsonPrimitive?.contentOrNull
+        if (code == "INTERNAL") {
+            val snippet = payload.replace(Regex("[\\r\\n\\t]+"), " ").take(400)
+            assertTrue(
+                code != "INTERNAL",
+                "cancellation/errors should not be rendered as INTERNAL ErrorResponse. payload snippet: \"$snippet\""
+            )
+        }
     }
 }
