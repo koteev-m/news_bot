@@ -123,7 +123,7 @@ class Netflow2Client(
     }
 
     private fun parseCsv(payload: String, expectedTicker: String): List<Netflow2Row> {
-        val lines = payload.replace("\uFEFF", "").lineSequence().filter { it.isNotBlank() }.toList()
+        val lines = payload.lineSequence().filter { it.isNotBlank() }.toList()
         if (lines.isEmpty()) return emptyList()
 
         val headerIndex = lines.indexOfFirst { it.isHeaderLine() }
