@@ -16,7 +16,7 @@ class DeepLinkRegistryMoreTest : FunSpec({
         p.canonicalId shouldBe "TICKER_SBER"
     }
 
-    test("PRD: TICKER_BTC_2PCT v1") {
+    test("PRD: TICKER_BTC v1") {
         val json = """{"v":1,"t":"w","s":"BTC","h":"2p","a":"B3"}"""
         val p = reg.parseStart(b64u(json))!!
         p.canonicalId shouldBe "TICKER_BTC"
