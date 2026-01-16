@@ -78,7 +78,9 @@ val integrationTest by tasks.registering(Test::class) {
     group = "verification"
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
-    useJUnitPlatform {
-        includeTags("integration")
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("app.AllP05RoutesTestSuite")
+        includeTestsMatching("*IT")
     }
 }
