@@ -9,7 +9,7 @@
 | ID               | JSON (минимум)                                      | Пример base64url (≤64)                                |
 |------------------|------------------------------------------------------|-------------------------------------------------------|
 | TICKER_SBER      | `{"v":1,"t":"w","s":"SBER","b":"TQBR","a":"A2"}`     | `eyJ2IjoxLCJ0IjoidyIsInMiOiJTQkVSIiwiYiI6IlRRQlIiLCJhIjoiQTIifQ` |
-| TICKER_BTC_2PCT  | `{"v":1,"t":"w","s":"BTC","h":"2p","a":"B3"}`        | `eyJ2IjoxLCJ0IjoidyIsInMiOiJCVEMiLCJoIjoiMnAiLCJhIjoiQjMifQ`       |
+| TICKER_BTC       | `{"v":1,"t":"w","s":"BTC","h":"2p","a":"B3"}`        | `eyJ2IjoxLCJ0IjoidyIsInMiOiJCVEMiLCJoIjoiMnAiLCJhIjoiQjMifQ`       |
 | TOPIC_CBRATE     | `{"v":1,"t":"topic","i":"CBRATE","a":"C1"}`          | `eyJ2IjoxLCJ0IjoidG9waWMiLCJpIjoiQ0JSQVRFIiwiYSI6IkMxIn0`           |
 | PORTFOLIO        | `{"v":1,"t":"p"}`                                    | `eyJ2IjoxLCJ0IjoicCJ9`                                               |
 
@@ -20,5 +20,6 @@
   Значения `payload` ограничены фиксированными идентификаторами (`TICKER_*`, `TOPIC_*`, `PORTFOLIO`) во избежание роста кардинальности.
 
 - `/r/app?startapp=...` → `302` на `https://t.me/<bot>?startapp=...`
+  Метрика: `bot_start_total{payload}` где `payload` — канонический ID.
 
 > Логи не содержат значение payload; только длины и валидность.

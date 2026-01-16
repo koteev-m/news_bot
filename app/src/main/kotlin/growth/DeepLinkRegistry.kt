@@ -36,6 +36,7 @@ class DeepLinkRegistry(
 
         data class StartApp(
             val decoded: String,
+            val canonicalId: String,
             override val raw: String,
         ) : Parsed(raw)
     }
@@ -67,7 +68,7 @@ class DeepLinkRegistry(
     }
 
     fun parseStart(raw: String): Parsed.Start? {
-        val re = Regex("^[A-Za-z0-9_-]{1,${limitStart}}$")
+        val re = Regex("^[A-Za-z0-9_-]{1,$limitStart}$")
         if (!re.matches(raw)) {
             log.debug("deeplink:start invalid pattern len={}", raw.length)
             return null
@@ -81,7 +82,7 @@ class DeepLinkRegistry(
     }
 
     fun parseStartApp(raw: String): Parsed.StartApp? {
-        val re = Regex("^[A-Za-z0-9_-]{1,${limitStartApp}}$")
+        val re = Regex("^[A-Za-z0-9_-]{1,$limitStartApp}$")
         if (!re.matches(raw)) {
             log.debug("deeplink:startapp invalid pattern len={}", raw.length)
             return null
@@ -90,7 +91,8 @@ class DeepLinkRegistry(
             log.debug("deeplink:startapp b64url decode failed len={}", raw.length)
             return null
         }
-        return Parsed.StartApp(decoded = decoded, raw = raw)
+        val canonical = canonicalIdForStart(decoded)
+        return Parsed.StartApp(decoded = decoded, canonicalId = canonical, raw = raw)
     }
 
     private fun decodeBase64Url(value: String): String? = runCatchingNonFatal {

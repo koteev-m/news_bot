@@ -12,6 +12,7 @@ import io.micrometer.core.instrument.Tag
 import org.slf4j.LoggerFactory
 
 private const val METRIC_CTA_CLICK = "cta_click_total"
+private const val METRIC_BOT_START = "bot_start_total"
 
 /**
  * Установка роутов:
@@ -82,6 +83,15 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry) {
 
         get("/r/app") {
             val parsed = registry.parseStartApp(call.request.queryParameters["startapp"].orEmpty())
+
+            if (parsed != null) {
+                meterRegistry.counter(
+                    METRIC_BOT_START,
+                    listOf(
+                        Tag.of("payload", parsed.canonicalId),
+                    ),
+                ).increment()
+            }
 
             val location = if (parsed == null) {
                 "https://t.me/$bot"

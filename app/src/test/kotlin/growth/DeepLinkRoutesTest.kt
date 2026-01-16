@@ -51,7 +51,7 @@ class DeepLinkRoutesTest : FunSpec({
                 expectSuccess = false
             }
 
-            val resp = client.get("/r/cta/123?start==")  // заведомо невалидно
+            val resp = client.get("/r/cta/123?start==") // заведомо невалидно
             resp.status shouldBe HttpStatusCode.Found
             resp.headers["Location"] shouldBe "https://t.me/my_test_bot"
         }
@@ -59,6 +59,7 @@ class DeepLinkRoutesTest : FunSpec({
 
     test("app redirect 302 when startapp invalid -> homepage") {
         testApplication {
+            val meterRegistry = SimpleMeterRegistry()
             environment {
                 config = io.ktor.server.config.MapApplicationConfig(
                     "telegram.botUsername" to "my_test_bot",
@@ -66,16 +67,42 @@ class DeepLinkRoutesTest : FunSpec({
                     "growth.limits.startapp" to "512",
                 )
             }
-            application { installGrowthRoutes(SimpleMeterRegistry()) }
+            application { installGrowthRoutes(meterRegistry) }
 
             val client = createClient {
                 followRedirects = false
                 expectSuccess = false
             }
 
-            val resp = client.get("/r/app?startapp==")  // заведомо невалидно
+            val resp = client.get("/r/app?startapp==") // заведомо невалидно
             resp.status shouldBe HttpStatusCode.Found
             resp.headers["Location"] shouldBe "https://t.me/my_test_bot"
+            meterRegistry.find("bot_start_total").counter().shouldBe(null)
+        }
+    }
+
+    test("app redirect 302 with bot_start_total on valid startapp") {
+        testApplication {
+            val meterRegistry = SimpleMeterRegistry()
+            environment {
+                config = io.ktor.server.config.MapApplicationConfig(
+                    "telegram.botUsername" to "my_test_bot",
+                    "growth.limits.start" to "64",
+                    "growth.limits.startapp" to "512",
+                )
+            }
+            application { installGrowthRoutes(meterRegistry) }
+
+            val client = createClient {
+                followRedirects = false
+                expectSuccess = false
+            }
+
+            val payload = b64u("""{"v":1,"t":"w","s":"BTC","h":"2p","a":"B3"}""")
+            val resp = client.get("/r/app?startapp=$payload")
+            resp.status shouldBe HttpStatusCode.Found
+            resp.headers["Location"] shouldBe "https://t.me/my_test_bot?startapp=$payload"
+            meterRegistry.get("bot_start_total").tag("payload", "TICKER_BTC").counter().count() shouldBe 1.0
         }
     }
 })
