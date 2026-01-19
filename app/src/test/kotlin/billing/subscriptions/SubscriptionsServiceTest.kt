@@ -12,32 +12,61 @@ class SubscriptionsServiceTest {
     @Test
     fun `activate idempotent and cancel`() = runBlocking {
         val repo = InMemoryStarSubscriptionsRepository()
-        val svc = SubscriptionsService(repo, SimpleMeterRegistry())
+        val meter = SimpleMeterRegistry()
+        val svc = SubscriptionsService(repo, meter)
 
         val first = svc.activate(42, "PRO", autoRenew = true, renewAfter = Duration.ofDays(30), trialUntil = null)
         val second = svc.activate(42, "PRO", autoRenew = true, renewAfter = Duration.ofDays(30), trialUntil = null)
 
         assertEquals(first.userId, second.userId)
         assertEquals("ACTIVE", repo.findActiveByUser(42)?.status)
+        assertEquals(1.0, meter.get("paid_active_gauge").gauge().value())
 
         val canceled = svc.cancel(42)
         assertTrue(canceled)
         assertEquals(null, repo.findActiveByUser(42))
+        assertEquals(0.0, meter.get("paid_active_gauge").gauge().value())
+        assertEquals(2.0, meter.get("transactions_total").tag("result", "activated").counter().count())
+        assertEquals(1.0, meter.get("transactions_total").tag("result", "canceled").counter().count())
     }
 
     @Test
     fun `renew due moves renew_at forward`() = runBlocking {
-        val repo = InMemoryStarSubscriptionsRepository()
-        val svc = SubscriptionsService(repo, SimpleMeterRegistry())
+        val repo = FailingUpsertRepository()
+        val meter = SimpleMeterRegistry()
+        val svc = SubscriptionsService(repo, meter)
         val now = Instant.parse("2024-01-01T00:00:00Z")
 
         repo.upsertActive(7, "PRO", autoRenew = true, renewAt = now, trialUntil = null)
+        repo.upsertActive(13, "PRO", autoRenew = true, renewAt = now, trialUntil = null)
         val due = repo.findDueRenew(now)
         assertTrue(due.isNotEmpty())
 
+        repo.failOnRenew = true
         val stats = svc.renewDue(now, Duration.ofDays(30))
         assertEquals(1, stats.ok)
+        assertEquals(1, stats.failed)
+        assertEquals(1.0, meter.get("renew_attempt_total").tag("result", "success").counter().count())
+        assertEquals(1.0, meter.get("renew_attempt_total").tag("result", "error").counter().count())
+
         val after = repo.findDueRenew(now)
-        assertTrue(after.isEmpty())
+        assertEquals(1, after.size)
+    }
+}
+
+private class FailingUpsertRepository : InMemoryStarSubscriptionsRepository() {
+    var failOnRenew: Boolean = false
+
+    override suspend fun upsertActive(
+        userId: Long,
+        plan: String,
+        autoRenew: Boolean,
+        renewAt: Instant?,
+        trialUntil: Instant?,
+    ): StarSubscriptionRow {
+        if (failOnRenew && userId == 13L) {
+            error("boom")
+        }
+        return super.upsertActive(userId, plan, autoRenew, renewAt, trialUntil)
     }
 }

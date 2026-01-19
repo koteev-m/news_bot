@@ -3,14 +3,14 @@ package billing.subscriptions
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 
-class InMemoryStarSubscriptionsRepository : StarSubscriptionsRepository {
+open class InMemoryStarSubscriptionsRepository : StarSubscriptionsRepository {
     private val idSeq = AtomicLong(1)
     private val rows = HashMap<Long, StarSubscriptionRow>()
 
     override suspend fun findActiveByUser(userId: Long): StarSubscriptionRow? =
         rows[userId]?.takeIf { it.status == "ACTIVE" }
 
-    override suspend fun upsertActive(
+    open override suspend fun upsertActive(
         userId: Long,
         plan: String,
         autoRenew: Boolean,
