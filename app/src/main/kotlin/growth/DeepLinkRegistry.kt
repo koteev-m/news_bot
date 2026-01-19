@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import org.slf4j.LoggerFactory
 import java.util.Base64
+import java.util.Locale
 import common.runCatchingNonFatal
 
 /**
@@ -26,6 +27,8 @@ class DeepLinkRegistry(
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     private val log = LoggerFactory.getLogger(DeepLinkRegistry::class.java)
+    private val startRegex = Regex("^[A-Za-z0-9_-]{1,$limitStart}$")
+    private val startAppRegex = Regex("^[A-Za-z0-9_-]{1,$limitStartApp}$")
 
     sealed class Parsed(open val raw: String) {
         data class Start(
@@ -68,8 +71,7 @@ class DeepLinkRegistry(
     }
 
     fun parseStart(raw: String): Parsed.Start? {
-        val re = Regex("^[A-Za-z0-9_-]{1,$limitStart}$")
-        if (!re.matches(raw)) {
+        if (!startRegex.matches(raw)) {
             log.debug("deeplink:start invalid pattern len={}", raw.length)
             return null
         }
@@ -82,8 +84,7 @@ class DeepLinkRegistry(
     }
 
     fun parseStartApp(raw: String): Parsed.StartApp? {
-        val re = Regex("^[A-Za-z0-9_-]{1,$limitStartApp}$")
-        if (!re.matches(raw)) {
+        if (!startAppRegex.matches(raw)) {
             log.debug("deeplink:startapp invalid pattern len={}", raw.length)
             return null
         }
@@ -104,13 +105,37 @@ class DeepLinkRegistry(
     private fun canonicalIdForStart(decodedJson: String): String = runCatchingNonFatal {
         val elem = json.parseToJsonElement(decodedJson)
         val v = elem.jsonObject["v"]?.jsonPrimitive?.intOrNull ?: 1
-        if (v != 1) return@runCatchingNonFatal "UNKNOWN_V$v"
+        if (v != 1) return@runCatchingNonFatal UNKNOWN_VERSION
         val payload = json.decodeFromJsonElement<StartV1>(elem)
         when (payload.t) {
-            "w" -> payload.s?.let { "TICKER_${it.uppercase()}" } ?: "TICKER_UNKNOWN"
-            "topic" -> payload.i?.let { "TOPIC_${it.uppercase()}" } ?: "TOPIC_UNKNOWN"
+            "w" -> canonicalTicker(payload.s)
+            "topic" -> canonicalTopic(payload.i)
             "p" -> "PORTFOLIO"
             else -> "UNKNOWN"
         }
     }.getOrElse { "UNKNOWN" }
+
+    private fun canonicalTicker(value: String?): String {
+        val token = sanitizeToken(value) ?: return "TICKER_UNKNOWN"
+        return "TICKER_${token.uppercase(Locale.ROOT)}"
+    }
+
+    private fun canonicalTopic(value: String?): String {
+        val token = sanitizeToken(value) ?: return "TOPIC_UNKNOWN"
+        return "TOPIC_${token.uppercase(Locale.ROOT)}"
+    }
+
+    private fun sanitizeToken(value: String?): String? {
+        if (value.isNullOrEmpty()) {
+            return null
+        }
+        if (value.any { it.isWhitespace() || it > '\u007F' }) {
+            return null
+        }
+        return value
+    }
+
+    private companion object {
+        const val UNKNOWN_VERSION = "UNKNOWN_VERSION"
+    }
 }

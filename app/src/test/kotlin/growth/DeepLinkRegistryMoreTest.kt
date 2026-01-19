@@ -34,6 +34,12 @@ class DeepLinkRegistryMoreTest : FunSpec({
         p.canonicalId shouldBe "PORTFOLIO"
     }
 
+    test("unsupported version uses UNKNOWN_VERSION") {
+        val json = """{"v":2,"t":"w","s":"BTC"}"""
+        val p = reg.parseStart(b64u(json))!!
+        p.canonicalId shouldBe "UNKNOWN_VERSION"
+    }
+
     test("reject: non-base64url char") {
         reg.parseStart("hello@").shouldBeNull()
     }
