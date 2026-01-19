@@ -68,11 +68,34 @@ class AlertsService(
         repo.incDailyPushCount(userId, date)
     }
 
-    private fun cooldownUntil(nowEpoch: Long): Long = nowEpoch + config.cooldownT.min.inWholeSeconds
-
     private fun lockFor(userId: Long): java.util.concurrent.locks.ReentrantLock {
         val index = kotlin.math.abs((userId % locks.size).toInt())
         return locks[index]
+    }
+
+    private fun cooldownEndsAt(state: FsmState): Long? = when (state) {
+        is FsmState.COOLDOWN -> state.untilEpochSec
+        is FsmState.PUSHED -> state.pushedAtEpochSec + config.cooldownT.min.inWholeSeconds
+        is FsmState.PORTFOLIO_SUMMARY -> state.deliveredAtEpochSec + config.cooldownT.min.inWholeSeconds
+        else -> null
+    }
+
+    private fun resolveCooldown(state: FsmState, nowEpochSec: Long): FsmState {
+        val endsAt = cooldownEndsAt(state) ?: return state
+        return if (nowEpochSec >= endsAt) FsmState.IDLE else state
+    }
+
+    private fun inCooldown(state: FsmState, nowEpochSec: Long): Boolean {
+        val endsAt = cooldownEndsAt(state) ?: return false
+        return nowEpochSec < endsAt
+    }
+
+    private fun deliveredState(reason: String, nowEpochSec: Long): FsmState {
+        return if (reason == AlertDeliveryReasons.PORTFOLIO_SUMMARY) {
+            FsmState.PORTFOLIO_SUMMARY(nowEpochSec)
+        } else {
+            FsmState.PUSHED(nowEpochSec)
+        }
     }
 
     fun onSnapshot(snapshot: MarketSnapshot): TransitionResult {
@@ -93,9 +116,7 @@ class AlertsService(
         val emitted = mutableListOf<EmittedAlert>()
         val suppressedReasons = linkedSetOf<String>()
 
-        if (state is FsmState.COOLDOWN && snapshot.tsEpochSec >= state.untilEpochSec) {
-            state = FsmState.IDLE
-        }
+        state = resolveCooldown(state, snapshot.tsEpochSec)
         val budgetCount = repo.getDailyPushCount(userId, today)
         if (state is FsmState.BUDGET_EXHAUSTED && budgetCount < config.dailyBudgetPushMax) {
             state = FsmState.IDLE
@@ -111,6 +132,7 @@ class AlertsService(
 
         if (state is FsmState.QUIET && !quietNow && state.buffer.isNotEmpty()) {
             var deliveredAny = false
+            var deliveredSummary = false
             var remainingBudget = config.dailyBudgetPushMax - repo.getDailyPushCount(userId, today)
 
             state.buffer.forEach { alert ->
@@ -118,6 +140,9 @@ class AlertsService(
                     deliver(userId, alert, AlertDeliveryReasons.QUIET_HOURS_FLUSH, today)
                     emitted.add(EmittedAlert(alert, AlertDeliveryReasons.QUIET_HOURS_FLUSH))
                     deliveredAny = true
+                    if (alert.classId == "portfolio_summary") {
+                        deliveredSummary = true
+                    }
                     remainingBudget--
                 } else {
                     addSuppressed(AlertSuppressionReasons.BUDGET)
@@ -126,7 +151,13 @@ class AlertsService(
 
             val budgetExhausted = repo.getDailyPushCount(userId, today) >= config.dailyBudgetPushMax
             state = when {
-                deliveredAny && !budgetExhausted -> FsmState.COOLDOWN(cooldownUntil(snapshot.tsEpochSec))
+                deliveredAny && !budgetExhausted -> {
+                    if (deliveredSummary) {
+                        FsmState.PORTFOLIO_SUMMARY(snapshot.tsEpochSec)
+                    } else {
+                        FsmState.PUSHED(snapshot.tsEpochSec)
+                    }
+                }
                 deliveredAny -> FsmState.BUDGET_EXHAUSTED
                 else -> FsmState.BUDGET_EXHAUSTED
             }
@@ -150,13 +181,13 @@ class AlertsService(
                 addSuppressed(AlertSuppressionReasons.BUDGET)
                 return false
             }
-            if (state is FsmState.COOLDOWN && snapshot.tsEpochSec < (state as FsmState.COOLDOWN).untilEpochSec) {
+            if (inCooldown(state, snapshot.tsEpochSec)) {
                 addSuppressed(AlertSuppressionReasons.COOLDOWN)
                 return false
             }
             deliver(userId, alert, deliveredReason, today)
             emitted.add(EmittedAlert(alert, deliveredReason))
-            state = FsmState.COOLDOWN(cooldownUntil(snapshot.tsEpochSec))
+            state = deliveredState(deliveredReason, snapshot.tsEpochSec)
             return true
         }
 
@@ -253,7 +284,7 @@ class AlertsService(
         }
 
         when (state) {
-            is FsmState.COOLDOWN -> {
+            is FsmState.COOLDOWN, is FsmState.PUSHED, is FsmState.PORTFOLIO_SUMMARY -> {
                 addSuppressed(AlertSuppressionReasons.COOLDOWN)
             }
             is FsmState.BUDGET_EXHAUSTED -> {

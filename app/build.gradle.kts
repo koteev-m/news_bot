@@ -47,6 +47,7 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation("io.ktor:ktor-client-mock:$ktorVersion")
     testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.kotest.property)
     testImplementation(libs.kotest.runner.junit5)
     testImplementation("org.junit.platform:junit-platform-suite:1.11.3")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")

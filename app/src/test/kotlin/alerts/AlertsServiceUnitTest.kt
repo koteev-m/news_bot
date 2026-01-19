@@ -6,7 +6,6 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import kotlin.time.Duration.Companion.minutes
@@ -131,7 +130,9 @@ class AlertsServiceUnitTest : FunSpec({
             portfolio = PortfolioSnapshot(totalChangePctDay = 2.5)
         )
         val first = service.onSnapshot(snapshot)
-        first.newState.shouldBe(FsmState.QUIET(listOf(PendingAlert("portfolio_summary", "", "daily", 0.0, 2.5, quietTs))))
+        first.newState.shouldBe(
+            FsmState.QUIET(listOf(PendingAlert("portfolio_summary", "", "daily", 0.0, 2.5, quietTs)))
+        )
         val second = service.onSnapshot(snapshot)
         second.newState.shouldBe(first.newState)
 
@@ -174,7 +175,7 @@ class AlertsServiceUnitTest : FunSpec({
         val endResult = serviceEnd.onSnapshot(endSnapshot)
         endResult.emitted.shouldHaveSize(1)
         endResult.suppressedReasons.shouldBe(emptyList())
-        endResult.newState.shouldBe(FsmState.COOLDOWN(endSnapshot.tsEpochSec + baseConfig.cooldownT.min.inWholeSeconds))
+        endResult.newState.shouldBe(FsmState.PUSHED(endSnapshot.tsEpochSec))
 
         val serviceOutside = AlertsService(AlertsRepositoryMemory(), baseConfig, SimpleMeterRegistry())
         val outsideSnapshot = MarketSnapshot(
@@ -185,7 +186,7 @@ class AlertsServiceUnitTest : FunSpec({
         val outsideResult = serviceOutside.onSnapshot(outsideSnapshot)
         outsideResult.emitted.shouldHaveSize(1)
         outsideResult.suppressedReasons.shouldBe(emptyList())
-        outsideResult.newState.shouldBe(FsmState.COOLDOWN(outsideSnapshot.tsEpochSec + baseConfig.cooldownT.min.inWholeSeconds))
+        outsideResult.newState.shouldBe(FsmState.PUSHED(outsideSnapshot.tsEpochSec))
     }
 
     test("quiet hours flush increments metrics and budget per alert") {
@@ -212,11 +213,15 @@ class AlertsServiceUnitTest : FunSpec({
         val flush = service.onSnapshot(MarketSnapshot(tsEpochSec = flushTs, userId = 11, items = emptyList()))
         flush.emitted.shouldHaveSize(2)
         flush.emitted.all { it.reason == AlertDeliveryReasons.QUIET_HOURS_FLUSH }.shouldBe(true)
-        flush.newState.shouldBe(FsmState.COOLDOWN(flushTs + baseConfig.cooldownT.min.inWholeSeconds))
+        flush.newState.shouldBe(FsmState.PUSHED(flushTs))
 
         val flushDate = LocalDateTime.ofEpochSecond(flushTs, 0, ZoneOffset.UTC).toLocalDate()
         repo.getDailyPushCount(11, flushDate).shouldBe(2)
-        registry.counter("alert_delivered_total", "reason", AlertDeliveryReasons.QUIET_HOURS_FLUSH).count().shouldBe(2.0)
+        registry.counter(
+            "alert_delivered_total",
+            "reason",
+            AlertDeliveryReasons.QUIET_HOURS_FLUSH
+        ).count().shouldBe(2.0)
     }
 
     test("below-threshold suppression increments once and allows hysteresis exit") {
@@ -237,7 +242,11 @@ class AlertsServiceUnitTest : FunSpec({
 
         val result = service.onSnapshot(snapshot)
         result.suppressedReasons.shouldBe(listOf(AlertSuppressionReasons.BELOW_THRESHOLD))
-        registry.counter("alert_suppressed_total", "reason", AlertSuppressionReasons.BELOW_THRESHOLD).count().shouldBe(1.0)
+        registry.counter(
+            "alert_suppressed_total",
+            "reason",
+            AlertSuppressionReasons.BELOW_THRESHOLD
+        ).count().shouldBe(1.0)
         result.newState.shouldBe(FsmState.IDLE)
     }
 
@@ -254,7 +263,10 @@ class AlertsServiceUnitTest : FunSpec({
             userId = 13,
             items = listOf(SignalItem("B1", "breakout", "daily", pctMove = 1.0))
         )
-        val second = first.copy(tsEpochSec = quietTs + 60, items = listOf(SignalItem("B2", "breakout", "fast", pctMove = 1.0)))
+        val second = first.copy(
+            tsEpochSec = quietTs + 60,
+            items = listOf(SignalItem("B2", "breakout", "fast", pctMove = 1.0))
+        )
 
         service.onSnapshot(first)
         service.onSnapshot(second)
@@ -267,7 +279,11 @@ class AlertsServiceUnitTest : FunSpec({
 
         val flushDate = LocalDateTime.ofEpochSecond(flushTs, 0, ZoneOffset.UTC).toLocalDate()
         repo.getDailyPushCount(13, flushDate).shouldBe(1)
-        registry.counter("alert_delivered_total", "reason", AlertDeliveryReasons.QUIET_HOURS_FLUSH).count().shouldBe(1.0)
+        registry.counter(
+            "alert_delivered_total",
+            "reason",
+            AlertDeliveryReasons.QUIET_HOURS_FLUSH
+        ).count().shouldBe(1.0)
         registry.counter("alert_suppressed_total", "reason", AlertSuppressionReasons.BUDGET).count().shouldBe(1.0)
     }
 
@@ -303,7 +319,7 @@ class AlertsServiceUnitTest : FunSpec({
         result.emitted.first().alert.shouldBe(
             PendingAlert("a", "AAA", "daily", score = 0.5, pctMove = 1.0, ts = ts)
         )
-        result.newState.shouldBe(FsmState.COOLDOWN(ts + baseConfig.cooldownT.min.inWholeSeconds))
+        result.newState.shouldBe(FsmState.PUSHED(ts))
     }
 
     test("cooldown expiry allows new delivery") {
@@ -323,7 +339,7 @@ class AlertsServiceUnitTest : FunSpec({
         result.suppressedReasons.shouldBe(emptyList())
         result.emitted.shouldHaveSize(1)
         result.emitted.first().reason.shouldBe(AlertDeliveryReasons.DIRECT)
-        result.newState.shouldBe(FsmState.COOLDOWN(until + baseConfig.cooldownT.min.inWholeSeconds))
+        result.newState.shouldBe(FsmState.PUSHED(until))
         registry.counter("alert_delivered_total", "reason", AlertDeliveryReasons.DIRECT).count().shouldBe(1.0)
     }
 

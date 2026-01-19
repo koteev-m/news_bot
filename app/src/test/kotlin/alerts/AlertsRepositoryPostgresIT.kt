@@ -27,7 +27,7 @@ class AlertsRepositoryPostgresIT {
             )
 
             val result = service.onSnapshot(snapshot)
-            assertTrue(result.newState is FsmState.COOLDOWN)
+            assertTrue(result.newState is FsmState.PUSHED)
 
             val rehydratedService = AlertsService(repo, config, SimpleMeterRegistry())
             val persistedState = rehydratedService.getState(userId)
