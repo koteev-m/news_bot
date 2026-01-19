@@ -3,6 +3,7 @@ package billing.subscriptions
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,6 +76,46 @@ class SubscriptionsServiceTest {
         }
 
         assertEquals(1.0, meter.get("transactions_total").tag("result", "error").counter().count())
+    }
+
+    @Test
+    fun `cancel error increments transactions error counter`() = runBlocking {
+        val repo = object : InMemoryStarSubscriptionsRepository() {
+            override suspend fun cancelActive(userId: Long): Boolean {
+                throw IllegalStateException("boom")
+            }
+        }
+        val meter = SimpleMeterRegistry()
+        val svc = SubscriptionsService(repo, meter)
+
+        assertFailsWith<IllegalStateException> {
+            svc.cancel(7)
+        }
+
+        assertEquals(1.0, meter.get("transactions_total").tag("result", "error").counter().count())
+    }
+
+    @Test
+    fun `activate cancellation does not increment transactions error counter`() = runBlocking {
+        val repo = object : InMemoryStarSubscriptionsRepository() {
+            override suspend fun upsertActive(
+                userId: Long,
+                plan: String,
+                autoRenew: Boolean,
+                renewAt: Instant?,
+                trialUntil: Instant?,
+            ): StarSubscriptionRow {
+                throw CancellationException("cancelled")
+            }
+        }
+        val meter = SimpleMeterRegistry()
+        val svc = SubscriptionsService(repo, meter)
+
+        assertFailsWith<CancellationException> {
+            svc.activate(7, "PRO", autoRenew = true, renewAfter = Duration.ofDays(30), trialUntil = null)
+        }
+
+        assertEquals(null, meter.find("transactions_total").tag("result", "error").counter())
     }
 }
 
