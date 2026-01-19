@@ -123,6 +123,7 @@ class AlertsServiceUnitTest : FunSpec({
         val repo = AlertsRepositoryMemory()
         val service = AlertsService(repo, baseConfig, registry)
         val quietTs = 1_700_003_600L
+        val flushTs = quietTs + 9 * 3600
         val snapshot = MarketSnapshot(
             tsEpochSec = quietTs,
             userId = 6,
@@ -136,9 +137,28 @@ class AlertsServiceUnitTest : FunSpec({
         val second = service.onSnapshot(snapshot)
         second.newState.shouldBe(first.newState)
 
-        val flush = service.onSnapshot(snapshot.copy(tsEpochSec = quietTs + 9 * 3600, items = emptyList()))
+        val flush = service.onSnapshot(snapshot.copy(tsEpochSec = flushTs, items = emptyList()))
         flush.emitted.shouldHaveSize(1)
         flush.emitted.first().alert.classId.shouldBe("portfolio_summary")
+        flush.newState.shouldBe(FsmState.PORTFOLIO_SUMMARY(flushTs))
+    }
+
+    test("portfolio summary outside quiet becomes PORTFOLIO_SUMMARY") {
+        val repo = AlertsRepositoryMemory()
+        val service = AlertsService(repo, baseConfig, registry)
+        val ts = LocalDateTime.of(2024, 1, 2, 12, 0).toEpochSecond(ZoneOffset.UTC)
+
+        val result = service.onSnapshot(
+            MarketSnapshot(
+                tsEpochSec = ts,
+                userId = 16,
+                items = emptyList(),
+                portfolio = PortfolioSnapshot(totalChangePctDay = 2.0)
+            )
+        )
+
+        result.emitted.shouldHaveSize(1)
+        result.newState.shouldBe(FsmState.PORTFOLIO_SUMMARY(ts))
     }
 
     test("quiet hours boundaries are start-inclusive and end-exclusive") {
@@ -341,6 +361,40 @@ class AlertsServiceUnitTest : FunSpec({
         result.emitted.first().reason.shouldBe(AlertDeliveryReasons.DIRECT)
         result.newState.shouldBe(FsmState.PUSHED(until))
         registry.counter("alert_delivered_total", "reason", AlertDeliveryReasons.DIRECT).count().shouldBe(1.0)
+    }
+
+    test("pushed cooldown expires on exact boundary") {
+        val repo = AlertsRepositoryMemory()
+        val registry = SimpleMeterRegistry()
+        val config = baseConfig.copy(
+            cooldownT = DurationRange(10.minutes, 10.minutes),
+            confirmT = DurationRange(0.minutes, 0.minutes),
+            zoneId = ZoneOffset.UTC
+        )
+        val service = AlertsService(repo, config, registry)
+        val t0 = LocalDateTime.of(2024, 1, 2, 12, 0).toEpochSecond(ZoneOffset.UTC)
+        val snapshot = MarketSnapshot(
+            tsEpochSec = t0,
+            userId = 17,
+            items = listOf(SignalItem("CD", "breakout", "daily", pctMove = 1.0))
+        )
+
+        val first = service.onSnapshot(snapshot)
+        first.emitted.shouldHaveSize(1)
+        first.newState.shouldBe(FsmState.PUSHED(t0))
+        val date = LocalDateTime.ofEpochSecond(t0, 0, ZoneOffset.UTC).toLocalDate()
+        repo.getDailyPushCount(17, date).shouldBe(1)
+
+        val beforeCooldownEnd = service.onSnapshot(snapshot.copy(tsEpochSec = t0 + 10.minutes.inWholeSeconds - 1))
+        beforeCooldownEnd.emitted.shouldBe(emptyList())
+        beforeCooldownEnd.suppressedReasons.shouldContain(AlertSuppressionReasons.COOLDOWN)
+        repo.getDailyPushCount(17, date).shouldBe(1)
+
+        val t2 = t0 + 10.minutes.inWholeSeconds
+        val afterCooldownEnd = service.onSnapshot(snapshot.copy(tsEpochSec = t2))
+        afterCooldownEnd.emitted.shouldHaveSize(1)
+        afterCooldownEnd.newState.shouldBe(FsmState.PUSHED(t2))
+        repo.getDailyPushCount(17, date).shouldBe(2)
     }
 
     test("engine config enforces hysteresis exit factor bounds") {
