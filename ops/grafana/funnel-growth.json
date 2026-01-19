@@ -1,0 +1,70 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(post_views_total[5m]))",
+          "legendFormat": "post_views_total",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(cta_click_total[5m]))",
+          "legendFormat": "cta_click_total",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(bot_start_total[5m]))",
+          "legendFormat": "bot_start_total",
+          "refId": "C"
+        }
+      ],
+      "title": "Funnel & Growth rates",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": [
+    "funnel",
+    "growth"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Funnel & Growth",
+  "uid": "funnel-growth"
+}

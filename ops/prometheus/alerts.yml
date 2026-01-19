@@ -1,0 +1,6 @@
+groups:
+  - name: breaking_slo
+    rules:
+      - alert: SLO_Breaking_p50_gt_300s_15m
+        expr: histogram_quantile(0.5, rate(breaking_publish_latency_seconds_bucket[15m])) > 300
+        for: 5m
