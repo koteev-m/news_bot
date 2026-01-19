@@ -28,6 +28,24 @@ class DeepLinkRegistryMoreTest : FunSpec({
         p.canonicalId shouldBe "TOPIC_CBRATE"
     }
 
+    test("ticker sanitization: slash is rejected") {
+        val json = """{"v":1,"t":"w","s":"BTC/USDT"}"""
+        val p = reg.parseStart(b64u(json))!!
+        p.canonicalId shouldBe "TICKER_UNKNOWN"
+    }
+
+    test("ticker sanitization: control char is rejected") {
+        val json = """{"v":1,"t":"w","s":"BTC\u0001"}"""
+        val p = reg.parseStart(b64u(json))!!
+        p.canonicalId shouldBe "TICKER_UNKNOWN"
+    }
+
+    test("topic sanitization: punctuation is rejected") {
+        val json = """{"v":1,"t":"topic","i":"CBRATE!"}"""
+        val p = reg.parseStart(b64u(json))!!
+        p.canonicalId shouldBe "TOPIC_UNKNOWN"
+    }
+
     test("PRD: PORTFOLIO v1") {
         val json = """{"v":1,"t":"p"}"""
         val p = reg.parseStart(b64u(json))!!
