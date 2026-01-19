@@ -5,6 +5,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.server.testing.testApplication
 import java.time.Instant
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import observability.funnel.FunnelMetrics
 
@@ -21,9 +22,12 @@ class MetricsEndpointFunnelTest {
         }
 
         val body = client.get("/metrics").bodyAsText()
-        assertTrue(body.contains("post_views_total"))
-        assertTrue(body.contains("cta_click_total"))
-        assertTrue(body.contains("bot_start_total"))
+        assertTrue(Regex("(?m)^post_views_total(\\{|\\s)").containsMatchIn(body))
+        assertTrue(Regex("(?m)^cta_click_total(\\{|\\s)").containsMatchIn(body))
+        assertTrue(Regex("(?m)^bot_start_total(\\{|\\s)").containsMatchIn(body))
+        assertFalse(body.contains("post_views_total_total"))
+        assertFalse(body.contains("cta_click_total_total"))
+        assertFalse(body.contains("bot_start_total_total"))
         assertTrue(body.contains("breaking_publish_latency_seconds_bucket"))
     }
 }
