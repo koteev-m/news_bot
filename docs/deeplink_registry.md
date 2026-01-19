@@ -23,3 +23,4 @@
   Метрика: `bot_start_total{payload}` где `payload` — канонический ID.
 
 > Логи не содержат значение payload; только длины и валидность.
+> Для неподдерживаемых/невалидных decoded-json `payload` может быть `UNKNOWN` / `UNKNOWN_VERSION`.
