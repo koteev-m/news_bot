@@ -6,6 +6,7 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SubscriptionsServiceTest {
@@ -51,6 +52,29 @@ class SubscriptionsServiceTest {
 
         val after = repo.findDueRenew(now)
         assertEquals(1, after.size)
+    }
+
+    @Test
+    fun `activate error increments transactions error counter`() = runBlocking {
+        val repo = object : InMemoryStarSubscriptionsRepository() {
+            override suspend fun upsertActive(
+                userId: Long,
+                plan: String,
+                autoRenew: Boolean,
+                renewAt: Instant?,
+                trialUntil: Instant?,
+            ): StarSubscriptionRow {
+                throw IllegalStateException("boom")
+            }
+        }
+        val meter = SimpleMeterRegistry()
+        val svc = SubscriptionsService(repo, meter)
+
+        assertFailsWith<IllegalStateException> {
+            svc.activate(7, "PRO", autoRenew = true, renewAfter = Duration.ofDays(30), trialUntil = null)
+        }
+
+        assertEquals(1.0, meter.get("transactions_total").tag("result", "error").counter().count())
     }
 }
 
