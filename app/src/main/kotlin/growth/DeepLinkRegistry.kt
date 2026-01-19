@@ -27,8 +27,10 @@ class DeepLinkRegistry(
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     private val log = LoggerFactory.getLogger(DeepLinkRegistry::class.java)
-    private val startRegex = Regex("^[A-Za-z0-9_-]{1,$limitStart}$")
-    private val startAppRegex = Regex("^[A-Za-z0-9_-]{1,$limitStartApp}$")
+    private val startLimitSafe = limitStart.coerceAtLeast(1)
+    private val startAppLimitSafe = limitStartApp.coerceAtLeast(1)
+    private val startRegex = Regex("^[A-Za-z0-9_-]{1,$startLimitSafe}$")
+    private val startAppRegex = Regex("^[A-Za-z0-9_-]{1,$startAppLimitSafe}$")
 
     sealed class Parsed(open val raw: String) {
         data class Start(
@@ -129,7 +131,10 @@ class DeepLinkRegistry(
         if (value.isNullOrEmpty()) {
             return null
         }
-        if (value.any { it.isWhitespace() || it > '\u007F' }) {
+        if (value.length > TOKEN_MAX_LEN) {
+            return null
+        }
+        if (value.any { !it.isAllowedTokenChar() }) {
             return null
         }
         return value
@@ -137,5 +142,15 @@ class DeepLinkRegistry(
 
     private companion object {
         const val UNKNOWN_VERSION = "UNKNOWN_VERSION"
+        const val TOKEN_MAX_LEN = 32
+    }
+
+    private fun Char.isAllowedTokenChar(): Boolean {
+        return this in 'a'..'z' ||
+            this in 'A'..'Z' ||
+            this in '0'..'9' ||
+            this == '.' ||
+            this == '_' ||
+            this == '-'
     }
 }
