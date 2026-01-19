@@ -7,7 +7,6 @@ import java.time.Instant
 import kotlin.math.roundToLong
 
 class FunnelMetrics(registry: MeterRegistry) {
-    private val maxBreakingLatency: Duration = Duration.ofHours(24)
     private val postViews = registry.counter("post_views_total")
     private val ctaClicks = registry.counter("cta_click_total")
     private val botStarts = registry.counter("bot_start_total")
@@ -45,7 +44,8 @@ class FunnelMetrics(registry: MeterRegistry) {
         if (seconds.isNaN() || seconds.isInfinite()) {
             return
         }
-        val normalizedSeconds = seconds.coerceAtLeast(0.0).coerceAtMost(MAX_BREAKING_LATENCY_SECONDS)
+        val maxSeconds = MAX_BREAKING_LATENCY.seconds.toDouble()
+        val normalizedSeconds = seconds.coerceAtLeast(0.0).coerceAtMost(maxSeconds)
         val nanos = (normalizedSeconds * NANOS_PER_SECOND).roundToLong()
         recordDurationSafe(Duration.ofNanos(nanos))
     }
@@ -53,7 +53,7 @@ class FunnelMetrics(registry: MeterRegistry) {
     private fun recordDurationSafe(duration: Duration) {
         val normalized = when {
             duration.isNegative -> Duration.ZERO
-            duration > maxBreakingLatency -> maxBreakingLatency
+            duration > MAX_BREAKING_LATENCY -> MAX_BREAKING_LATENCY
             else -> duration
         }
         sloTimer.record(normalized)
@@ -61,6 +61,6 @@ class FunnelMetrics(registry: MeterRegistry) {
 
     private companion object {
         private const val NANOS_PER_SECOND = 1_000_000_000.0
-        private const val MAX_BREAKING_LATENCY_SECONDS = 24 * 60 * 60.0
+        private val MAX_BREAKING_LATENCY: Duration = Duration.ofHours(24)
     }
 }
