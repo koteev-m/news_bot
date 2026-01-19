@@ -18,13 +18,20 @@ sealed interface FsmState {
     data class COOLDOWN(val untilEpochSec: Long) : FsmState
 
     @Serializable
+    @SerialName("pushed")
+    data class PUSHED(val pushedAtEpochSec: Long) : FsmState
+
+    @Serializable
+    @SerialName("portfolio_summary")
+    data class PORTFOLIO_SUMMARY(val deliveredAtEpochSec: Long) : FsmState
+
+    @Serializable
     @SerialName("quiet")
     data class QUIET(val buffer: List<PendingAlert> = emptyList()) : FsmState
 
     @Serializable
     @SerialName("budget_exhausted")
     data object BUDGET_EXHAUSTED : FsmState
-
 }
 
 @Serializable
