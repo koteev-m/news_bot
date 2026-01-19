@@ -3,8 +3,8 @@ package billing.subscriptions
 import io.micrometer.core.instrument.MeterRegistry
 import java.time.Duration
 import java.time.Instant
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import common.rethrowIfFatal
 import common.runCatchingNonFatal
 
 class SubscriptionsService(
@@ -29,15 +29,27 @@ class SubscriptionsService(
         trialUntil: Instant?,
     ): StarSubscriptionRow {
         val renewAt = renewAfter?.let { Instant.now().plus(it) }
-        val row = repo.upsertActive(userId, plan, autoRenew, renewAt, trialUntil)
-        meter?.counter(CNT_TX, "result", "activated")?.increment()
-        return row
+        try {
+            val row = repo.upsertActive(userId, plan, autoRenew, renewAt, trialUntil)
+            meter?.counter(CNT_TX, "result", "activated")?.increment()
+            return row
+        } catch (t: Throwable) {
+            rethrowIfFatal(t)
+            meter?.counter(CNT_TX, "result", "error")?.increment()
+            throw t
+        }
     }
 
     suspend fun cancel(userId: Long): Boolean {
-        val ok = repo.cancelActive(userId)
-        meter?.counter(CNT_TX, "result", if (ok) "canceled" else "noop")?.increment()
-        return ok
+        try {
+            val ok = repo.cancelActive(userId)
+            meter?.counter(CNT_TX, "result", if (ok) "canceled" else "noop")?.increment()
+            return ok
+        } catch (t: Throwable) {
+            rethrowIfFatal(t)
+            meter?.counter(CNT_TX, "result", "error")?.increment()
+            throw t
+        }
     }
 
     suspend fun renewDue(now: Instant, period: Duration): RenewStats {
@@ -50,11 +62,8 @@ class SubscriptionsService(
                 repo.upsertActive(sub.userId, sub.plan, true, next, sub.trialUntil)
                 meter?.counter(CNT_RENEW_ATTEMPT, "result", "success")?.increment()
                 ok++
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (err: Error) {
-                throw err
             } catch (t: Throwable) {
+                rethrowIfFatal(t)
                 meter?.counter(CNT_RENEW_ATTEMPT, "result", "error")?.increment()
                 skipped++
             }
