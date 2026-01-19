@@ -11,9 +11,9 @@ class SubscriptionsService(
     private val repo: StarSubscriptionsRepository,
     private val meter: MeterRegistry? = null,
 ) {
-    private val CNT_RENEW_ATTEMPT = "stars_subscriptions_renew_attempt_total"
-    private val CNT_TX = "stars_subscriptions_transactions_total"
-    private val GAUGE_PAID_ACTIVE = "stars_subscriptions_paid_active_gauge"
+    private val CNT_RENEW_ATTEMPT = "renew_attempt_total"
+    private val CNT_TX = "transactions_total"
+    private val GAUGE_PAID_ACTIVE = "paid_active_gauge"
 
     init {
         meter?.gauge(GAUGE_PAID_ACTIVE, this) { svc ->
@@ -55,7 +55,7 @@ class SubscriptionsService(
             } catch (err: Error) {
                 throw err
             } catch (t: Throwable) {
-                meter?.counter(CNT_RENEW_ATTEMPT, "result", "failed")?.increment()
+                meter?.counter(CNT_RENEW_ATTEMPT, "result", "error")?.increment()
                 skipped++
             }
         }
