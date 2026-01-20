@@ -58,6 +58,7 @@ import di.ensureTelegramBot
 import demo.demoRoutes
 import di.installPortfolioModule
 import integrations.integrationsModule
+import integrations.mtprotoViewsConfig
 import features.FeatureFlagsService
 import health.healthRoutes
 import io.ktor.http.HttpStatusCode
@@ -106,6 +107,7 @@ import routes.authRoutes
 import routes.adminPricingRoutes
 import routes.billingRoutes
 import routes.netflow2AdminRoutes
+import routes.postViewsRoutes
 import routes.portfolioImportRoutes
 import routes.portfolioPositionsTradesRoutes
 import routes.portfolioRoutes
@@ -121,9 +123,11 @@ import security.RateLimitConfig
 import security.SupportRateLimit
 import java.time.Clock
 import netflow2.Netflow2Loader
+import mtproto.HttpMtprotoViewsClient
 import webhook.OverflowMode
 import webhook.WebhookQueue
 import common.runCatchingNonFatal
+import views.PostViewsService
 
 @Suppress("unused")
 private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
@@ -145,6 +149,20 @@ fun Application.module() {
     val netflow2Metrics = Netflow2Metrics(prometheusRegistry)
     val netflow2Repository = PostgresNetflow2Repository()
     val netflow2Loader = Netflow2Loader(integrations.netflow2Client, netflow2Repository, netflow2Metrics)
+    val mtprotoConfig = environment.mtprotoViewsConfig()
+    val mtprotoEnabled = mtprotoConfig.enabled && !mtprotoConfig.baseUrl.isNullOrBlank()
+    val postViewsService = if (mtprotoEnabled) {
+        PostViewsService(
+            client = HttpMtprotoViewsClient(
+                client = integrations.httpClient,
+                baseUrl = mtprotoConfig.baseUrl!!,
+                apiKey = mtprotoConfig.apiKey
+            ),
+            registry = prometheusRegistry
+        )
+    } else {
+        null
+    }
 
     installSecurity()
     installUploadGuard()
@@ -230,6 +248,7 @@ fun Application.module() {
         webVitalsRoutes(vitals)
         alertsRoutes(alertsService, alertsConfig.internalToken)
         netflow2AdminRoutes(netflow2Loader, alertsConfig.internalToken)
+        postViewsRoutes(postViewsService, mtprotoEnabled)
         apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)
