@@ -52,6 +52,10 @@ integrations {
 
 `baseUrl` может быть как с trailing `/`, так и без него. Клиент сам добавляет путь
 `/messages.getMessagesViews`, если `baseUrl` не заканчивается этим путём.
+Если `integrations.mtproto.enabled=true`, но `integrations.mtproto.baseUrl` не задан/пустой
+(или `MTPROTO_GATEWAY_BASE` не выставлен), приложение пишет warning и автоматически отключает
+интеграцию: endpoint ведёт себя как “MTProto disabled” и вернёт `501 Not Implemented`
+при корректном internal token.
 
 ## Валидация запроса
 
@@ -76,6 +80,8 @@ integrations {
 - `503 Service Unavailable` — internal token не настроен (`alerts.internalToken` пустой).
 - `502 Bad Gateway` — ошибки gateway (HTTP статус, сеть, десериализация, прочие ошибки).
 - `504 Gateway Timeout` — таймаут при запросе к gateway.
+`X-Internal-Token` проверяется до проверки `integrations.mtproto.enabled`, поэтому без токена
+можно получить `403`/`503` даже если MTProto выключен.
 
 Примеры тела:
 
