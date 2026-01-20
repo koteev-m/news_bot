@@ -1,5 +1,6 @@
 package routes
 
+import alerts.INTERNAL_TOKEN_HEADER
 import interfaces.ChannelViewsClient
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.ktor.client.request.get
@@ -29,11 +30,13 @@ class PostViewsRoutesTest {
         application {
             install(ContentNegotiation) { json() }
             routing {
-                postViewsRoutes(service, enabled = true)
+                postViewsRoutes(service, enabled = true, internalToken = "secret")
             }
         }
 
-        val response = client.get("/internal/post_views/sync?channel=news&ids=1,2")
+        val response = client.get("/internal/post_views/sync?channel=news&ids=1,2") {
+            headers.append(INTERNAL_TOKEN_HEADER, "secret")
+        }
         assertEquals(HttpStatusCode.OK, response.status)
         val payload = json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertEquals("100", payload["1"]?.jsonPrimitive?.content)
@@ -46,11 +49,13 @@ class PostViewsRoutesTest {
         application {
             install(ContentNegotiation) { json() }
             routing {
-                postViewsRoutes(null, enabled = false)
+                postViewsRoutes(null, enabled = false, internalToken = "secret")
             }
         }
 
-        val response = client.get("/internal/post_views/sync?channel=news&ids=1")
+        val response = client.get("/internal/post_views/sync?channel=news&ids=1") {
+            headers.append(INTERNAL_TOKEN_HEADER, "secret")
+        }
         assertEquals(HttpStatusCode.NotImplemented, response.status)
     }
 
@@ -62,11 +67,47 @@ class PostViewsRoutesTest {
         application {
             install(ContentNegotiation) { json() }
             routing {
-                postViewsRoutes(service, enabled = true)
+                postViewsRoutes(service, enabled = true, internalToken = "secret")
             }
         }
 
-        val response = client.get("/internal/post_views/sync?channel=news&ids=abc")
+        val response = client.get("/internal/post_views/sync?channel=news&ids=abc") {
+            headers.append(INTERNAL_TOKEN_HEADER, "secret")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `missing internal token returns forbidden`() = testApplication {
+        val registry = SimpleMeterRegistry()
+        val service = PostViewsService(StaticViewsClient(emptyMap()), registry)
+
+        application {
+            install(ContentNegotiation) { json() }
+            routing {
+                postViewsRoutes(service, enabled = true, internalToken = "secret")
+            }
+        }
+
+        val response = client.get("/internal/post_views/sync?channel=news&ids=1")
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+    }
+
+    @Test
+    fun `zero or negative ids return bad request`() = testApplication {
+        val registry = SimpleMeterRegistry()
+        val service = PostViewsService(StaticViewsClient(emptyMap()), registry)
+
+        application {
+            install(ContentNegotiation) { json() }
+            routing {
+                postViewsRoutes(service, enabled = true, internalToken = "secret")
+            }
+        }
+
+        val response = client.get("/internal/post_views/sync?channel=news&ids=0,-1") {
+            headers.append(INTERNAL_TOKEN_HEADER, "secret")
+        }
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
 }

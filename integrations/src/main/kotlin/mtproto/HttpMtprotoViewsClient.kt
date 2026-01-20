@@ -122,7 +122,12 @@ class HttpMtprotoViewsClient(
         }.toMap()
     }
 
-    private fun mapError(channel: String, idsCount: Int, durationMs: Long, t: Throwable): MtprotoViewsClientError {
+    private suspend fun mapError(
+        channel: String,
+        idsCount: Int,
+        durationMs: Long,
+        t: Throwable
+    ): MtprotoViewsClientError {
         val error = when (t) {
             is ResponseException -> {
                 val snippet = runCatchingNonFatal { t.response.bodyAsText() }.getOrNull()
