@@ -26,8 +26,32 @@ alerts {
 ## Конфиг/ENV
 
 - `integrations.mtproto.enabled`
+- `integrations.mtproto.baseUrl`
+- `integrations.mtproto.apiKey`
 - `MTPROTO_GATEWAY_BASE`
 - `MTPROTO_GATEWAY_KEY` (опционально)
+
+По умолчанию в `application.conf` эти ключи заполняются через env vars:
+
+```hocon
+integrations.mtproto.baseUrl = ${?MTPROTO_GATEWAY_BASE}
+integrations.mtproto.apiKey = ${?MTPROTO_GATEWAY_KEY}
+```
+
+Пример блока конфигурации:
+
+```hocon
+integrations {
+  mtproto {
+    enabled = true
+    baseUrl = "https://mtproto-gw.example.com"
+    apiKey = "secret-key"
+  }
+}
+```
+
+`baseUrl` может быть как с trailing `/`, так и без него. Клиент сам добавляет путь
+`/messages.getMessagesViews`, если `baseUrl` не заканчивается этим путём.
 
 ## Валидация запроса
 
@@ -38,8 +62,9 @@ alerts {
 - `ids`:
   - список через запятую
   - каждый id должен быть положительным int (> 0)
+  - непарсабельные значения (не int) отбрасываются; `400` только если после фильтрации список пустой
   - дубликаты удаляются
-  - максимум 1000 id в запросе
+  - максимум 1000 id в запросе после фильтрации/дедупликации
   - если после фильтрации список пустой → `400`
 
 ## Ответы и ошибки
@@ -51,6 +76,11 @@ alerts {
 - `503 Service Unavailable` — internal token не настроен (`alerts.internalToken` пустой).
 - `502 Bad Gateway` — ошибки gateway (HTTP статус, сеть, десериализация, прочие ошибки).
 - `504 Gateway Timeout` — таймаут при запросе к gateway.
+
+Примеры тела:
+
+- `200 OK`: `{"10":123,"20":456}`
+- error: `{"error":"..."}`
 
 ## Примеры
 
