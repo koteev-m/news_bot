@@ -44,6 +44,10 @@ class AlertsService(
     private val config: EngineConfig,
     meterRegistry: MeterRegistry
 ) {
+    companion object {
+        private const val PORTFOLIO_SUMMARY_CLASS = "portfolio_summary"
+    }
+
     private val metrics = AlertMetrics(meterRegistry)
     private val volumeGate = VolumeGate(config.volumeGateK)
     private val portfolioSummaryByDay = java.util.concurrent.ConcurrentHashMap<Long, LocalDate>()
@@ -140,7 +144,7 @@ class AlertsService(
                     deliver(userId, alert, AlertDeliveryReasons.QUIET_HOURS_FLUSH, today)
                     emitted.add(EmittedAlert(alert, AlertDeliveryReasons.QUIET_HOURS_FLUSH))
                     deliveredAny = true
-                    if (alert.classId == "portfolio_summary") {
+                    if (alert.classId == PORTFOLIO_SUMMARY_CLASS) {
                         deliveredSummary = true
                     }
                     remainingBudget--
@@ -200,7 +204,7 @@ class AlertsService(
             val last = portfolioSummaryByDay[userId]
             if (last != today) {
                 val alert = PendingAlert(
-                    classId = "portfolio_summary",
+                    classId = PORTFOLIO_SUMMARY_CLASS,
                     ticker = "",
                     window = "daily",
                     score = 0.0,
