@@ -34,6 +34,9 @@ import portfolio.errors.PortfolioException
 import portfolio.model.DateRange
 import portfolio.model.Money
 import portfolio.model.ValuationMethod
+import portfolio.metrics.FxConversionResult
+import portfolio.metrics.FxConverter
+import portfolio.metrics.PortfolioMetricsService
 import portfolio.service.FxRateRepository
 import portfolio.service.FxRateService
 import portfolio.service.PricingService
@@ -42,6 +45,7 @@ import portfolio.service.ValuationService
 import portfolio.service.CoingeckoPriceProvider
 import portfolio.service.MoexPriceProvider
 import routes.dto.PortfolioReportResponse
+import routes.dto.PortfolioMetricsReportResponse
 import routes.dto.ValuationDailyResponse
 import security.JwtConfig
 import security.JwtSupport
@@ -267,6 +271,109 @@ class PortfolioValuationReportRoutesTest {
     }
 
     @Test
+    fun `metrics report returns json`() = testApplication {
+        val deps = FakeDeps()
+        val portfolioId = UUID.randomUUID()
+        deps.metricsStorage.valuationsResult = DomainResult.success(
+            listOf(
+                PortfolioMetricsService.Storage.ValuationRecord(
+                    date = LocalDate.parse("2024-01-01"),
+                    valueRub = BigDecimal("100.00000000"),
+                ),
+                PortfolioMetricsService.Storage.ValuationRecord(
+                    date = LocalDate.parse("2024-01-02"),
+                    valueRub = BigDecimal("120.00000000"),
+                ),
+            ),
+        )
+        deps.metricsStorage.tradesResult = DomainResult.success(emptyList())
+        application { configureTestApp(deps.toServices()) }
+
+        val token = issueToken("114")
+        val response = get(
+            path = "/api/portfolio/$portfolioId/report?period=daily&base=RUB",
+            headers = authHeader(token),
+        )
+        assertEquals(HttpStatusCode.OK, response.status)
+        val payload = json.decodeFromString<PortfolioMetricsReportResponse>(response.body)
+        assertEquals(portfolioId.toString(), payload.portfolioId)
+        assertEquals("RUB", payload.base)
+        assertEquals("daily", payload.period)
+        assertEquals(false, payload.delayed)
+        assertEquals(2, payload.series.size)
+    }
+
+    @Test
+    fun `metrics report returns csv`() = testApplication {
+        val deps = FakeDeps()
+        val portfolioId = UUID.randomUUID()
+        deps.metricsStorage.valuationsResult = DomainResult.success(
+            listOf(
+                PortfolioMetricsService.Storage.ValuationRecord(
+                    date = LocalDate.parse("2024-01-01"),
+                    valueRub = BigDecimal("100.00000000"),
+                ),
+                PortfolioMetricsService.Storage.ValuationRecord(
+                    date = LocalDate.parse("2024-01-02"),
+                    valueRub = BigDecimal("120.00000000"),
+                ),
+            ),
+        )
+        deps.metricsStorage.tradesResult = DomainResult.success(emptyList())
+        application { configureTestApp(deps.toServices()) }
+
+        val token = issueToken("115")
+        val response = get(
+            path = "/api/portfolio/$portfolioId/report?period=daily&format=csv",
+            headers = authHeader(token),
+        )
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertTrue(response.body.startsWith("date,valuation,cashflow,pnlDaily,pnlTotal"))
+        assertTrue(response.body.contains("2024-01-02"))
+    }
+
+    @Test
+    fun `metrics report returns 502 on fx errors`() = testApplication {
+        val deps = FakeDeps()
+        val portfolioId = UUID.randomUUID()
+        deps.metricsStorage.valuationsResult = DomainResult.success(
+            listOf(
+                PortfolioMetricsService.Storage.ValuationRecord(
+                    date = LocalDate.parse("2024-01-01"),
+                    valueRub = BigDecimal("100.00000000"),
+                ),
+            ),
+        )
+        deps.metricsStorage.tradesResult = DomainResult.success(emptyList())
+        deps.fxConverter.failWith = PortfolioException(
+            PortfolioError.FxRateNotFound("USD", LocalDate.parse("2024-01-01"), LocalDate.parse("2024-01-01")),
+        )
+        application { configureTestApp(deps.toServices()) }
+
+        val token = issueToken("116")
+        val response = get(
+            path = "/api/portfolio/$portfolioId/report?period=daily&base=USD",
+            headers = authHeader(token),
+        )
+        assertEquals(HttpStatusCode.BadGateway, response.status)
+        val payload = HttpErrorResponse(response.body)
+        assertEquals("fx_rate_unavailable", payload.error)
+    }
+
+    @Test
+    fun `metrics report rejects invalid period`() = testApplication {
+        val deps = FakeDeps()
+        application { configureTestApp(deps.toServices()) }
+
+        val token = issueToken("117")
+        val response = get(
+            path = "/api/portfolio/${UUID.randomUUID()}/report?period=yearly",
+            headers = authHeader(token),
+        )
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
     fun `revalue returns 404 when portfolio missing`() = testApplication {
         val deps = FakeDeps()
         deps.valuationStorage.listPositionsResult = DomainResult.failure(
@@ -429,6 +536,8 @@ class PortfolioValuationReportRoutesTest {
     private class FakeDeps {
         val valuationStorage = FakeValuationStorage()
         val reportStorage = FakeReportStorage()
+        val metricsStorage = FakeMetricsStorage()
+        val fxConverter = FakeFxConverter()
         private val fxRepository = object : FxRateRepository {
             override suspend fun findOnOrBefore(ccy: String, timestamp: Instant) = null
         }
@@ -448,9 +557,24 @@ class PortfolioValuationReportRoutesTest {
             fxRateService = fxService,
         )
         val reportService = ReportService(reportStorage)
+        val metricsService = PortfolioMetricsService(metricsStorage, fxConverter)
 
         fun toServices(): PortfolioValuationReportServices =
-            PortfolioValuationReportServices(valuationService = valuationService, reportService = reportService)
+            PortfolioValuationReportServices(
+                valuationService = valuationService,
+                reportService = reportService,
+                metricsService = metricsService,
+                loadPortfolio = { id ->
+                    repo.model.PortfolioEntity(
+                        portfolioId = id,
+                        userId = 1L,
+                        name = "Test",
+                        baseCurrency = "RUB",
+                        isActive = true,
+                        createdAt = Instant.EPOCH,
+                    )
+                },
+            )
     }
 
     private class FakeValuationStorage : ValuationService.Storage {
@@ -514,5 +638,30 @@ class PortfolioValuationReportRoutesTest {
             portfolioId: UUID,
             asOf: LocalDate,
         ) = holdingsResult
+    }
+
+    private class FakeMetricsStorage : PortfolioMetricsService.Storage {
+        var valuationsResult: DomainResult<List<PortfolioMetricsService.Storage.ValuationRecord>> =
+            DomainResult.success(emptyList())
+        var tradesResult: DomainResult<List<PortfolioMetricsService.Storage.TradeRecord>> =
+            DomainResult.success(emptyList())
+
+        override suspend fun listValuations(portfolioId: UUID) = valuationsResult
+
+        override suspend fun listTrades(portfolioId: UUID) = tradesResult
+    }
+
+    private class FakeFxConverter : FxConverter {
+        var failWith: Throwable? = null
+
+        override suspend fun convert(
+            amount: BigDecimal,
+            currency: String,
+            date: LocalDate,
+            baseCurrency: String,
+        ): FxConversionResult {
+            failWith?.let { throw it }
+            return FxConversionResult(amount, delayed = false)
+        }
     }
 }

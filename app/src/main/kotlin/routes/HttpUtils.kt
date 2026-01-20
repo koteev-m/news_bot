@@ -20,7 +20,9 @@ fun ApplicationCall.respondUnsupportedMediaType(): Nothing = throw AppException.
 
 fun ApplicationCall.respondPayloadTooLarge(limit: Long): Nothing = throw AppException.PayloadTooLarge(limit)
 
-fun ApplicationCall.respondTooManyRequests(retryAfterSeconds: Long): Nothing = throw AppException.RateLimited(retryAfterSeconds)
+fun ApplicationCall.respondTooManyRequests(retryAfterSeconds: Long): Nothing = throw AppException.RateLimited(
+    retryAfterSeconds
+)
 
 fun ApplicationCall.respondServiceUnavailable(): Nothing = throw AppException.ImportByUrlDisabled()
 
@@ -47,6 +49,16 @@ private fun ApplicationCall.mapPortfolioException(exception: PortfolioException)
     return when (val error = exception.error) {
         is PortfolioError.Validation -> AppException.Unprocessable(listOf(error.message), exception)
         is PortfolioError.NotFound -> AppException.NotFound(listOf(error.message))
+        is PortfolioError.FxRateNotFound -> AppException.Custom(
+            code = errors.ErrorCode.FX_RATE_UNAVAILABLE,
+            details = listOf(error.message),
+            cause = exception,
+        )
+        is PortfolioError.FxRateUnavailable -> AppException.Custom(
+            code = errors.ErrorCode.FX_RATE_UNAVAILABLE,
+            details = listOf(error.message),
+            cause = exception,
+        )
         is PortfolioError.External -> {
             application.environment.log.error("Portfolio service error", exception)
             AppException.Internal(cause = exception)

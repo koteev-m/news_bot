@@ -243,6 +243,14 @@ private fun mapException(throwable: Throwable, onError: (Throwable) -> Unit): Po
             HttpStatusCode.NotFound,
             ApiErrorResponse(error = "not_found", message = domain.message),
         )
+        is PortfolioError.FxRateNotFound,
+        is PortfolioError.FxRateUnavailable -> {
+            onError(throwable)
+            PortfolioRouteResult(
+                HttpStatusCode.BadGateway,
+                ApiErrorResponse(error = "fx_rate_unavailable", message = domain.message),
+            )
+        }
         is PortfolioError.External -> {
             onError(throwable)
             PortfolioRouteResult(

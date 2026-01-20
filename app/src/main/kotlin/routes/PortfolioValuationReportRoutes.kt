@@ -5,16 +5,22 @@ import di.portfolioModule
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.application
 import io.ktor.server.application.call
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.util.AttributeKey
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.Locale
 import java.util.UUID
+import integrations.integrationsModule
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
@@ -23,6 +29,10 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import portfolio.errors.DomainResult
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
+import portfolio.metrics.CbrFxConverter
+import portfolio.metrics.MetricsPeriod
+import portfolio.metrics.PortfolioMetricsService
+import portfolio.metrics.PortfolioMetricsReport
 import portfolio.model.DateRange
 import portfolio.model.Money
 import portfolio.model.ValuationMethod
@@ -34,10 +44,12 @@ import repo.mapper.toValuationDailyRecord
 import repo.model.ValuationDailyRecord
 import repo.tables.ValuationsDailyTable
 import routes.dto.toResponse
+import routes.dto.toResponse as toMetricsResponse
 import security.userIdOrNull
 import common.runCatchingNonFatal
 
 private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+private val ACCEPT_CSV = Regex("(^|,|\\s)text/csv(\\s|;|,|\$)", RegexOption.IGNORE_CASE)
 
 fun Route.portfolioValuationReportRoutes() {
     route("/api/portfolio/{id}") {
@@ -66,6 +78,46 @@ fun Route.portfolioValuationReportRoutes() {
             }
 
             val portfolioId = call.parsePortfolioId() ?: return@get
+            val periodParam = call.request.queryParameters["period"]?.trim()
+            if (!periodParam.isNullOrEmpty()) {
+                val period = parsePeriod(periodParam) ?: run {
+                    call.respondBadRequest(listOf("period must be daily, weekly, or monthly"))
+                    return@get
+                }
+                val services = call.portfolioValuationReportServices()
+                val portfolio = runCatchingNonFatal { services.loadPortfolio(portfolioId) }
+                    .getOrElse { throwable -> call.handleDomainError(throwable) }
+                    ?: run {
+                        call.respondNotFound("Portfolio $portfolioId not found")
+                        return@get
+                    }
+                val baseParam = call.request.queryParameters["base"]?.trim()
+                val base = (baseParam?.takeIf { it.isNotEmpty() } ?: portfolio.baseCurrency).uppercase(Locale.ROOT)
+                if (base !in ALLOWED_BASES) {
+                    call.respondBadRequest(listOf("base must be one of: ${ALLOWED_BASES.joinToString(", ")}"))
+                    return@get
+                }
+                services.metricsService.buildReport(portfolioId, base, period).fold(
+                    onSuccess = { report ->
+                        if (call.wantsCsv()) {
+                            val filename = "portfolio_${portfolioId}_report_${period.name.lowercase()}_$base.csv"
+                            call.response.headers.append(
+                                HttpHeaders.ContentDisposition,
+                                "attachment; filename=\"$filename\"",
+                            )
+                            call.respondText(
+                                text = report.toCsv(),
+                                contentType = ContentType.Text.CSV,
+                            )
+                        } else {
+                            call.respond(report.toMetricsResponse())
+                        }
+                    },
+                    onFailure = { error -> call.handleDomainError(error) },
+                )
+                return@get
+            }
+
             val range = call.parseDateRange() ?: return@get
 
             val services = call.portfolioValuationReportServices()
@@ -85,6 +137,8 @@ object Services {
 data class PortfolioValuationReportServices(
     val valuationService: ValuationService,
     val reportService: ReportService,
+    val metricsService: PortfolioMetricsService,
+    val loadPortfolio: suspend (UUID) -> repo.model.PortfolioEntity?,
 )
 
 private suspend fun ApplicationCall.parsePortfolioId(): UUID? {
@@ -132,6 +186,7 @@ private fun ApplicationCall.portfolioValuationReportServices(): PortfolioValuati
     }
 
     val module = application.portfolioModule()
+    val fxConverter = CbrFxConverter(application.integrationsModule().cbrXmlDailyClient)
     val services = PortfolioValuationReportServices(
         valuationService = module.services.valuationService,
         reportService = ReportService(
@@ -142,6 +197,14 @@ private fun ApplicationCall.portfolioValuationReportServices(): PortfolioValuati
             ),
             baseCurrency = module.settings.pricing.baseCurrency,
         ),
+        metricsService = PortfolioMetricsService(
+            storage = DatabaseMetricsStorage(
+                tradeRepository = module.repositories.tradeRepository,
+                valuationRepository = module.repositories.valuationRepository,
+            ),
+            fxConverter = fxConverter,
+        ),
+        loadPortfolio = { id -> module.repositories.portfolioRepository.findById(id) },
     )
     attributes.put(Services.Key, services)
     return services
@@ -220,3 +283,92 @@ private class DatabaseReportStorage(
         private const val BASE_CURRENCY = "RUB"
     }
 }
+
+private class DatabaseMetricsStorage(
+    private val tradeRepository: repo.TradeRepository,
+    private val valuationRepository: ValuationRepository,
+) : PortfolioMetricsService.Storage {
+    override suspend fun listValuations(
+        portfolioId: UUID,
+    ): DomainResult<List<PortfolioMetricsService.Storage.ValuationRecord>> {
+        val records = runCatchingNonFatal { valuationRepository.list(portfolioId, Int.MAX_VALUE) }
+            .getOrElse { throwable -> return DomainResult.failure(throwable) }
+        return DomainResult.success(
+            records
+                .map { record ->
+                    PortfolioMetricsService.Storage.ValuationRecord(
+                        date = record.date,
+                        valueRub = record.valueRub,
+                    )
+                }
+                .sortedBy { it.date },
+        )
+    }
+
+    override suspend fun listTrades(
+        portfolioId: UUID,
+    ): DomainResult<List<PortfolioMetricsService.Storage.TradeRecord>> {
+        val records = runCatchingNonFatal { tradeRepository.listByPortfolio(portfolioId, Int.MAX_VALUE) }
+            .getOrElse { throwable -> return DomainResult.failure(throwable) }
+        return DomainResult.success(
+            records.map { trade ->
+                PortfolioMetricsService.Storage.TradeRecord(
+                    datetime = trade.datetime,
+                    side = trade.side,
+                    quantity = trade.quantity,
+                    price = trade.price,
+                    priceCurrency = trade.priceCurrency,
+                    fee = trade.fee,
+                    feeCurrency = trade.feeCurrency,
+                    tax = trade.tax,
+                    taxCurrency = trade.taxCurrency,
+                )
+            },
+        )
+    }
+}
+
+private fun parsePeriod(raw: String): MetricsPeriod? = when (raw.trim().uppercase(Locale.ROOT)) {
+    "DAILY" -> MetricsPeriod.DAILY
+    "WEEKLY" -> MetricsPeriod.WEEKLY
+    "MONTHLY" -> MetricsPeriod.MONTHLY
+    else -> null
+}
+
+private fun ApplicationCall.wantsCsv(): Boolean {
+    val format = request.queryParameters["format"]?.trim()?.lowercase(Locale.ROOT)
+    if (format == "csv") return true
+    val accept = request.headers[HttpHeaders.Accept] ?: return false
+    return ACCEPT_CSV.containsMatchIn(accept)
+}
+
+private fun PortfolioMetricsReport.toCsv(): String {
+    val header = when (period) {
+        MetricsPeriod.DAILY -> "date,valuation,cashflow,pnlDaily,pnlTotal"
+        MetricsPeriod.WEEKLY, MetricsPeriod.MONTHLY -> "periodStart,periodEnd,valuation,cashflow,pnlDaily,pnlTotal"
+    }
+    val rows = series.joinToString(separator = "\n") { point ->
+        when (period) {
+            MetricsPeriod.DAILY -> listOf(
+                point.date?.toString().orEmpty(),
+                point.valuation.toAmt(),
+                point.cashflow.toAmt(),
+                point.pnlDaily.toAmt(),
+                point.pnlTotal.toAmt(),
+            ).joinToString(",")
+            MetricsPeriod.WEEKLY, MetricsPeriod.MONTHLY -> listOf(
+                point.periodStart?.toString().orEmpty(),
+                point.periodEnd?.toString().orEmpty(),
+                point.valuation.toAmt(),
+                point.cashflow.toAmt(),
+                point.pnlDaily.toAmt(),
+                point.pnlTotal.toAmt(),
+            ).joinToString(",")
+        }
+    }
+    return if (rows.isEmpty()) header else "$header\n$rows"
+}
+
+private fun BigDecimal.toAmt(): String = setScale(8, java.math.RoundingMode.HALF_UP).toPlainString()
+
+private val ALLOWED_BASES = setOf("RUB", "USD")

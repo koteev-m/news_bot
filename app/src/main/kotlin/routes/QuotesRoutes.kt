@@ -38,6 +38,11 @@ private suspend fun ApplicationCall.handleQuoteFailure(cause: Throwable) {
         is PortfolioException -> when (val error = cause.error) {
             is PortfolioError.NotFound -> respondNotFound("price_not_available")
             is PortfolioError.Validation -> respondBadRequest(listOf(error.message))
+            is PortfolioError.FxRateNotFound,
+            is PortfolioError.FxRateUnavailable -> {
+                application.environment.log.error("Pricing service failure", cause)
+                respondInternal()
+            }
             is PortfolioError.External -> {
                 application.environment.log.error("Pricing service failure", cause)
                 respondInternal()

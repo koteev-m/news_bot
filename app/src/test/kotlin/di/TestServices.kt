@@ -12,6 +12,9 @@ import portfolio.errors.DomainResult
 import portfolio.model.DateRange
 import portfolio.model.Money
 import portfolio.model.ValuationMethod
+import portfolio.metrics.FxConversionResult
+import portfolio.metrics.FxConverter
+import portfolio.metrics.PortfolioMetricsService
 import portfolio.service.CoingeckoPriceProvider
 import portfolio.service.FxRateRepository
 import portfolio.service.FxRateService
@@ -31,6 +34,7 @@ fun Application.installTestServices(overrides: Services.() -> Unit = {}) {
     val pricingService = stubPricingService(fxRateService)
     val valuationService = stubValuationService(baseCurrency, pricingService, fxRateService)
     val reportService = stubReportService(baseCurrency)
+    val metricsService = PortfolioMetricsService(StubMetricsStorage(), StubFxConverter())
 
     val services = Services(
         pricingService = pricingService,
@@ -45,6 +49,17 @@ fun Application.installTestServices(overrides: Services.() -> Unit = {}) {
         PortfolioValuationReportServices(
             valuationService = services.valuationService,
             reportService = services.reportService,
+            metricsService = metricsService,
+            loadPortfolio = { id ->
+                repo.model.PortfolioEntity(
+                    portfolioId = id,
+                    userId = 1L,
+                    name = "Test",
+                    baseCurrency = baseCurrency,
+                    isActive = true,
+                    createdAt = Instant.EPOCH,
+                )
+            },
         ),
     )
 }
@@ -112,7 +127,9 @@ private class StubPriceProvider(private val value: Money) : MoexPriceProvider, C
 }
 
 private class StubValuationStorage : ValuationService.Storage {
-    override suspend fun listPositions(portfolioId: UUID): DomainResult<List<ValuationService.Storage.PositionSnapshot>> =
+    override suspend fun listPositions(
+        portfolioId: UUID
+    ): DomainResult<List<ValuationService.Storage.PositionSnapshot>> =
         DomainResult.success(emptyList())
 
     override suspend fun latestValuationBefore(
@@ -125,6 +142,27 @@ private class StubValuationStorage : ValuationService.Storage {
         record: ValuationService.Storage.ValuationRecord,
     ): DomainResult<ValuationService.Storage.ValuationRecord> =
         DomainResult.success(record)
+}
+
+private class StubMetricsStorage : PortfolioMetricsService.Storage {
+    override suspend fun listValuations(
+        portfolioId: UUID
+    ): DomainResult<List<PortfolioMetricsService.Storage.ValuationRecord>> =
+        DomainResult.success(emptyList())
+
+    override suspend fun listTrades(
+        portfolioId: UUID
+    ): DomainResult<List<PortfolioMetricsService.Storage.TradeRecord>> =
+        DomainResult.success(emptyList())
+}
+
+private class StubFxConverter : FxConverter {
+    override suspend fun convert(
+        amount: BigDecimal,
+        currency: String,
+        date: LocalDate,
+        baseCurrency: String,
+    ): FxConversionResult = FxConversionResult(amount, delayed = false)
 }
 
 private class StubReportStorage : ReportService.Storage {
