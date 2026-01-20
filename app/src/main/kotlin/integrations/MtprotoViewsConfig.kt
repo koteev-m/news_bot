@@ -14,12 +14,16 @@ internal data class MtprotoViewsConfig(
 internal fun ApplicationEnvironment.mtprotoViewsConfig(): MtprotoViewsConfig {
     val root = config.configOrNull("integrations")?.configOrNull("mtproto")
     val enabled = root?.propertyOrNull("enabled")?.getString()?.toBoolean() ?: false
-    val envBaseUrl = System.getenv("MTPROTO_GATEWAY_BASE")?.trim()?.ifBlank { null }
-    val baseUrl = envBaseUrl ?: root?.propertyOrNull("baseUrl")?.getString()?.trim()?.ifBlank { null }
+    val baseUrl = root?.propertyOrNull("baseUrl")?.getString()?.trim()?.ifBlank { null }
     val apiKey = root?.propertyOrNull("apiKey")?.getString()?.trim()?.ifBlank { null }
     if (enabled && baseUrl == null) {
         LoggerFactory.getLogger("mtproto-config")
             .warn("MTProto views enabled but integrations.mtproto.baseUrl is not configured")
+        return MtprotoViewsConfig(
+            enabled = false,
+            baseUrl = null,
+            apiKey = apiKey
+        )
     }
     return MtprotoViewsConfig(
         enabled = enabled,

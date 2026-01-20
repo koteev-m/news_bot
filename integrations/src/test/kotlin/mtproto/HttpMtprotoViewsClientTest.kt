@@ -5,12 +5,12 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.TextContent
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.serialization.kotlinx.json.json
-import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -21,6 +21,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.jupiter.api.Test
 
 class HttpMtprotoViewsClientTest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -79,7 +80,7 @@ class HttpMtprotoViewsClientTest {
 
     @Test
     fun `maps timeout to timeout error`() = runTest {
-        val engine = MockEngine { throw HttpRequestTimeoutException("timeout") }
+        val engine = MockEngine { throw HttpRequestTimeoutException(HttpRequestBuilder()) }
         val client = HttpClient(engine) {
             expectSuccess = true
             install(ContentNegotiation) { json() }

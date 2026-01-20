@@ -150,12 +150,13 @@ fun Application.module() {
     val netflow2Repository = PostgresNetflow2Repository()
     val netflow2Loader = Netflow2Loader(integrations.netflow2Client, netflow2Repository, netflow2Metrics)
     val mtprotoConfig = environment.mtprotoViewsConfig()
-    val mtprotoEnabled = mtprotoConfig.enabled && !mtprotoConfig.baseUrl.isNullOrBlank()
+    val mtprotoEnabled = mtprotoConfig.enabled
     val postViewsService = if (mtprotoEnabled) {
+        val baseUrl = requireNotNull(mtprotoConfig.baseUrl) { "mtproto baseUrl must be set when enabled" }
         PostViewsService(
             client = HttpMtprotoViewsClient(
                 client = integrations.httpClient,
-                baseUrl = mtprotoConfig.baseUrl!!,
+                baseUrl = baseUrl,
                 apiKey = mtprotoConfig.apiKey
             ),
             registry = prometheusRegistry
@@ -248,7 +249,7 @@ fun Application.module() {
         webVitalsRoutes(vitals)
         alertsRoutes(alertsService, alertsConfig.internalToken)
         netflow2AdminRoutes(netflow2Loader, alertsConfig.internalToken)
-        postViewsRoutes(postViewsService, mtprotoEnabled)
+        postViewsRoutes(postViewsService, mtprotoEnabled, alertsConfig.internalToken)
         apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)
