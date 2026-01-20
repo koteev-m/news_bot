@@ -73,5 +73,10 @@
     "http": 502,
     "message_en": "We could not apply the payment. Please contact support.",
     "message_ru": "Не удалось применить платёж. Пожалуйста, обратитесь в поддержку."
+  },
+  "FX_RATE_UNAVAILABLE": {
+    "http": 502,
+    "message_en": "Exchange rate data is temporarily unavailable.",
+    "message_ru": "Курсы валют временно недоступны."
   }
 }

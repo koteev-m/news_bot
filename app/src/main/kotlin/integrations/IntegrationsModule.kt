@@ -1,6 +1,7 @@
 package integrations
 
 import cbr.CbrClient
+import cbr.CbrXmlDailyClient
 import coingecko.CoinGeckoClient
 import data.moex.Netflow2Client
 import data.moex.Netflow2ClientConfig
@@ -38,6 +39,7 @@ class IntegrationsProvider(
     val moexClient: MoexIssClient,
     val coinGeckoClient: CoinGeckoClient,
     val cbrClient: CbrClient,
+    val cbrXmlDailyClient: CbrXmlDailyClient,
     val netflow2Client: Netflow2Client,
     val circuitBreakers: Map<String, CircuitBreaker>
 )
@@ -88,6 +90,7 @@ object IntegrationsModule {
         ).apply {
             setBaseUrl(integrationsConfig.baseUrl("cbr", "https://www.cbr.ru"))
         }
+        val cbrXmlDailyClient = CbrXmlDailyClient(cbrClient)
         val netflow2Client = Netflow2Client(
             client = httpClient,
             circuitBreaker = netflow2Cb,
@@ -104,6 +107,7 @@ object IntegrationsModule {
             moexClient = moexClient,
             coinGeckoClient = coinGeckoClient,
             cbrClient = cbrClient,
+            cbrXmlDailyClient = cbrXmlDailyClient,
             netflow2Client = netflow2Client,
             circuitBreakers = mapOf(
                 "moex" to moexCb,
