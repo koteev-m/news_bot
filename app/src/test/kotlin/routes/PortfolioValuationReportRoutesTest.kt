@@ -334,6 +334,37 @@ class PortfolioValuationReportRoutesTest {
     }
 
     @Test
+    fun `metrics report weekly clamps period end to last valuation`() = testApplication {
+        val deps = FakeDeps()
+        val portfolioId = UUID.randomUUID()
+        deps.metricsStorage.valuationsResult = DomainResult.success(
+            listOf(
+                PortfolioMetricsService.Storage.ValuationRecord(
+                    date = LocalDate.parse("2024-01-01"),
+                    valueRub = BigDecimal("100.00000000"),
+                ),
+                PortfolioMetricsService.Storage.ValuationRecord(
+                    date = LocalDate.parse("2024-01-02"),
+                    valueRub = BigDecimal("120.00000000"),
+                ),
+            ),
+        )
+        deps.metricsStorage.tradesResult = DomainResult.success(emptyList())
+        application { configureTestApp(deps.toServices()) }
+
+        val token = issueToken("119")
+        val response = get(
+            path = "/api/portfolio/$portfolioId/report?period=weekly&base=RUB",
+            headers = authHeader(token),
+        )
+        assertEquals(HttpStatusCode.OK, response.status)
+        val payload = json.decodeFromString<PortfolioMetricsReportResponse>(response.body)
+        assertEquals("weekly", payload.period)
+        assertEquals(1, payload.series.size)
+        assertEquals("2024-01-02", payload.series.first().periodEnd)
+    }
+
+    @Test
     fun `metrics report returns csv`() = testApplication {
         val deps = FakeDeps()
         val portfolioId = UUID.randomUUID()
