@@ -6,6 +6,7 @@ import java.math.MathContext
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.util.Locale
+import common.rethrowIfFatal
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
 
@@ -28,6 +29,7 @@ class CbrFxConverter(
         val rates = try {
             client.fetchDailyRates(date)
         } catch (ex: Throwable) {
+            rethrowIfFatal(ex)
             throw PortfolioException(PortfolioError.FxRateUnavailable("Failed to load CBR FX rates", ex))
         }
 

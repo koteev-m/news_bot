@@ -68,7 +68,7 @@ class MetricsCalculationsTest {
             ValuationEntry(LocalDate.of(2024, 1, 2), BigDecimal("110")),
         )
 
-        val result = computeTwr(valuations, emptyMap())
+        val result = computeTwr(valuations, emptyList())
 
         assertEquals(TwrStatus.OK, result.status)
         assertNotNull(result.twr)
@@ -81,7 +81,7 @@ class MetricsCalculationsTest {
             ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
             ValuationEntry(LocalDate.of(2024, 1, 2), BigDecimal("160")),
         )
-        val cashflows = mapOf(LocalDate.of(2024, 1, 2) to BigDecimal("50"))
+        val cashflows = listOf(CashflowEntry(LocalDate.of(2024, 1, 2), BigDecimal("-50")))
 
         val result = computeTwr(valuations, cashflows)
 
@@ -96,9 +96,28 @@ class MetricsCalculationsTest {
             ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
         )
 
-        val result = computeTwr(valuations, emptyMap())
+        val result = computeTwr(valuations, emptyList())
 
         assertEquals(TwrStatus.INSUFFICIENT_DATA, result.status)
         assertEquals(null, result.twr)
+    }
+
+    @Test
+    fun `twr and pnl include cashflow between valuations`() {
+        val valuations = listOf(
+            ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
+            ValuationEntry(LocalDate.of(2024, 1, 3), BigDecimal("160")),
+        )
+        val cashflows = listOf(
+            CashflowEntry(LocalDate.of(2024, 1, 2), BigDecimal("-50")),
+        )
+
+        val twrResult = computeTwr(valuations, cashflows)
+        val pnlSeries = computePnlSeries(valuations, cashflows)
+
+        assertEquals(TwrStatus.OK, twrResult.status)
+        assertNotNull(twrResult.twr)
+        assertTrue(abs(twrResult.twr - 0.1) < 1e-8)
+        assertEquals(BigDecimal("110.00000000"), pnlSeries.last().pnlTotal)
     }
 }
