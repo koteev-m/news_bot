@@ -140,6 +140,7 @@ class PortfolioMetricsService(
         valuations: List<ValuationEntry>,
         cashflows: List<CashflowEntry>,
     ): List<MetricsSeriesPoint> {
+        val globalEnd = valuations.maxOf { it.date }
         val cashflowsByPeriod = cashflows
             .groupBy { entry -> periodKey(entry.date, period) }
             .mapValues { (_, items) ->
@@ -151,17 +152,22 @@ class PortfolioMetricsService(
             .mapValues { (_, items) -> items.maxBy { it.date } }
 
         val orderedKeys = valuationsByPeriod.keys.sortedBy { it.start }
-        val periodValuations = orderedKeys.map { key ->
-            ValuationEntry(key.end, valuationsByPeriod.getValue(key).value)
+        val periodEndByKey = orderedKeys.associateWith { key ->
+            if (key.end.isAfter(globalEnd)) globalEnd else key.end
         }
-        val periodCashflows = orderedKeys.map { key -> CashflowEntry(key.end, cashflowsByPeriod[key] ?: ZERO) }
+        val periodValuations = orderedKeys.map { key ->
+            ValuationEntry(periodEndByKey.getValue(key), valuationsByPeriod.getValue(key).value)
+        }
+        val periodCashflows = orderedKeys.map { key ->
+            CashflowEntry(periodEndByKey.getValue(key), cashflowsByPeriod[key] ?: ZERO)
+        }
         val pnlSeries = computePnlSeries(periodValuations, periodCashflows)
 
         return pnlSeries.mapIndexed { index, point ->
             val key = orderedKeys[index]
             MetricsSeriesPoint(
                 periodStart = key.start,
-                periodEnd = key.end,
+                periodEnd = periodEndByKey.getValue(key),
                 valuation = point.valuation,
                 cashflow = point.cashflow,
                 pnlDaily = point.pnlDaily,
