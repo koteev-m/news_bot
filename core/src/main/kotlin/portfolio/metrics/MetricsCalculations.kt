@@ -15,18 +15,26 @@ private const val SCALE = 8
 
 fun computePnlSeries(
     valuations: List<ValuationEntry>,
-    cashflowsByDate: Map<LocalDate, BigDecimal>,
+    cashflows: List<CashflowEntry>,
 ): List<PnlPoint> {
     if (valuations.isEmpty()) {
         return emptyList()
     }
 
     val sorted = valuations.sortedBy { it.date }
+    val sortedCashflows = cashflows.sortedBy { it.date }
+    var cashflowIndex = 0
     var cumulativeCashflow = ZERO
     var previousTotal = ZERO
 
     return sorted.map { valuation ->
-        val cashflow = cashflowsByDate[valuation.date] ?: ZERO
+        var cashflow = ZERO
+        while (cashflowIndex < sortedCashflows.size &&
+            !sortedCashflows[cashflowIndex].date.isAfter(valuation.date)
+        ) {
+            cashflow = cashflow.add(sortedCashflows[cashflowIndex].amount)
+            cashflowIndex += 1
+        }
         cumulativeCashflow = cumulativeCashflow.add(cashflow)
         val total = valuation.value.add(cumulativeCashflow)
         val daily = total.subtract(previousTotal)
@@ -115,25 +123,40 @@ fun computeIrr(
 
 fun computeTwr(
     valuations: List<ValuationEntry>,
-    cashflowsByDate: Map<LocalDate, BigDecimal>,
+    cashflows: List<CashflowEntry>,
 ): TwrResult {
     if (valuations.size < 2) {
         return TwrResult(null, TwrStatus.INSUFFICIENT_DATA)
     }
 
     val sorted = valuations.sortedBy { it.date }
+    val sortedCashflows = cashflows.sortedBy { it.date }
+    var cashflowIndex = 0
     var accumulated = 1.0
     var previous = sorted.first().value
     var hasReturn = false
+    val firstDate = sorted.first().date
+
+    while (cashflowIndex < sortedCashflows.size &&
+        !sortedCashflows[cashflowIndex].date.isAfter(firstDate)
+    ) {
+        cashflowIndex += 1
+    }
 
     for (index in 1 until sorted.size) {
         val current = sorted[index]
+        var cashflow = ZERO
+        while (cashflowIndex < sortedCashflows.size &&
+            !sortedCashflows[cashflowIndex].date.isAfter(current.date)
+        ) {
+            cashflow = cashflow.add(sortedCashflows[cashflowIndex].amount)
+            cashflowIndex += 1
+        }
         if (previous.compareTo(ZERO) <= 0) {
             previous = current.value
             continue
         }
-        val cashflow = cashflowsByDate[current.date] ?: ZERO
-        val numerator = current.value.subtract(cashflow)
+        val numerator = current.value.add(cashflow)
         val daily = numerator.divide(previous, MATH_CONTEXT).subtract(ONE)
         val dailyRate = daily.toDouble()
         if (!dailyRate.isFinite()) {

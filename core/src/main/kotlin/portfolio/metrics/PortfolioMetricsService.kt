@@ -41,15 +41,15 @@ class PortfolioMetricsService(
             val valuationResult = convertValuations(valuations, normalizedBase)
             val cashflowResult = buildCashflows(trades, endDate, normalizedBase)
 
-            val dailySeries = computePnlSeries(valuationResult.entries, cashflowResult.cashflowsByDate)
+            val dailySeries = computePnlSeries(valuationResult.entries, cashflowResult.cashflows)
             val series = when (period) {
                 MetricsPeriod.DAILY -> dailySeries.map { it.toSeriesPoint() }
-                else -> buildPeriodSeries(period, valuationResult.entries, cashflowResult.cashflowsByDate)
+                else -> buildPeriodSeries(period, valuationResult.entries, cashflowResult.cashflows)
             }
 
             val totalPnL = dailySeries.lastOrNull()?.pnlTotal ?: zero()
             val irr = computeIrr(cashflowResult.cashflows, endDate, valuationResult.entries.last().value)
-            val twr = computeTwr(valuationResult.entries, cashflowResult.cashflowsByDate)
+            val twr = computeTwr(valuationResult.entries, cashflowResult.cashflows)
 
             val summary = MetricsSummary(
                 totalPnL = totalPnL,
@@ -130,7 +130,6 @@ class PortfolioMetricsService(
             }
 
         return CashflowResult(
-            cashflowsByDate = aggregated,
             cashflows = aggregated.entries.sortedBy { it.key }.map { CashflowEntry(it.key, it.value) },
             delayed = delayed,
         )
@@ -139,12 +138,12 @@ class PortfolioMetricsService(
     private fun buildPeriodSeries(
         period: MetricsPeriod,
         valuations: List<ValuationEntry>,
-        cashflowsByDate: Map<LocalDate, BigDecimal>,
+        cashflows: List<CashflowEntry>,
     ): List<MetricsSeriesPoint> {
-        val cashflowsByPeriod = cashflowsByDate.entries
-            .groupBy { entry -> periodKey(entry.key, period) }
+        val cashflowsByPeriod = cashflows
+            .groupBy { entry -> periodKey(entry.date, period) }
             .mapValues { (_, items) ->
-                items.fold(ZERO) { acc, item -> acc.add(item.value) }
+                items.fold(ZERO) { acc, item -> acc.add(item.amount) }
             }
 
         val valuationsByPeriod = valuations
@@ -155,7 +154,7 @@ class PortfolioMetricsService(
         val periodValuations = orderedKeys.map { key ->
             ValuationEntry(key.end, valuationsByPeriod.getValue(key).value)
         }
-        val periodCashflows = orderedKeys.associate { key -> key.end to (cashflowsByPeriod[key] ?: ZERO) }
+        val periodCashflows = orderedKeys.map { key -> CashflowEntry(key.end, cashflowsByPeriod[key] ?: ZERO) }
         val pnlSeries = computePnlSeries(periodValuations, periodCashflows)
 
         return pnlSeries.mapIndexed { index, point ->
@@ -196,7 +195,6 @@ class PortfolioMetricsService(
     private fun normalize(value: BigDecimal): BigDecimal = value.setScale(SCALE, RoundingMode.HALF_UP)
 
     private data class CashflowResult(
-        val cashflowsByDate: Map<LocalDate, BigDecimal>,
         val cashflows: List<CashflowEntry>,
         val delayed: Boolean,
     )

@@ -6,6 +6,7 @@ import java.math.BigDecimal
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -36,7 +37,8 @@ class CbrXmlDailyClient(
         }
         val effectiveDate = rates.first().asOf.atZone(zoneId).toLocalDate()
         val delayed = date == null || effectiveDate != date
-        val mapped = rates.associate { rate -> rate.currencyCode.uppercase() to rate.rateRub } + (RUB to BigDecimal.ONE)
+        val mapped = rates.associate { rate -> rate.currencyCode.uppercase(Locale.ROOT) to rate.rateRub } +
+            (RUB to BigDecimal.ONE)
         return CbrRatesResult(
             effectiveDate = effectiveDate,
             ratesToRub = mapped,
