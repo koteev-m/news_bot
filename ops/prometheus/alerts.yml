@@ -2,10 +2,71 @@ groups:
   - name: breaking_slo
     rules:
       - alert: SLO_Breaking_p50_gt_300s_15m
-        expr: histogram_quantile(0.5, rate(breaking_publish_latency_seconds_bucket[15m])) > 300
-        for: 5m
+        expr: histogram_quantile(0.50, sum(rate(breaking_publish_latency_seconds_bucket[5m])) by (le)) > 300
+        for: 15m
         labels:
           severity: warning
+          team: newsbot
+          service: app
         annotations:
           summary: "Breaking publish latency p50 above 300s"
-          description: "p50 breaking_publish_latency_seconds exceeded 300s for 5m (15m rate window)."
+          description: "p50 breaking_publish_latency_seconds is above 300s for 15m (5m rate window)."
+
+  - name: ops_health
+    rules:
+      - alert: Feed_Stale_{src}
+        expr: time() - max by (src) (feed_last_ts) > 86400
+        for: 15m
+        labels:
+          severity: warning
+          team: newsbot
+          service: app
+        annotations:
+          summary: "Feed {{ $labels.src }} stale"
+          description: "Feed {{ $labels.src }} last success was {{ $value | humanizeDuration }} ago."
+      - alert: Errors_Spike_{route}
+        expr: |
+          (
+            sum by (uri) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            /
+            clamp_min(sum by (uri) (rate(http_server_requests_seconds_count[5m])), 1)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          team: newsbot
+          service: app
+        annotations:
+          summary: "HTTP 5xx spike on {{ $labels.uri }}"
+          description: "5xx ratio for {{ $labels.uri }} is above 5% (current: {{ $value | humanizePercentage }})."
+      - alert: Alert_Suppression_Surge
+        expr: |
+          (
+            sum(rate(alert_suppressed_total[5m]))
+            > 2 * sum(rate(alert_suppressed_total[1h]))
+          )
+          and
+          sum(rate(alert_suppressed_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          team: newsbot
+          service: app
+        annotations:
+          summary: "Alert suppression surge"
+          description: "Suppressed alerts rate spiked above baseline: {{ $value | humanize }} per second (5m)."
+      - alert: Import_Errors_Rate
+        expr: |
+          (
+            sum by (uri) (rate(http_server_requests_seconds_count{uri=~"/api/portfolio/.*/trades/import/.*", status=~"5.."}[5m]))
+            /
+            clamp_min(sum by (uri) (rate(http_server_requests_seconds_count{uri=~"/api/portfolio/.*/trades/import/.*"}[5m])), 1)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          team: newsbot
+          service: app
+        annotations:
+          summary: "Import 5xx rate high on {{ $labels.uri }}"
+          description: "Import endpoint {{ $labels.uri }} 5xx ratio above 5% (current: {{ $value | humanizePercentage }})."
