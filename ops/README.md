@@ -22,12 +22,20 @@ docker run --rm -v "$PWD:/work" -w /work prom/prometheus:latest promtool check r
 ```bash
 export GRAFANA_URL="https://grafana.example.com"
 export GRAFANA_TOKEN="***"
+# UID Prometheus datasource в Grafana (см. settings → data sources)
+export GRAFANA_DS_UID="XXXXX"
 # опционально: id папки (по умолчанию 0 = General)
 export GRAFANA_FOLDER_ID="0"
 
 for file in ops/grafana/*.json; do
   payload=$(jq -n --argfile dashboard "$file" --argjson folderId "${GRAFANA_FOLDER_ID:-0}" \
-    '{dashboard: $dashboard, folderId: $folderId, overwrite: true}')
+    --arg dsUid "${GRAFANA_DS_UID}" \
+    '$dashboard
+    | (.templating.list[]? | select(.name == "datasource") | .current.value) = $dsUid
+    | (.templating.list[]? | select(.name == "datasource") | .current.text) = "Prometheus"
+    | (.. | objects | select(has("datasource")) | .datasource)
+      |= (if type == "object" and .uid == "$datasource" then .uid = $dsUid else . end)
+    | {dashboard: ., folderId: $folderId, overwrite: true}')
   curl -sS -H "Authorization: Bearer ${GRAFANA_TOKEN}" -H "Content-Type: application/json" \
     -X POST "${GRAFANA_URL}/api/dashboards/db" -d "$payload"
 done
