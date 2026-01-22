@@ -28,6 +28,7 @@ import alerts.AlertsRepositoryPostgres
 import alerts.AlertsService
 import alerts.alertsRoutes
 import alerts.loadAlertsConfig
+import io.ktor.client.HttpClient
 import errors.installErrorPages
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
@@ -78,8 +79,26 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.serialization.decodeFromString
+import java.time.Instant
+import java.util.concurrent.atomic.AtomicLong
 import news.metrics.NewsMetricsPort
+import news.dedup.Clusterer
+import news.pipeline.NewsPipeline
+import news.publisher.PengradTelegramClient
+import news.publisher.TelegramPublisher
+import news.publisher.store.InMemoryIdempotencyStore
+import news.rss.RssFetcher
+import news.sources.CbrSource
+import news.sources.MoexSource
 import observability.DomainMetrics
 import observability.EventsCounter
 import observability.Observability
@@ -122,6 +141,7 @@ import security.installUploadGuard
 import security.RateLimitConfig
 import security.SupportRateLimit
 import java.time.Clock
+import io.micrometer.core.instrument.Timer
 import netflow2.Netflow2Loader
 import mtproto.HttpMtprotoViewsClient
 import webhook.OverflowMode
@@ -185,6 +205,12 @@ fun Application.module() {
         experimentsService = experimentsService,
         newsConfig = newsConfig
     )
+    val newsScheduler = startNewsPipelineScheduler(
+        newsConfig = newsConfig,
+        services = services,
+        metrics = metrics,
+        config = appConfig
+    )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
     val supportRepository = SupportRepository()
     val pricingRepository = PricingRepository()
@@ -242,6 +268,11 @@ fun Application.module() {
             webhookQueue.shutdown(queueConfig.shutdownTimeout)
         }
     }
+    environment.monitor.subscribe(ApplicationStopped) {
+        runBlocking {
+            newsScheduler.stop()
+        }
+    }
 
     installGrowthRoutes(prometheusRegistry)
 
@@ -273,7 +304,11 @@ fun Application.module() {
                 return@post
             }
 
-            val tgUpdate = runCatchingNonFatal { StarsWebhookHandler.json.decodeFromString<TgUpdate>(rawUpdate) }.getOrElse {
+            val tgUpdate = runCatchingNonFatal {
+                StarsWebhookHandler.json.decodeFromString<TgUpdate>(
+                    rawUpdate
+                )
+            }.getOrElse {
                 call.respond(HttpStatusCode.OK)
                 return@post
             }
@@ -491,7 +526,87 @@ private fun Application.loadNewsConfig(): NewsConfig {
     val channelId = config.propertyOrNull("news.channelId")?.getString()?.toLongOrNull()
         ?: config.propertyOrNull("telegram.channelId")?.getString()?.toLongOrNull()
         ?: defaults.channelId
-    return defaults.copy(botDeepLinkBase = botBase, maxPayloadBytes = maxBytes, channelId = channelId)
+    val digestOnly = config.propertyOrNull("news.modeDigestOnly")?.getString()?.toBooleanStrictOrNull()
+        ?: defaults.modeDigestOnly
+    val autopublishBreaking = config.propertyOrNull("news.modeAutopublishBreaking")?.getString()?.toBooleanStrictOrNull()
+        ?: defaults.modeAutopublishBreaking
+    return defaults.copy(
+        botDeepLinkBase = botBase,
+        maxPayloadBytes = maxBytes,
+        channelId = channelId,
+        modeDigestOnly = digestOnly,
+        modeAutopublishBreaking = autopublishBreaking
+    )
+}
+
+private class NewsPipelineScheduler(
+    private val scope: CoroutineScope,
+    private val job: Job,
+    private val httpClient: HttpClient
+) {
+    suspend fun stop() {
+        job.cancelAndJoin()
+        httpClient.close()
+    }
+}
+
+private fun Application.startNewsPipelineScheduler(
+    newsConfig: NewsConfig,
+    services: Services,
+    metrics: DomainMetrics,
+    config: ApplicationConfig
+): NewsPipelineScheduler {
+    val logger = LoggerFactory.getLogger("NewsPipelineScheduler")
+    val intervalSeconds = config.propertyOrNull("news.pipelineIntervalSeconds")?.getString()?.toLongOrNull() ?: 60L
+    val httpClient = RssFetcher.defaultClient(newsConfig)
+    val fetcher = RssFetcher(newsConfig, httpClient)
+    val sources = listOf(
+        CbrSource(fetcher),
+        MoexSource(fetcher)
+    )
+    val idempotencyStore = InMemoryIdempotencyStore()
+    val pipeline = NewsPipeline(
+        config = newsConfig,
+        sources = sources,
+        clusterer = Clusterer(newsConfig),
+        telegramPublisher = TelegramPublisher(
+            client = PengradTelegramClient(services.telegramBot),
+            config = newsConfig,
+            idempotencyStore = idempotencyStore
+        ),
+        idempotencyStore = idempotencyStore
+    )
+
+    val meterRegistry = metrics.meterRegistry
+    val timer = meterRegistry.timer("news_pipeline_run_seconds")
+    val counterOk = meterRegistry.counter("news_pipeline_run_total", "result", "ok")
+    val counterEmpty = meterRegistry.counter("news_pipeline_run_total", "result", "empty")
+    val counterError = meterRegistry.counter("news_pipeline_run_total", "result", "error")
+    val lastSuccess = AtomicLong(0L)
+    meterRegistry.gauge("news_pipeline_last_success_ts", lastSuccess)
+
+    val job = SupervisorJob()
+    val scope = CoroutineScope(job + Dispatchers.IO + CoroutineName("news-pipeline-scheduler"))
+    scope.launch {
+        while (isActive) {
+            val sample = Timer.start(meterRegistry)
+            val result = runCatchingNonFatal { pipeline.runOnce() }
+            sample.stop(timer)
+            result.onSuccess { published ->
+                lastSuccess.set(Instant.now().epochSecond)
+                if (published > 0) {
+                    counterOk.increment()
+                } else {
+                    counterEmpty.increment()
+                }
+            }.onFailure { ex ->
+                counterError.increment()
+                logger.error("News pipeline run failed", ex)
+            }
+            delay(intervalSeconds.seconds)
+        }
+    }
+    return NewsPipelineScheduler(scope, job, httpClient)
 }
 
 private fun Application.billingDefaultDuration(): Long {
