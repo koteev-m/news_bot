@@ -530,12 +530,15 @@ private fun Application.loadNewsConfig(): NewsConfig {
         ?: defaults.modeDigestOnly
     val autopublishBreaking = config.propertyOrNull("news.modeAutopublishBreaking")?.getString()?.toBooleanStrictOrNull()
         ?: defaults.modeAutopublishBreaking
+    val digestMinIntervalSeconds = config.propertyOrNull("news.digestMinIntervalSeconds")?.getString()?.toLongOrNull()
+        ?.coerceAtLeast(0L) ?: defaults.digestMinIntervalSeconds
     return defaults.copy(
         botDeepLinkBase = botBase,
         maxPayloadBytes = maxBytes,
         channelId = channelId,
         modeDigestOnly = digestOnly,
-        modeAutopublishBreaking = autopublishBreaking
+        modeAutopublishBreaking = autopublishBreaking,
+        digestMinIntervalSeconds = digestMinIntervalSeconds
     )
 }
 
@@ -582,18 +585,41 @@ private fun Application.startNewsPipelineScheduler(
     val counterOk = meterRegistry.counter("news_pipeline_run_total", "result", "ok")
     val counterEmpty = meterRegistry.counter("news_pipeline_run_total", "result", "empty")
     val counterError = meterRegistry.counter("news_pipeline_run_total", "result", "error")
+    val digestSkipped = meterRegistry.counter("news_digest_skipped_total", "reason", "interval")
+    val digestPublished = meterRegistry.counter("news_digest_published_total")
     val lastSuccess = AtomicLong(0L)
+    val lastDigestPublishedEpochSeconds = AtomicLong(0L)
     meterRegistry.gauge("news_pipeline_last_success_ts", lastSuccess)
 
     val job = SupervisorJob()
     val scope = CoroutineScope(job + Dispatchers.IO + CoroutineName("news-pipeline-scheduler"))
     scope.launch {
         while (isActive) {
+            if (newsConfig.modeDigestOnly) {
+                val now = Instant.now().epochSecond
+                val lastPublished = lastDigestPublishedEpochSeconds.get()
+                val minInterval = newsConfig.digestMinIntervalSeconds
+                if (minInterval > 0 && now - lastPublished < minInterval) {
+                    digestSkipped.increment()
+                    logger.info(
+                        "Skipping digest publish due to min interval (elapsed={}s, minInterval={}s)",
+                        now - lastPublished,
+                        minInterval
+                    )
+                    delay(intervalSeconds.seconds)
+                    continue
+                }
+            }
             val sample = Timer.start(meterRegistry)
             val result = runCatchingNonFatal { pipeline.runOnce() }
             sample.stop(timer)
             result.onSuccess { published ->
                 lastSuccess.set(Instant.now().epochSecond)
+                if (newsConfig.modeDigestOnly && published > 0) {
+                    lastDigestPublishedEpochSeconds.set(Instant.now().epochSecond)
+                    digestPublished.increment()
+                    logger.info("Digest post published")
+                }
                 if (published > 0) {
                     counterOk.increment()
                 } else {
