@@ -11,7 +11,9 @@ data class NewsConfig(
     val sourceWeights: List<SourceWeight>,
     val channelId: Long,
     val botDeepLinkBase: String,
-    val maxPayloadBytes: Int = 64
+    val maxPayloadBytes: Int = 64,
+    val modeDigestOnly: Boolean,
+    val modeAutopublishBreaking: Boolean
 )
 
 object NewsDefaults {
@@ -31,7 +33,9 @@ object NewsDefaults {
         sourceWeights = defaultWeights,
         channelId = 0L,
         botDeepLinkBase = "https://t.me/example_bot",
-        maxPayloadBytes = 64
+        maxPayloadBytes = 64,
+        modeDigestOnly = true,
+        modeAutopublishBreaking = false
     )
 
     fun weightFor(domain: String, weights: List<SourceWeight> = defaultWeights): Int {

@@ -38,6 +38,19 @@ class NewsPipeline(
             logger.info("No clusters generated")
             return@coroutineScope 0
         }
+        if (config.modeDigestOnly) {
+            val posted = telegramPublisher.publishDigest(clusters, ::deepLink)
+            if (posted) {
+                logger.info("Published digest post")
+                return@coroutineScope 1
+            }
+            logger.info("Digest post was not published")
+            return@coroutineScope 0
+        }
+        if (!config.modeAutopublishBreaking) {
+            logger.info("Breaking autopublish disabled")
+            return@coroutineScope 0
+        }
         val breakingCandidates = selectBreaking(clusters)
             .filterNot { idempotencyStore.seen(it.clusterKey) }
         var published = 0
