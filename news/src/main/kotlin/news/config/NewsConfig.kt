@@ -14,7 +14,11 @@ data class NewsConfig(
     val maxPayloadBytes: Int = 64,
     val modeDigestOnly: Boolean = true,
     val modeAutopublishBreaking: Boolean = false,
-    val digestMinIntervalSeconds: Long = 21_600
+    val digestMinIntervalSeconds: Long = 21_600,
+    val moderationEnabled: Boolean = false,
+    val moderationTier0Weight: Int = 90,
+    val moderationConfidenceThreshold: Double = 0.7,
+    val moderationBreakingAgeMinutes: Long = 90
 )
 
 object NewsDefaults {
@@ -37,7 +41,11 @@ object NewsDefaults {
         maxPayloadBytes = 64,
         modeDigestOnly = true,
         modeAutopublishBreaking = false,
-        digestMinIntervalSeconds = 21_600
+        digestMinIntervalSeconds = 21_600,
+        moderationEnabled = false,
+        moderationTier0Weight = 90,
+        moderationConfidenceThreshold = 0.7,
+        moderationBreakingAgeMinutes = 90
     )
 
     fun weightFor(domain: String, weights: List<SourceWeight> = defaultWeights): Int {

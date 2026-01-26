@@ -64,7 +64,20 @@ object PostTemplates {
         return buildString(text.length * 2) {
             text.forEach { char ->
                 when (char) {
-                    '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!' -> append('\\')
+                    '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!' -> append(
+                        '\\'
+                    )
+                }
+                append(char)
+            }
+        }
+    }
+
+    fun escapeMarkdownV2Url(url: String): String {
+        return buildString(url.length * 2) {
+            url.forEach { char ->
+                when (char) {
+                    '(', ')', '\\' -> append('\\')
                 }
                 append(char)
             }
@@ -74,16 +87,5 @@ object PostTemplates {
     private fun renderCta(deepLink: String): String {
         val url = escapeMarkdownV2Url(deepLink)
         return "👉 [Открыть в боте]($url)"
-    }
-
-    private fun escapeMarkdownV2Url(url: String): String {
-        return buildString(url.length * 2) {
-            url.forEach { char ->
-                when (char) {
-                    '(', ')', '\\' -> append('\\')
-                }
-                append(char)
-            }
-        }
     }
 }
