@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Loading } from "../components/Loading";
+import { PortfolioIdField } from "../components/PortfolioIdField";
 import { useToaster } from "../components/Toaster";
+import { usePortfolioId } from "../hooks/usePortfolioId";
 import { getReport } from "../lib/api";
 import type { PortfolioReport } from "../lib/api";
 import { formatDate, formatMoney } from "../lib/format";
@@ -10,17 +12,28 @@ import { formatDate, formatMoney } from "../lib/format";
 export function Reports(): JSX.Element {
   const { t } = useTranslation();
   const toaster = useToaster();
+  const { portfolioId, setPortfolioId, normalizedPortfolioId, isValid } = usePortfolioId();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [report, setReport] = useState<PortfolioReport | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const portfolioIdError = useMemo(() => {
+    if (!portfolioId) {
+      return t("import.error.portfolioRequired");
+    }
+    return isValid ? null : t("import.error.portfolioUuid");
+  }, [portfolioId, isValid, t]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!isValid) {
+      return;
+    }
     setLoading(true);
     setReport(null);
     try {
-      const data = await getReport({ from: from || undefined, to: to || undefined });
+      const data = await getReport(normalizedPortfolioId, { from: from || undefined, to: to || undefined });
       setReport(data);
     } catch (err) {
       toaster.notifyError((err as Error).message || t("error.generic"));
@@ -33,6 +46,12 @@ export function Reports(): JSX.Element {
     <div className="page">
       <section className="card">
         <h2>{t("reports.title")}</h2>
+        <PortfolioIdField
+          id="reports-portfolio-id"
+          value={portfolioId}
+          onChange={setPortfolioId}
+          error={portfolioIdError}
+        />
         <form className="report-form" onSubmit={handleSubmit} aria-live="polite">
           <label htmlFor="reports-from">
             {t("reports.form.from")}

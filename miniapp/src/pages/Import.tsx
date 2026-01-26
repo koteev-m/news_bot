@@ -4,7 +4,9 @@ import { FileDrop } from "../components/FileDrop";
 import { ColumnMapper, type ColumnMapping, type ColumnKey } from "../components/ColumnMapper";
 import { CsvPreview } from "../components/CsvPreview";
 import { Loading } from "../components/Loading";
+import { PortfolioIdField } from "../components/PortfolioIdField";
 import { useToaster } from "../components/Toaster";
+import { usePortfolioId } from "../hooks/usePortfolioId";
 import { detectDelimiter, parseCsv, sanitizeCsvCell, type CsvDelimiter } from "../lib/csv";
 import { validateMappedRow } from "../lib/csvSchema";
 import { postImportByUrl, postImportCsv, type ImportReport } from "../lib/api";
@@ -28,8 +30,6 @@ const OUTPUT_FIELDS: ColumnKey[] = [
   "note",
 ];
 
-const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-
 type ImportTab = "file" | "url";
 
 interface ValidationIssue {
@@ -41,7 +41,7 @@ export function Import(): JSX.Element {
   const { t } = useTranslation();
   const toaster = useToaster();
   const [activeTab, setActiveTab] = useState<ImportTab>("file");
-  const [portfolioId, setPortfolioId] = useState("");
+  const { portfolioId, setPortfolioId, normalizedPortfolioId, isValid } = usePortfolioId();
   const [file, setFile] = useState<File | null>(null);
   const [rawCsv, setRawCsv] = useState<string>("");
   const [delimiter, setDelimiter] = useState<CsvDelimiter>(",");
@@ -60,8 +60,8 @@ export function Import(): JSX.Element {
     if (!portfolioId) {
       return t("import.error.portfolioRequired");
     }
-    return UUID_REGEX.test(portfolioId.trim()) ? null : t("import.error.portfolioUuid");
-  }, [portfolioId, t]);
+    return isValid ? null : t("import.error.portfolioUuid");
+  }, [portfolioId, isValid, t]);
 
   const showError = (message: string, options: { toast?: boolean } = {}) => {
     setError(message);
@@ -177,7 +177,7 @@ export function Import(): JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      const result = await postImportCsv(portfolioId.trim(), payload.file);
+      const result = await postImportCsv(normalizedPortfolioId, payload.file);
       setReport(result);
       toaster.notify(t("import.success.file"));
     } catch (cause) {
@@ -204,7 +204,7 @@ export function Import(): JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      const result = await postImportByUrl(portfolioId.trim(), trimmedUrl);
+      const result = await postImportByUrl(normalizedPortfolioId, trimmedUrl);
       setReport(result);
       toaster.notify(t("import.success.url"));
     } catch (cause) {
@@ -218,26 +218,12 @@ export function Import(): JSX.Element {
     <div className="page">
       <section className="card import-page">
         <h2>{t("import.title")}</h2>
-        <div className="import-page__portfolio">
-          <label htmlFor="import-portfolio-id">{t("import.portfolioId")}</label>
-          <input
-            id="import-portfolio-id"
-            type="text"
-            value={portfolioId}
-            onChange={(event) => setPortfolioId(event.target.value)}
-            placeholder={t("import.portfolioPlaceholder")}
-            aria-describedby="portfolio-help"
-            aria-invalid={Boolean(portfolioIdError)}
-          />
-          <p id="portfolio-help" className="import-page__hint">
-            {t("import.portfolioHelp")}
-          </p>
-          {portfolioIdError ? (
-            <span className="import-page__error" role="alert">
-              {portfolioIdError}
-            </span>
-          ) : null}
-        </div>
+        <PortfolioIdField
+          id="import-portfolio-id"
+          value={portfolioId}
+          onChange={setPortfolioId}
+          error={portfolioIdError}
+        />
         <div className="import-page__tabs" role="tablist" aria-label={t("import.title")}>
           <button
             type="button"

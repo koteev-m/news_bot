@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Loading } from "../components/Loading";
+import { PortfolioIdField } from "../components/PortfolioIdField";
 import { useToaster } from "../components/Toaster";
+import { usePortfolioId } from "../hooks/usePortfolioId";
 import { getQuotes, getReport } from "../lib/api";
 import type { PortfolioReport, Quote } from "../lib/api";
 import { formatMoney, formatPct } from "../lib/format";
@@ -11,29 +13,42 @@ export function Dashboard(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const toaster = useToaster();
+  const { portfolioId, setPortfolioId, normalizedPortfolioId, isValid } = usePortfolioId();
   const [report, setReport] = useState<PortfolioReport | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(true);
 
+  const portfolioIdError = useMemo(() => {
+    if (!portfolioId) {
+      return t("import.error.portfolioRequired");
+    }
+    return isValid ? null : t("import.error.portfolioUuid");
+  }, [portfolioId, isValid, t]);
+
   useEffect(() => {
     let cancelled = false;
-    setLoadingSummary(true);
-    getReport()
-      .then((result) => {
-        if (!cancelled) {
-          setReport(result);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          toaster.notifyError((err as Error).message || t("error.generic"));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoadingSummary(false);
-        }
-      });
+    if (isValid) {
+      setLoadingSummary(true);
+      getReport(normalizedPortfolioId)
+        .then((result) => {
+          if (!cancelled) {
+            setReport(result);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            toaster.notifyError((err as Error).message || t("error.generic"));
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setLoadingSummary(false);
+          }
+        });
+    } else {
+      setReport(null);
+      setLoadingSummary(false);
+    }
     getQuotes()
       .then((result) => {
         if (!cancelled) {
@@ -46,11 +61,17 @@ export function Dashboard(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [t, toaster]);
+  }, [isValid, normalizedPortfolioId, t, toaster]);
 
   return (
     <div className="page">
       <section className="card">
+        <PortfolioIdField
+          id="dashboard-portfolio-id"
+          value={portfolioId}
+          onChange={setPortfolioId}
+          error={portfolioIdError}
+        />
         <h2>{t("dashboard.heading")}</h2>
         {loadingSummary ? (
           <Loading variant="skeleton" labelKey="dashboard.loading" />

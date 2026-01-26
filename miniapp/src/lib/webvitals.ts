@@ -1,4 +1,4 @@
-import { onCLS, onFID, onLCP, onINP, onTTFB, Metric } from "web-vitals";
+import { onCLS, onINP, onLCP, onTTFB, type Metric } from "web-vitals";
 
 type Sender = (name: string, value: number, page?: string, navType?: string) => void;
 
@@ -12,9 +12,8 @@ function send(metric: Metric, post: Sender) {
 }
 
 export function initWebVitals(post: Sender) {
-  onCLS((metric) => send(metric, post));
-  onFID((metric) => send(metric, post));
-  onLCP((metric) => send(metric, post));
-  onINP((metric) => send(metric, post));
-  onTTFB((metric) => send(metric, post));
+  onCLS((metric: Metric) => send(metric, post));
+  onLCP((metric: Metric) => send(metric, post));
+  onINP((metric: Metric) => send(metric, post));
+  onTTFB((metric: Metric) => send(metric, post));
 }
