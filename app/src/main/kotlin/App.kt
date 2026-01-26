@@ -88,7 +88,11 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.serialization.decodeFromString
+import java.time.Clock
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import news.metrics.NewsMetricsPort
 import news.dedup.Clusterer
@@ -140,7 +144,6 @@ import security.installSecurity
 import security.installUploadGuard
 import security.RateLimitConfig
 import security.SupportRateLimit
-import java.time.Clock
 import io.micrometer.core.instrument.Timer
 import netflow2.Netflow2Loader
 import mtproto.HttpMtprotoViewsClient
@@ -148,6 +151,11 @@ import webhook.OverflowMode
 import webhook.WebhookQueue
 import common.runCatchingNonFatal
 import views.PostViewsService
+import db.tables.NewsPipelineStateTable
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.update
 
 @Suppress("unused")
 private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
@@ -560,7 +568,16 @@ private fun Application.startNewsPipelineScheduler(
     config: ApplicationConfig
 ): NewsPipelineScheduler {
     val logger = LoggerFactory.getLogger("NewsPipelineScheduler")
-    val intervalSeconds = config.propertyOrNull("news.pipelineIntervalSeconds")?.getString()?.toLongOrNull() ?: 60L
+    val intervalRaw = config.propertyOrNull("news.pipelineIntervalSeconds")?.getString()?.toLongOrNull()
+    val intervalSeconds = if (intervalRaw == null || intervalRaw <= 0L) {
+        logger.warn(
+            "Invalid news.pipelineIntervalSeconds={}, using safe default of 60s",
+            intervalRaw ?: "null"
+        )
+        60L
+    } else {
+        intervalRaw
+    }
     val httpClient = RssFetcher.defaultClient(newsConfig)
     val fetcher = RssFetcher(newsConfig, httpClient)
     val sources = listOf(
@@ -585,40 +602,71 @@ private fun Application.startNewsPipelineScheduler(
     val counterOk = meterRegistry.counter("news_pipeline_run_total", "result", "ok")
     val counterEmpty = meterRegistry.counter("news_pipeline_run_total", "result", "empty")
     val counterError = meterRegistry.counter("news_pipeline_run_total", "result", "error")
-    val digestSkipped = meterRegistry.counter("news_digest_skipped_total", "reason", "interval")
+    val digestSkippedInterval = meterRegistry.counter("news_digest_skipped_total", "reason", "interval")
+    val digestSkippedLease = meterRegistry.counter("news_digest_skipped_total", "reason", "lease")
     val digestPublished = meterRegistry.counter("news_digest_published_total")
     val lastSuccess = AtomicLong(0L)
-    val lastDigestPublishedEpochSeconds = AtomicLong(0L)
     meterRegistry.gauge("news_pipeline_last_success_ts", lastSuccess)
+    val instanceId = UUID.randomUUID().toString()
+    val leaseSeconds = 600L
 
     val job = SupervisorJob()
     val scope = CoroutineScope(job + Dispatchers.IO + CoroutineName("news-pipeline-scheduler"))
     scope.launch {
         while (isActive) {
+            var leaseAcquired = false
             if (newsConfig.modeDigestOnly) {
-                val now = Instant.now().epochSecond
-                val lastPublished = lastDigestPublishedEpochSeconds.get()
                 val minInterval = newsConfig.digestMinIntervalSeconds
-                if (minInterval > 0 && now - lastPublished < minInterval) {
-                    digestSkipped.increment()
-                    logger.info(
-                        "Skipping digest publish due to min interval (elapsed={}s, minInterval={}s)",
-                        now - lastPublished,
-                        minInterval
+                val leaseDecision = runCatchingNonFatal {
+                    acquireDigestLease(
+                        instanceId = instanceId,
+                        minIntervalSeconds = minInterval,
+                        leaseSeconds = leaseSeconds
                     )
+                }.getOrElse { ex ->
+                    logger.error("Failed to acquire digest lease", ex)
                     delay(intervalSeconds.seconds)
                     continue
                 }
+                if (!leaseDecision.acquired) {
+                    when (leaseDecision.reason) {
+                        DigestSkipReason.Interval -> {
+                            digestSkippedInterval.increment()
+                            logger.debug(
+                                "Skipping digest publish due to min interval (elapsed={}s, minInterval={}s)",
+                                leaseDecision.elapsedSeconds,
+                                minInterval
+                            )
+                        }
+                        DigestSkipReason.Lease -> {
+                            digestSkippedLease.increment()
+                            logger.debug("Skipping digest publish due to active lease")
+                        }
+                        null -> Unit
+                    }
+                    delay(intervalSeconds.seconds)
+                    continue
+                }
+                leaseAcquired = true
             }
             val sample = Timer.start(meterRegistry)
             val result = runCatchingNonFatal { pipeline.runOnce() }
             sample.stop(timer)
             result.onSuccess { published ->
                 lastSuccess.set(Instant.now().epochSecond)
-                if (newsConfig.modeDigestOnly && published > 0) {
-                    lastDigestPublishedEpochSeconds.set(Instant.now().epochSecond)
-                    digestPublished.increment()
-                    logger.info("Digest post published")
+                if (newsConfig.modeDigestOnly && leaseAcquired) {
+                    runCatchingNonFatal {
+                        releaseDigestLease(
+                            instanceId = instanceId,
+                            published = published > 0
+                        )
+                    }.onFailure { ex ->
+                        logger.error("Failed to release digest lease", ex)
+                    }
+                    if (published > 0) {
+                        digestPublished.increment()
+                        logger.info("Digest post published")
+                    }
                 }
                 if (published > 0) {
                     counterOk.increment()
@@ -628,11 +676,100 @@ private fun Application.startNewsPipelineScheduler(
             }.onFailure { ex ->
                 counterError.increment()
                 logger.error("News pipeline run failed", ex)
+                if (newsConfig.modeDigestOnly && leaseAcquired) {
+                    runCatchingNonFatal {
+                        releaseDigestLease(
+                            instanceId = instanceId,
+                            published = false
+                        )
+                    }.onFailure { releaseEx ->
+                        logger.error("Failed to release digest lease after error", releaseEx)
+                    }
+                }
             }
             delay(intervalSeconds.seconds)
         }
     }
     return NewsPipelineScheduler(scope, job, httpClient)
+}
+
+private enum class DigestSkipReason {
+    Interval,
+    Lease
+}
+
+private data class DigestLeaseDecision(
+    val acquired: Boolean,
+    val reason: DigestSkipReason?,
+    val elapsedSeconds: Long = 0L
+)
+
+private const val DIGEST_GATE_KEY = "digest"
+
+private suspend fun acquireDigestLease(
+    instanceId: String,
+    minIntervalSeconds: Long,
+    leaseSeconds: Long
+): DigestLeaseDecision {
+    val now = Instant.now().epochSecond
+    return DatabaseFactory.dbQuery {
+        exec(
+            """
+            INSERT INTO news_pipeline_state
+                (key, last_published_epoch_seconds, lease_until_epoch_seconds, updated_at)
+            VALUES
+                ('$DIGEST_GATE_KEY', 0, 0, now())
+            ON CONFLICT (key) DO NOTHING
+            """.trimIndent()
+        )
+        val state = NewsPipelineStateTable.select { NewsPipelineStateTable.key eq DIGEST_GATE_KEY }
+            .first()
+        val lastPublished = state[NewsPipelineStateTable.lastPublishedEpochSeconds]
+        val leaseUntil = state[NewsPipelineStateTable.leaseUntilEpochSeconds]
+        val elapsed = now - lastPublished
+        if (leaseUntil > now) {
+            return@dbQuery DigestLeaseDecision(acquired = false, reason = DigestSkipReason.Lease)
+        }
+        if (minIntervalSeconds > 0 && elapsed < minIntervalSeconds) {
+            return@dbQuery DigestLeaseDecision(
+                acquired = false,
+                reason = DigestSkipReason.Interval,
+                elapsedSeconds = elapsed
+            )
+        }
+        val updated = NewsPipelineStateTable.update({
+            (NewsPipelineStateTable.key eq DIGEST_GATE_KEY) and
+                (NewsPipelineStateTable.leaseUntilEpochSeconds lessEq now) and
+                (NewsPipelineStateTable.lastPublishedEpochSeconds lessEq (now - minIntervalSeconds))
+        }) {
+            it[NewsPipelineStateTable.leaseUntilEpochSeconds] = now + leaseSeconds
+            it[NewsPipelineStateTable.leaseOwner] = instanceId
+            it[NewsPipelineStateTable.updatedAt] = OffsetDateTime.now(ZoneOffset.UTC)
+        }
+        if (updated == 0) {
+            DigestLeaseDecision(acquired = false, reason = DigestSkipReason.Lease)
+        } else {
+            DigestLeaseDecision(acquired = true, reason = null)
+        }
+    }
+}
+
+private suspend fun releaseDigestLease(instanceId: String, published: Boolean) {
+    DatabaseFactory.dbQuery {
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val nowEpoch = now.toInstant().epochSecond
+        NewsPipelineStateTable.update({
+            (NewsPipelineStateTable.key eq DIGEST_GATE_KEY) and
+                (NewsPipelineStateTable.leaseOwner eq instanceId)
+        }) {
+            it[NewsPipelineStateTable.leaseUntilEpochSeconds] = 0L
+            it[NewsPipelineStateTable.leaseOwner] = null
+            it[NewsPipelineStateTable.updatedAt] = now
+            if (published) {
+                it[NewsPipelineStateTable.lastPublishedEpochSeconds] = nowEpoch
+            }
+        }
+    }
 }
 
 private fun Application.billingDefaultDuration(): Long {

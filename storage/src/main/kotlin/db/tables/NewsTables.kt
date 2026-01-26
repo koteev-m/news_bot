@@ -58,3 +58,12 @@ object NewsClustersTable : Table("news_clusters") {
         index("idx_news_clusters_last_seen", false, lastSeen)
     }
 }
+
+object NewsPipelineStateTable : Table("news_pipeline_state") {
+    val key = text("key")
+    val lastPublishedEpochSeconds = long("last_published_epoch_seconds").default(0)
+    val leaseUntilEpochSeconds = long("lease_until_epoch_seconds").default(0)
+    val leaseOwner = text("lease_owner").nullable()
+    val updatedAt = timestampWithTimeZone("updated_at")
+    override val primaryKey = PrimaryKey(key)
+}
