@@ -16,6 +16,7 @@ import { Settings } from "../pages/Settings";
 import { ToasterProvider } from "../components/Toaster";
 import { i18n } from "../i18n";
 import type { InitDataUnsafe } from "../lib/telegram";
+import { setPortfolioIdPreference } from "../lib/session";
 
 expect.extend(matchers);
 
@@ -63,6 +64,7 @@ function renderWithProviders(element: ReactElement) {
 describe("accessibility", () => {
   beforeAll(() => {
     void i18n.changeLanguage("en");
+    setPortfolioIdPreference("00000000-0000-0000-0000-000000000001");
   });
 
   afterEach(() => {

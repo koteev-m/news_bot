@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DataTable } from "../components/DataTable";
 import { Loading } from "../components/Loading";
+import { PortfolioIdField } from "../components/PortfolioIdField";
 import { useToaster } from "../components/Toaster";
+import { usePortfolioId } from "../hooks/usePortfolioId";
 import { getTrades } from "../lib/api";
 import type { Trade, TradesResponse } from "../lib/api";
 import { formatDate, formatMoney } from "../lib/format";
@@ -14,14 +16,27 @@ type TradeSide = "buy" | "sell" | "all";
 export function Trades(): JSX.Element {
   const { t } = useTranslation();
   const toaster = useToaster();
+  const { portfolioId, setPortfolioId, normalizedPortfolioId, isValid } = usePortfolioId();
   const [state, setState] = useState<TradesResponse | null>(null);
   const [side, setSide] = useState<TradeSide>("all");
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  const portfolioIdError = useMemo(() => {
+    if (!portfolioId) {
+      return t("import.error.portfolioRequired");
+    }
+    return isValid ? null : t("import.error.portfolioUuid");
+  }, [portfolioId, isValid, t]);
+
   const load = useCallback(() => {
+    if (!isValid) {
+      setState(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    getTrades({ limit: PAGE_SIZE, offset: page * PAGE_SIZE, side })
+    getTrades(normalizedPortfolioId, { limit: PAGE_SIZE, offset: page * PAGE_SIZE, side })
       .then((data) => {
         setState(data);
       })
@@ -29,17 +44,27 @@ export function Trades(): JSX.Element {
         toaster.notifyError((err as Error).message || t("error.generic"));
       })
       .finally(() => setLoading(false));
-  }, [page, side, t, toaster]);
+  }, [isValid, normalizedPortfolioId, page, side, t, toaster]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [normalizedPortfolioId]);
 
   const totalPages = useMemo(() => (state ? Math.ceil(state.total / state.limit) : 0), [state]);
 
   return (
     <div className="page">
       <section className="card">
+        <PortfolioIdField
+          id="trades-portfolio-id"
+          value={portfolioId}
+          onChange={setPortfolioId}
+          error={portfolioIdError}
+        />
         <div className="card__header">
           <h2>{t("trades.title")}</h2>
           <div className="filters">

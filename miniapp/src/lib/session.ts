@@ -3,6 +3,7 @@ export type ThemeMode = "light" | "dark";
 export interface UIPreferences {
   theme: ThemeMode;
   lastTab: string;
+  portfolioId: string;
 }
 
 let jwt: string | null = null;
@@ -10,7 +11,8 @@ let jwt: string | null = null;
 const PREF_STORAGE_KEY = "portfolio-miniapp:prefs";
 const DEFAULT_PREFS: UIPreferences = {
   theme: "light",
-  lastTab: "/"
+  lastTab: "/",
+  portfolioId: "",
 };
 
 let cachedPrefs: UIPreferences = { ...DEFAULT_PREFS };
@@ -27,7 +29,8 @@ function readPrefsFromStorage(): UIPreferences {
     const parsed = JSON.parse(raw) as Partial<UIPreferences>;
     return {
       theme: parsed.theme === "dark" ? "dark" : "light",
-      lastTab: typeof parsed.lastTab === "string" ? parsed.lastTab : DEFAULT_PREFS.lastTab
+      lastTab: typeof parsed.lastTab === "string" ? parsed.lastTab : DEFAULT_PREFS.lastTab,
+      portfolioId: typeof parsed.portfolioId === "string" ? parsed.portfolioId : DEFAULT_PREFS.portfolioId,
     };
   } catch (error) {
     console.warn("Failed to parse UI preferences", error);
@@ -73,6 +76,18 @@ export function setLastTabPreference(path: string): void {
   const next: UIPreferences = {
     ...cachedPrefs,
     lastTab: path
+  };
+  persistPrefs(next);
+}
+
+export function getPortfolioIdPreference(): string {
+  return cachedPrefs.portfolioId;
+}
+
+export function setPortfolioIdPreference(portfolioId: string): void {
+  const next: UIPreferences = {
+    ...cachedPrefs,
+    portfolioId
   };
   persistPrefs(next);
 }

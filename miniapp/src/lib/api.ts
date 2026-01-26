@@ -66,6 +66,14 @@ function createUrl(path: string): URL {
   return new URL(path, base);
 }
 
+function normalizePortfolioId(portfolioId: string): string {
+  const trimmed = portfolioId.trim();
+  if (!trimmed) {
+    throw new Error("Portfolio ID is required");
+  }
+  return trimmed;
+}
+
 async function request<T>(path: string, init: RequestInit = {}, options?: { requireAuth?: boolean; timeoutMs?: number }): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? DEFAULT_TIMEOUT);
@@ -144,12 +152,17 @@ export async function authWebApp(initData: string): Promise<string> {
   return tokenResponse.token;
 }
 
-export async function getPositions(): Promise<Position[]> {
-  return request<Position[]>("/api/positions", { method: "GET" });
+export async function getPositions(portfolioId: string): Promise<Position[]> {
+  const normalizedPortfolioId = normalizePortfolioId(portfolioId);
+  return request<Position[]>(`/api/portfolio/${normalizedPortfolioId}/positions`, { method: "GET" });
 }
 
-export async function getTrades(params: { limit?: number; offset?: number; side?: "buy" | "sell" | "all" } = {}): Promise<TradesResponse> {
-  const url = createUrl("/api/trades");
+export async function getTrades(
+  portfolioId: string,
+  params: { limit?: number; offset?: number; side?: "buy" | "sell" | "all" } = {},
+): Promise<TradesResponse> {
+  const normalizedPortfolioId = normalizePortfolioId(portfolioId);
+  const url = createUrl(`/api/portfolio/${normalizedPortfolioId}/trades`);
   if (params.limit) {
     url.searchParams.set("limit", params.limit.toString());
   }
@@ -163,33 +176,31 @@ export async function getTrades(params: { limit?: number; offset?: number; side?
 }
 
 export async function postImportCsv(portfolioId: string, file: File): Promise<ImportReport> {
-  if (!portfolioId) {
-    throw new Error("Portfolio ID is required");
-  }
+  const normalizedPortfolioId = normalizePortfolioId(portfolioId);
   const form = new FormData();
   form.append("file", file);
-  return request<ImportReport>(`/api/portfolio/${portfolioId}/trades/import/csv`, {
+  return request<ImportReport>(`/api/portfolio/${normalizedPortfolioId}/trades/import/csv`, {
     method: "POST",
     body: form,
   }, { timeoutMs: 30000 });
 }
 
 export async function postImportByUrl(portfolioId: string, url: string): Promise<ImportReport> {
-  if (!portfolioId) {
-    throw new Error("Portfolio ID is required");
-  }
-  return request<ImportReport>(`/api/portfolio/${portfolioId}/trades/import/by-url`, {
+  const normalizedPortfolioId = normalizePortfolioId(portfolioId);
+  return request<ImportReport>(`/api/portfolio/${normalizedPortfolioId}/trades/import/by-url`, {
     method: "POST",
     body: JSON.stringify({ url }),
   }, { timeoutMs: 30000 });
 }
 
-export async function postRevalue(): Promise<{ status: string }> {
-  return request<{ status: string }>("/api/portfolio/revalue", { method: "POST" });
+export async function postRevalue(portfolioId: string): Promise<{ status: string }> {
+  const normalizedPortfolioId = normalizePortfolioId(portfolioId);
+  return request<{ status: string }>(`/api/portfolio/${normalizedPortfolioId}/revalue`, { method: "POST" });
 }
 
-export async function getReport(params: { from?: string; to?: string } = {}): Promise<PortfolioReport> {
-  const url = createUrl("/api/reports/portfolio");
+export async function getReport(portfolioId: string, params: { from?: string; to?: string } = {}): Promise<PortfolioReport> {
+  const normalizedPortfolioId = normalizePortfolioId(portfolioId);
+  const url = createUrl(`/api/portfolio/${normalizedPortfolioId}/report`);
   if (params.from) {
     url.searchParams.set("from", params.from);
   }
