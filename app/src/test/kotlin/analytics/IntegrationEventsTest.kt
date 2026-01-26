@@ -1,6 +1,5 @@
 package analytics
 
-import analytics.AnalyticsPort
 import billing.StarsWebhookHandler
 import billing.TgMessage
 import billing.TgSuccessfulPayment
@@ -11,6 +10,7 @@ import billing.model.Tier
 import billing.model.UserSubscription
 import billing.service.ApplyPaymentOutcome
 import billing.service.BillingServiceWithOutcome
+import deeplink.InMemoryDeepLinkStore
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -18,7 +18,6 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.install
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.request.receiveText
 import io.ktor.server.routing.post
@@ -44,6 +43,7 @@ import referrals.UTM
 import routes.authRoutes
 import routes.redirectRoutes
 import security.installSecurity
+import kotlin.time.Duration.Companion.days
 
 class IntegrationEventsTest {
     @Test
@@ -51,6 +51,7 @@ class IntegrationEventsTest {
         val analytics = RecordingAnalyticsPort()
         val billing = StubBillingService()
         val referrals = RecordingReferralsPort()
+        val deepLinkStore = InMemoryDeepLinkStore()
         val botToken = "123456:ABCDEF"
 
         environment {
@@ -69,7 +70,7 @@ class IntegrationEventsTest {
             installSecurity()
             routing {
                 authRoutes(analytics)
-                redirectRoutes(analytics, referrals, "https://t.me/test_bot", 64)
+                redirectRoutes(analytics, referrals, "https://t.me/test_bot", deepLinkStore, 14.days)
                 post("/telegram/webhook/test") {
                     val raw = call.receiveText()
                     val update = StarsWebhookHandler.json.decodeFromString<TgUpdate>(raw)
@@ -137,7 +138,17 @@ class IntegrationEventsTest {
 
         val ctaEvent = analytics.events[1]
         assertNull(ctaEvent.userId)
-        assertEquals(mapOf("id" to "promo", "utm_source" to "", "utm_medium" to "", "utm_campaign" to "", "ref" to "", "cta" to ""), ctaEvent.props)
+        assertEquals(
+            mapOf(
+                "id" to "promo",
+                "utm_source" to "",
+                "utm_medium" to "",
+                "utm_campaign" to "",
+                "ref" to "",
+                "cta" to ""
+            ),
+            ctaEvent.props
+        )
 
         val successEvent = analytics.events[2]
         assertEquals(billing.userStub.id, successEvent.userId)
@@ -158,7 +169,10 @@ class IntegrationEventsTest {
         val dataCheckString = rawParams.entries
             .sortedBy { it.key }
             .joinToString("\n") { (key, value) -> "$key=$value" }
-        val secret = hmacSha256("WebAppData".toByteArray(StandardCharsets.UTF_8), botToken.toByteArray(StandardCharsets.UTF_8))
+        val secret = hmacSha256(
+            "WebAppData".toByteArray(StandardCharsets.UTF_8),
+            botToken.toByteArray(StandardCharsets.UTF_8)
+        )
         val hash = hmacSha256(secret, dataCheckString.toByteArray(StandardCharsets.UTF_8)).toHex()
         val params = LinkedHashMap(rawParams)
         params["hash"] = hash

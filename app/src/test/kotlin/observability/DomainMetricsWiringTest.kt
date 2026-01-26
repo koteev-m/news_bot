@@ -5,6 +5,7 @@ import billing.StarsWebhookHandler
 import billing.TgUpdate
 import billing.service.ApplyPaymentOutcome
 import billing.service.BillingServiceWithOutcome
+import deeplink.InMemoryDeepLinkStore
 import features.FeatureFlags
 import features.FeatureFlagsPatch
 import features.FeatureFlagsService
@@ -28,6 +29,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import observability.adapters.AlertMetricsAdapter
 import observability.adapters.NewsMetricsAdapter
+import kotlin.time.Duration.Companion.days
 
 class DomainMetricsWiringTest {
 
@@ -47,7 +49,9 @@ class DomainMetricsWiringTest {
                     adminUserIds = emptySet(),
                     metrics = domainMetrics,
                     alertMetrics = AlertMetricsAdapter(domainMetrics),
-                    newsMetrics = NewsMetricsAdapter(domainMetrics)
+                    newsMetrics = NewsMetricsAdapter(domainMetrics),
+                    deepLinkStore = InMemoryDeepLinkStore(),
+                    deepLinkTtl = 14.days,
                 )
             )
             installWebhookRoute(billing, domainMetrics)
@@ -119,7 +123,7 @@ class DomainMetricsWiringTest {
             providerPaymentId: String?,
             payload: String?
         ): Result<ApplyPaymentOutcome> = runCatching {
-            val key = providerPaymentId ?: "${userId}:${tier.name}:${payload ?: ""}"
+            val key = providerPaymentId ?: "$userId:${tier.name}:${payload ?: ""}"
             val isNew = processed.add(key)
             ApplyPaymentOutcome(duplicate = !isNew)
         }

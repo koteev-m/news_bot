@@ -20,6 +20,7 @@ import billing.service.BillingService
 import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.request.BaseRequest
 import com.pengrad.telegrambot.response.BaseResponse
+import deeplink.InMemoryDeepLinkStore
 import features.FeatureFlags
 import features.FeatureFlagsPatch
 import features.FeatureFlagsService
@@ -31,7 +32,6 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.install
 import io.ktor.server.auth.authenticate
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.routing.routing
@@ -41,6 +41,7 @@ import errors.installErrorPages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,7 +147,9 @@ class AlertsSettingsRoutesTest {
                         billingService = billingService,
                         telegramBot = NoopTelegramBot(),
                         featureFlags = stubFeatureFlagsService(),
-                        adminUserIds = emptySet()
+                        adminUserIds = emptySet(),
+                        deepLinkStore = InMemoryDeepLinkStore(),
+                        deepLinkTtl = 14.days,
                     )
                 )
                 attributes.put(AlertsSettingsDepsKey, AlertsSettingsRouteDeps(billingService, service))
@@ -171,7 +174,7 @@ class AlertsSettingsRoutesTest {
         override suspend fun find(userId: Long): String? = store[userId]
     }
 
-private class FakeBillingService(private val tier: Tier) : BillingService {
+    private class FakeBillingService(private val tier: Tier) : BillingService {
         override suspend fun listPlans(): Result<List<BillingPlan>> = Result.success(emptyList())
         override suspend fun createInvoiceFor(userId: Long, tier: Tier): Result<String> =
             Result.failure(UnsupportedOperationException("not supported"))

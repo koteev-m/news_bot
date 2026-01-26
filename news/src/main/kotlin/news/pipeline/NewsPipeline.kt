@@ -1,5 +1,8 @@
 package news.pipeline
 
+import deeplink.DeepLinkPayload
+import deeplink.DeepLinkStore
+import deeplink.DeepLinkType
 import java.security.MessageDigest
 import java.util.Base64
 import kotlinx.coroutines.async
@@ -16,13 +19,16 @@ import news.sources.NewsSource
 import org.slf4j.LoggerFactory
 import kotlin.text.Charsets
 import common.runCatchingNonFatal
+import kotlin.time.Duration
 
 class NewsPipeline(
     private val config: NewsConfig,
     private val sources: List<NewsSource>,
     private val clusterer: Clusterer,
     private val telegramPublisher: TelegramPublisher,
-    private val idempotencyStore: IdempotencyStore
+    private val idempotencyStore: IdempotencyStore,
+    private val deepLinkStore: DeepLinkStore,
+    private val deepLinkTtl: Duration,
 ) {
     private val logger = LoggerFactory.getLogger(NewsPipeline::class.java)
     private val canonicalPicker = CanonicalPicker(config)
@@ -85,11 +91,15 @@ class NewsPipeline(
 
     private fun deepLink(cluster: Cluster): String {
         val base = config.botDeepLinkBase.trimEnd('/')
-        val payload = payload(cluster.clusterKey)
-        return "$base?start=$payload"
+        val payload = DeepLinkPayload(
+            type = DeepLinkType.TOPIC,
+            id = payloadId(cluster.clusterKey),
+        )
+        val shortCode = deepLinkStore.put(payload, deepLinkTtl)
+        return "$base?start=$shortCode"
     }
 
-    private fun payload(key: String): String {
+    private fun payloadId(key: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(key.toByteArray(Charsets.UTF_8)).copyOf(12)
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)

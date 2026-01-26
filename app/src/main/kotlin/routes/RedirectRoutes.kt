@@ -1,8 +1,10 @@
 package routes
 
 import analytics.AnalyticsPort
+import deeplink.DeepLinkPayload
+import deeplink.DeepLinkStore
+import deeplink.DeepLinkType
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.encodeURLParameter
 import io.ktor.server.application.call
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
@@ -10,14 +12,15 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import referrals.ReferralsPort
 import referrals.UTM
-import kotlin.text.Charsets
 import security.userIdOrNull
+import kotlin.time.Duration
 
 fun Route.redirectRoutes(
     analytics: AnalyticsPort,
     referrals: ReferralsPort,
     botDeepLinkBase: String,
-    maxPayloadBytes: Int
+    deepLinkStore: DeepLinkStore,
+    deepLinkTtl: Duration
 ) {
     get("/go/{id}") {
         val id = call.parameters["id"].orEmpty().trim()
@@ -48,23 +51,30 @@ fun Route.redirectRoutes(
                 "cta" to (utm.ctaId ?: "")
             )
         )
-        val payload = buildPayload(id = id, utm = utm, ref = ref, maxBytes = maxPayloadBytes)
+        val payload = buildPayload(id = id, utm = utm, ref = ref)
+        val shortCode = deepLinkStore.put(payload, deepLinkTtl)
         val sanitizedBase = botDeepLinkBase.trim().trimEnd('/', '?')
-        val encodedPayload = payload.encodeURLParameter()
-        val target = "$sanitizedBase?start=$encodedPayload"
+        val target = "$sanitizedBase?start=$shortCode"
         call.respondRedirect(target, permanent = false)
     }
 }
 
-private fun buildPayload(id: String, utm: UTM, ref: String?, maxBytes: Int): String {
-    val parts = mutableListOf("id=${sanitizeToken(id)}")
-    utm.source?.let { parts += "src=${sanitizeToken(it)}" }
-    utm.medium?.let { parts += "med=${sanitizeToken(it)}" }
-    utm.campaign?.let { parts += "cmp=${sanitizeToken(it)}" }
-    utm.ctaId?.let { parts += "cta=${sanitizeToken(it)}" }
-    ref?.let { parts += "ref=${sanitizeToken(it)}" }
-    val raw = parts.joinToString(separator = "|")
-    return trimToBytes(raw, maxBytes)
+private fun buildPayload(id: String, utm: UTM, ref: String?): DeepLinkPayload {
+    return DeepLinkPayload(
+        type = DeepLinkType.TOPIC,
+        id = sanitizeToken(id),
+        utmSource = sanitizeTokenOrNull(utm.source),
+        utmMedium = sanitizeTokenOrNull(utm.medium),
+        utmCampaign = sanitizeTokenOrNull(utm.campaign),
+        ref = sanitizeTokenOrNull(ref),
+    )
+}
+
+private fun sanitizeTokenOrNull(value: String?): String? {
+    if (value.isNullOrBlank()) {
+        return null
+    }
+    return sanitizeToken(value)
 }
 
 private fun sanitizeToken(value: String): String {
@@ -76,19 +86,4 @@ private fun sanitizeToken(value: String): String {
         }
     }
     return filtered.joinToString(separator = "")
-}
-
-private fun trimToBytes(value: String, maxBytes: Int): String {
-    require(maxBytes > 0) { "maxBytes must be positive" }
-    var bytes = 0
-    val builder = StringBuilder()
-    for (ch in value) {
-        val charBytes = ch.toString().toByteArray(Charsets.UTF_8).size
-        if (bytes + charBytes > maxBytes) {
-            break
-        }
-        builder.append(ch)
-        bytes += charBytes
-    }
-    return builder.toString()
 }

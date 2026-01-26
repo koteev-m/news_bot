@@ -2,18 +2,19 @@ package news.pipeline
 
 import ab.Assignment
 import ab.ExperimentsService
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup
 import com.pengrad.telegrambot.request.BaseRequest
 import com.pengrad.telegrambot.response.BaseResponse
+import deeplink.DeepLinkPayload
+import deeplink.InMemoryDeepLinkStore
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration.Companion.days
 import news.config.NewsConfig
 import news.config.NewsDefaults
 import news.model.Article
@@ -27,11 +28,13 @@ class PublishBreakingTest {
         botDeepLinkBase = "https://t.me/test_bot",
         maxPayloadBytes = 64
     )
+    private val ttl = 14.days
 
     @Test
     fun `publish composes markdown and markup`() = runTest {
+        val store = InMemoryDeepLinkStore()
         val publisher = RecordingPublisher(config)
-        val useCase = PublishBreaking(config, publisher)
+        val useCase = PublishBreaking(config, publisher, store, ttl)
         val article = Article(
             id = "id-1",
             url = "https://example.com/news",
@@ -66,13 +69,16 @@ class PublishBreakingTest {
         assertEquals(2, rows.size)
         assertTrue(rows.all { it.size == 2 })
         assertTrue(rows.flatten().all { it.url!!.startsWith("https://t.me/test_bot?start=") })
+        val payloads = rows.flatten().mapNotNull { payloadFor(store, it.url!!) }
+        assertEquals(4, payloads.size)
     }
 
     @Test
     fun `publish attaches ab variant when experiments available`() = runTest {
+        val store = InMemoryDeepLinkStore()
         val publisher = RecordingPublisher(config)
         val experiments = FakeExperimentsService()
-        val useCase = PublishBreaking(config, publisher, experiments)
+        val useCase = PublishBreaking(config, publisher, store, ttl, experiments)
         val article = Article(
             id = "id-1",
             url = "https://example.com/news",
@@ -98,12 +104,16 @@ class PublishBreakingTest {
         val markup = publisher.lastMarkup
         assertNotNull(markup)
         val allUrls = markup.inlineKeyboard().flatten().mapNotNull { it.url }
-        val payloads = allUrls.map { startPayload(it) }
-        assertTrue(payloads.all { it.contains("ab=TEST") })
+        val payloads = allUrls.mapNotNull { payloadFor(store, it) }
+        assertTrue(payloads.all { it.abVariant == "TEST" })
         assertTrue(experiments.assignedUsers.contains(config.channelId))
     }
 
-    private class RecordingPublisher(config: NewsConfig) : ChannelPublisher(NoopTelegramBot(), config, InMemoryIdempotencyStore()) {
+    private class RecordingPublisher(config: NewsConfig) : ChannelPublisher(
+        NoopTelegramBot(),
+        config,
+        InMemoryIdempotencyStore()
+    ) {
         val publishedKeys = mutableListOf<String>()
         var lastText: String? = null
         var lastMarkup: InlineKeyboardMarkup? = null
@@ -132,9 +142,8 @@ class PublishBreakingTest {
 
         override suspend fun activeAssignments(userId: Long): List<Assignment> = listOf(assign(userId, "cta_copy"))
     }
-}
-
-private fun startPayload(url: String): String {
-        val encoded = url.substringAfter("start=")
-        return URLDecoder.decode(encoded, StandardCharsets.UTF_8)
+    private fun payloadFor(store: InMemoryDeepLinkStore, url: String): DeepLinkPayload? {
+        val code = url.substringAfter("start=")
+        return store.get(code)
     }
+}

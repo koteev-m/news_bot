@@ -4,21 +4,20 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.ktor.http.parametersOf
-import java.util.Base64
 
 class DeepLinkRegistryTest :
     FunSpec({
         val registry = DeepLinkRegistry(limitStart = 64, limitStartApp = 512)
 
         test("accepts valid start payload") {
-            val payload = Base64.getUrlEncoder().withoutPadding().encodeToString("ref=1".toByteArray())
+            val payload = "Abcdef12"
             val result = registry.parse(parametersOf("start" to listOf(payload)))
             val start = result as DeepLinkRegistry.Parsed.Start
-            start.decoded shouldBe "ref=1"
+            start.raw shouldBe payload
         }
 
         test("rejects mixed start and startapp") {
-            val payload = Base64.getUrlEncoder().withoutPadding().encodeToString("x".toByteArray())
+            val payload = "Abcdef12"
             registry.parse(
                 parametersOf(
                     "start" to listOf(payload),
@@ -28,15 +27,11 @@ class DeepLinkRegistryTest :
         }
 
         test("enforces length limits") {
-            val longPayload = Base64.getUrlEncoder().withoutPadding().encodeToString("a".repeat(600).toByteArray())
+            val longPayload = "a".repeat(600)
             registry.parse(parametersOf("startapp" to listOf(longPayload))).shouldBeNull()
         }
 
         test("rejects non base64url input") {
             registry.parse(parametersOf("start" to listOf("hello!@"))) shouldBe null
-        }
-
-        test("decoding errors are handled") {
-            registry.parse(parametersOf("start" to listOf("===")))
         }
     })

@@ -6,6 +6,7 @@ import billing.model.BillingPlan
 import billing.model.Tier
 import billing.model.UserSubscription
 import billing.service.BillingService
+import deeplink.InMemoryDeepLinkStore
 import features.FeatureFlags
 import features.FeatureFlagsPatch
 import features.FeatureFlagsService
@@ -26,6 +27,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
+import kotlin.time.Duration.Companion.days
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,7 +51,9 @@ class WebhookIntegrationTest {
                     billingService = billing,
                     telegramBot = NoopTelegramBot(),
                     featureFlags = stubFeatureFlagsService(),
-                    adminUserIds = emptySet()
+                    adminUserIds = emptySet(),
+                    deepLinkStore = InMemoryDeepLinkStore(),
+                    deepLinkTtl = 14.days,
                 )
             )
             module()

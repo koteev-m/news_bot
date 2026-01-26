@@ -1,50 +1,54 @@
 package growth
 
+import deeplink.DeepLinkPayload
+import deeplink.DeepLinkType
+import deeplink.InMemoryDeepLinkStore
 import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
-import java.util.Base64
+import kotlin.time.Duration.Companion.days
 
 class DeepLinkRoutesTest : FunSpec({
-    fun b64u(s: String): String = Base64.getUrlEncoder().withoutPadding().encodeToString(s.toByteArray())
-
     test("cta redirect 302 with canonical payload metric path") {
         testApplication {
+            val store = InMemoryDeepLinkStore()
             environment {
                 config = io.ktor.server.config.MapApplicationConfig(
                     "telegram.botUsername" to "my_test_bot",
-                    "growth.limits.start" to "64",
-                    "growth.limits.startapp" to "512",
+                    "growth.limits.start" to "12",
+                    "growth.limits.startapp" to "12",
                 )
             }
-            application { installGrowthRoutes(SimpleMeterRegistry()) }
+            application { installGrowthRoutes(SimpleMeterRegistry(), store) }
 
             val client = createClient {
                 followRedirects = false
                 expectSuccess = false
             }
 
-            val payload = b64u("""{"v":1,"t":"w","s":"SBER"}""")
-            val resp = client.get("/r/cta/123?ab=A2&start=$payload")
+            val payload = DeepLinkPayload(type = DeepLinkType.TICKER, id = "SBER")
+            val shortCode = store.put(payload, 14.days)
+            val resp = client.get("/r/cta/123?ab=A2&start=$shortCode")
             resp.status shouldBe HttpStatusCode.Found
             // Проверяем Location:
-            resp.headers["Location"] shouldBe "https://t.me/my_test_bot?start=$payload"
+            resp.headers["Location"] shouldBe "https://t.me/my_test_bot?start=$shortCode"
         }
     }
 
     test("cta redirect 302 when start invalid -> homepage") {
         testApplication {
+            val store = InMemoryDeepLinkStore()
             environment {
                 config = io.ktor.server.config.MapApplicationConfig(
                     "telegram.botUsername" to "my_test_bot",
-                    "growth.limits.start" to "64",
-                    "growth.limits.startapp" to "512",
+                    "growth.limits.start" to "12",
+                    "growth.limits.startapp" to "12",
                 )
             }
-            application { installGrowthRoutes(SimpleMeterRegistry()) }
+            application { installGrowthRoutes(SimpleMeterRegistry(), store) }
 
             val client = createClient {
                 followRedirects = false
@@ -60,14 +64,15 @@ class DeepLinkRoutesTest : FunSpec({
     test("app redirect 302 when startapp invalid -> homepage") {
         testApplication {
             val meterRegistry = SimpleMeterRegistry()
+            val store = InMemoryDeepLinkStore()
             environment {
                 config = io.ktor.server.config.MapApplicationConfig(
                     "telegram.botUsername" to "my_test_bot",
-                    "growth.limits.start" to "64",
-                    "growth.limits.startapp" to "512",
+                    "growth.limits.start" to "12",
+                    "growth.limits.startapp" to "12",
                 )
             }
-            application { installGrowthRoutes(meterRegistry) }
+            application { installGrowthRoutes(meterRegistry, store) }
 
             val client = createClient {
                 followRedirects = false
@@ -84,24 +89,26 @@ class DeepLinkRoutesTest : FunSpec({
     test("app redirect 302 with bot_start_total on valid startapp") {
         testApplication {
             val meterRegistry = SimpleMeterRegistry()
+            val store = InMemoryDeepLinkStore()
             environment {
                 config = io.ktor.server.config.MapApplicationConfig(
                     "telegram.botUsername" to "my_test_bot",
-                    "growth.limits.start" to "64",
-                    "growth.limits.startapp" to "512",
+                    "growth.limits.start" to "12",
+                    "growth.limits.startapp" to "12",
                 )
             }
-            application { installGrowthRoutes(meterRegistry) }
+            application { installGrowthRoutes(meterRegistry, store) }
 
             val client = createClient {
                 followRedirects = false
                 expectSuccess = false
             }
 
-            val payload = b64u("""{"v":1,"t":"w","s":"BTC","h":"2p","a":"B3"}""")
-            val resp = client.get("/r/app?startapp=$payload")
+            val payload = DeepLinkPayload(type = DeepLinkType.TICKER, id = "BTC")
+            val shortCode = store.put(payload, 14.days)
+            val resp = client.get("/r/app?startapp=$shortCode")
             resp.status shouldBe HttpStatusCode.Found
-            resp.headers["Location"] shouldBe "https://t.me/my_test_bot?startapp=$payload"
+            resp.headers["Location"] shouldBe "https://t.me/my_test_bot?startapp=$shortCode"
             meterRegistry.get("bot_start_total").tag("payload", "TICKER_BTC").counter().count() shouldBe 1.0
         }
     }

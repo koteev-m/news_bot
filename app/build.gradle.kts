@@ -30,6 +30,7 @@ dependencies {
     implementation(libs.opentelemetry.context)
     implementation(libs.sentry.core)
     implementation(libs.sentry.logback)
+    implementation(libs.lettuce.core)
     implementation(project(":core"))
     implementation(project(":storage"))
     implementation(project(":integrations"))

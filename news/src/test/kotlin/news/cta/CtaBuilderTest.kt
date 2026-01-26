@@ -1,79 +1,95 @@
 package news.cta
 
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
+import deeplink.DeepLinkPayload
+import deeplink.DeepLinkType
+import deeplink.InMemoryDeepLinkStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 
 class CtaBuilderTest {
     private val base = "https://t.me/test_bot"
+    private val ttl = 14.days
 
     @Test
-    fun `deep link trims payload to limit`() {
-        val payload = "A".repeat(128)
-        val link = CtaBuilder.deepLink(base, payload, 64)
-        val encoded = link.substringAfter("start=")
-        val decoded = URLDecoder.decode(encoded, StandardCharsets.UTF_8)
-        assertEquals(64, decoded.length)
+    fun `deep link stores payload and returns short code`() {
+        val store = InMemoryDeepLinkStore()
+        val payload = DeepLinkPayload(type = DeepLinkType.TOPIC, id = "MARKET")
+        val link = CtaBuilder.deepLink(base, payload, store, ttl)
+        val code = startCode(link)
+        assertTrue(code.length in 8..12)
+        assertEquals(payload, store.get(code))
     }
 
     @Test
     fun `deep link appends ab marker within limit`() {
-        val payload = "id=news|src=channel|cmp=${"x".repeat(20)}"
-        val link = CtaBuilder.deepLink(base, payload, 64, "variant_beta")
-        val encoded = link.substringAfter("start=")
-        val decoded = URLDecoder.decode(encoded, StandardCharsets.UTF_8)
-        assertTrue(decoded.contains("|ab=VARIANT_BETA"))
-        assertTrue(decoded.toByteArray(StandardCharsets.UTF_8).size <= 64)
+        val store = InMemoryDeepLinkStore()
+        val payload = DeepLinkPayload(type = DeepLinkType.TOPIC, id = "NEWS")
+        val link = CtaBuilder.deepLink(base, payload.copy(abVariant = "VARIANT_BETA"), store, ttl)
+        val code = startCode(link)
+        val stored = store.get(code)
+        assertEquals("VARIANT_BETA", stored?.abVariant)
     }
 
     @Test
     fun `deep link has no spaces`() {
-        val link = CtaBuilder.deepLink(base, "TICKER Test", 64)
+        val store = InMemoryDeepLinkStore()
+        val link = CtaBuilder.deepLink(
+            base,
+            DeepLinkPayload(type = DeepLinkType.TICKER, id = "TICKER_TEST"),
+            store,
+            ttl
+        )
         assertTrue(!link.contains(' '))
     }
 
     @Test
     fun `default markup contains expected buttons with ab`() {
-        val markup = CtaBuilder.defaultMarkup(base, 64, "SBER", "B")
+        val store = InMemoryDeepLinkStore()
+        val markup = CtaBuilder.defaultMarkup(base, store, ttl, "SBER", "B")
         val rows = markup.inlineKeyboard()
         assertEquals(2, rows.size)
         assertTrue(rows.all { it.size == 2 })
         val watchTicker = rows[0][0]
         assertEquals("Следить за SBER", watchTicker.text)
-        val watchUrl = watchTicker.url!!
-        val watchPayload = startPayload(watchUrl)
-        assertTrue(watchPayload.contains("TICKER_SBER"))
-        assertTrue(watchPayload.contains("ab=B"))
+        val watchPayload = payloadFor(store, watchTicker.url!!)
+        assertEquals(DeepLinkType.TICKER, watchPayload?.type)
+        assertEquals("SBER", watchPayload?.id)
+        assertEquals("B", watchPayload?.abVariant)
         val btc = rows[0][1]
-        val btcPayload = startPayload(btc.url!!)
+        val btcPayload = payloadFor(store, btc.url!!)
         assertEquals("BTC: +2% за час?", btc.text)
-        assertTrue(btcPayload.contains("TICKER_BTC_2PCT"))
-        assertTrue(btcPayload.contains("ab=B"))
+        assertEquals("BTC_2PCT", btcPayload?.id)
+        assertEquals("B", btcPayload?.abVariant)
         val weekly = rows[1][0]
-        val weeklyPayload = startPayload(weekly.url!!)
+        val weeklyPayload = payloadFor(store, weekly.url!!)
         assertEquals("Еженед. напоминания", weekly.text)
-        assertTrue(weeklyPayload.contains("TOPIC_WEEKLY"))
-        assertTrue(weeklyPayload.contains("ab=B"))
+        assertEquals("WEEKLY", weeklyPayload?.id)
+        assertEquals("B", weeklyPayload?.abVariant)
         val portfolio = rows[1][1]
-        val portfolioPayload = startPayload(portfolio.url!!)
+        val portfolioPayload = payloadFor(store, portfolio.url!!)
         assertEquals("Мой портфель", portfolio.text)
-        assertTrue(portfolioPayload.contains("PORTFOLIO_HOME"))
-        assertTrue(portfolioPayload.contains("ab=B"))
+        assertEquals(DeepLinkType.PORTFOLIO, portfolioPayload?.type)
+        assertEquals("HOME", portfolioPayload?.id)
+        assertEquals("B", portfolioPayload?.abVariant)
     }
 
     @Test
     fun `default markup falls back without ticker`() {
-        val markup = CtaBuilder.defaultMarkup(base, 64, null, null)
+        val store = InMemoryDeepLinkStore()
+        val markup = CtaBuilder.defaultMarkup(base, store, ttl, null, null)
         val rows = markup.inlineKeyboard()
         assertEquals("Рынок сейчас", rows[0][0].text)
-        val payload = startPayload(rows[0][0].url!!)
-        assertTrue(payload.contains("TOPIC_MARKET"))
+        val payload = payloadFor(store, rows[0][0].url!!)
+        assertEquals("MARKET", payload?.id)
     }
 
-    private fun startPayload(url: String): String {
-        val encoded = url.substringAfter("start=")
-        return URLDecoder.decode(encoded, StandardCharsets.UTF_8)
+    private fun payloadFor(store: InMemoryDeepLinkStore, url: String): DeepLinkPayload? {
+        return store.get(startCode(url))
+    }
+
+    private fun startCode(url: String): String {
+        return url.substringAfter("start=")
     }
 }
