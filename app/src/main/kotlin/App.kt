@@ -177,9 +177,10 @@ fun Application.module() {
     val alertsConfig = loadAlertsConfig(appConfig)
     val alertsRepository = createAlertsRepository(appConfig)
     val alertsService = AlertsService(alertsRepository, alertsConfig.engine, prometheusRegistry)
+    val appProfile = (System.getenv("APP_PROFILE") ?: "dev").lowercase()
     val deepLinkLog = LoggerFactory.getLogger("deeplink")
     val deepLinkStoreSettings = loadDeepLinkStoreSettings(appConfig, deepLinkLog)
-    val deepLinkStore = createDeepLinkStore(deepLinkStoreSettings, deepLinkLog)
+    val deepLinkStore = createDeepLinkStore(deepLinkStoreSettings, appProfile, deepLinkLog)
     val deepLinkTtl = deepLinkTtl(deepLinkStoreSettings)
     val integrations = integrationsModule()
     val netflow2Metrics = Netflow2Metrics(prometheusRegistry)
@@ -241,7 +242,6 @@ fun Application.module() {
     )
     val supportRateLimiter = SupportRateLimit.get(supportRateLimitConfig, Clock.systemUTC())
 
-    val appProfile = (System.getenv("APP_PROFILE") ?: "dev").lowercase()
     val environmentAllowed = appProfile == "dev" || appProfile == "staging"
     val featuresChaos = appConfig.propertyOrNull("features.chaos")?.getString()?.toBoolean() ?: false
     val chaosEnabledConfig = appConfig.propertyOrNull("chaos.enabled")?.getString()?.toBoolean() ?: false

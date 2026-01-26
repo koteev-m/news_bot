@@ -42,9 +42,8 @@ fun loadDeepLinkStoreSettings(config: ApplicationConfig, log: Logger): DeepLinkS
 
 fun createDeepLinkStore(
     settings: DeepLinkStoreSettings,
-    log: Logger = LoggerFactory.getLogger(
-        "deeplink"
-    )
+    appProfile: String,
+    log: Logger = LoggerFactory.getLogger("deeplink"),
 ): DeepLinkStore {
     if (!settings.enabled) {
         log.warn("deeplink.store.enabled=false; using in-memory store")
@@ -52,7 +51,14 @@ fun createDeepLinkStore(
     }
     val redis = settings.redis
     if (redis == null) {
-        log.warn("deeplink.redis host not configured; using in-memory store")
+        val normalizedProfile = appProfile.lowercase()
+        val allowFallback = normalizedProfile == "dev" || normalizedProfile == "staging"
+        if (!allowFallback) {
+            throw IllegalStateException(
+                "deeplink.redis.host must be set when deeplink.store.enabled=true for APP_PROFILE=$appProfile"
+            )
+        }
+        log.warn("deeplink.redis host not configured; using in-memory store for APP_PROFILE={}", appProfile)
         return InMemoryDeepLinkStore()
     }
     return RedisDeepLinkStore(
