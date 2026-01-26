@@ -10,6 +10,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tag
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 private const val METRIC_CTA_CLICK = "cta_click_total"
@@ -44,7 +46,15 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             val parsed = registry.parseStart(call.request.queryParameters["start"].orEmpty())
             val payloadLabel = when (parsed) {
                 null -> "INVALID"
-                else -> deepLinkStore.get(parsed.raw)?.canonicalLabel() ?: "UNKNOWN"
+                else -> {
+                    try {
+                        val payload = withContext(Dispatchers.IO) { deepLinkStore.get(parsed.raw) }
+                        payload?.canonicalLabel() ?: "UNKNOWN"
+                    } catch (e: Exception) {
+                        log.warn("deeplink store get failed for cta redirect", e)
+                        "STORE_ERROR"
+                    }
+                }
             }
 
             // Метрика клика
@@ -86,7 +96,13 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             val parsed = registry.parseStartApp(call.request.queryParameters["startapp"].orEmpty())
 
             if (parsed != null) {
-                val payloadLabel = deepLinkStore.get(parsed.raw)?.canonicalLabel() ?: "UNKNOWN"
+                val payloadLabel = try {
+                    val payload = withContext(Dispatchers.IO) { deepLinkStore.get(parsed.raw) }
+                    payload?.canonicalLabel() ?: "UNKNOWN"
+                } catch (e: Exception) {
+                    log.warn("deeplink store get failed for app redirect", e)
+                    "STORE_ERROR"
+                }
                 meterRegistry.counter(
                     METRIC_BOT_START,
                     listOf(

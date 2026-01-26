@@ -14,6 +14,11 @@ import referrals.ReferralsPort
 import referrals.UTM
 import security.userIdOrNull
 import kotlin.time.Duration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
+
+private val log = LoggerFactory.getLogger("deeplink.routes")
 
 fun Route.redirectRoutes(
     analytics: AnalyticsPort,
@@ -51,10 +56,19 @@ fun Route.redirectRoutes(
                 "cta" to (utm.ctaId ?: "")
             )
         )
-        val payload = buildPayload(id = id, utm = utm, ref = ref)
-        val shortCode = deepLinkStore.put(payload, deepLinkTtl)
         val sanitizedBase = botDeepLinkBase.trim().trimEnd('/', '?')
-        val target = "$sanitizedBase?start=$shortCode"
+        val payload = buildPayload(id = id, utm = utm, ref = ref)
+        val shortCode = try {
+            withContext(Dispatchers.IO) { deepLinkStore.put(payload, deepLinkTtl) }
+        } catch (e: Exception) {
+            log.warn("deeplink store put failed; redirecting without start", e)
+            null
+        }
+        val target = if (shortCode == null) {
+            sanitizedBase
+        } else {
+            "$sanitizedBase?start=$shortCode"
+        }
         call.respondRedirect(target, permanent = false)
     }
 }
