@@ -1,35 +1,41 @@
 package news.pipeline
 
 import ab.ExperimentsService
+import common.runCatchingNonFatal
+import deeplink.DeepLinkPayload
+import deeplink.DeepLinkStore
+import deeplink.DeepLinkType
 import java.security.MessageDigest
 import java.util.Base64
 import kotlin.text.Charsets
+import kotlin.time.Duration
 import news.config.NewsConfig
 import news.cta.CtaBuilder
 import news.model.Cluster
 import news.publisher.ChannelPublisher
 import news.render.PostTemplates
-import common.runCatchingNonFatal
 
 class PublishBreaking(
     private val cfg: NewsConfig,
     private val publisher: ChannelPublisher,
+    private val deepLinkStore: DeepLinkStore,
+    private val deepLinkTtl: Duration,
     private val experiments: ExperimentsService? = null
 ) {
     suspend fun publish(cluster: Cluster, primaryTicker: String?): Boolean {
         val deepLink = deepLink(cluster.clusterKey)
         val text = PostTemplates.renderBreaking(cluster, deepLink)
         val abVariant = resolveVariant()
-        val markup = CtaBuilder.defaultMarkup(cfg.botDeepLinkBase, cfg.maxPayloadBytes, primaryTicker, abVariant)
+        val markup = CtaBuilder.defaultMarkup(cfg.botDeepLinkBase, deepLinkStore, deepLinkTtl, primaryTicker, abVariant)
         return publisher.publish(cluster.clusterKey, text, markup)
     }
 
     private fun deepLink(clusterKey: String): String {
-        val payload = payload(clusterKey)
-        return CtaBuilder.deepLink(cfg.botDeepLinkBase, payload, cfg.maxPayloadBytes)
+        val payload = DeepLinkPayload(type = DeepLinkType.TOPIC, id = payloadId(clusterKey))
+        return CtaBuilder.deepLink(cfg.botDeepLinkBase, payload, deepLinkStore, deepLinkTtl)
     }
 
-    private fun payload(clusterKey: String): String {
+    private fun payloadId(clusterKey: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val hashed = digest.digest(clusterKey.toByteArray(Charsets.UTF_8)).copyOf(16)
         return Base64.getUrlEncoder().withoutPadding().encodeToString(hashed)

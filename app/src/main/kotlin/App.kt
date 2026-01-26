@@ -53,6 +53,10 @@ import billing.stars.StarsClientConfig
 import billing.stars.StarsService
 import billing.stars.ZeroStarBalancePort
 import com.pengrad.telegrambot.utility.BotUtils
+import deeplink.DeepLinkStore
+import deeplink.createDeepLinkStore
+import deeplink.deepLinkTtl
+import deeplink.loadDeepLinkStoreSettings
 import di.FeatureFlagsModule
 import di.PrivacyModule
 import di.ensureTelegramBot
@@ -173,6 +177,10 @@ fun Application.module() {
     val alertsConfig = loadAlertsConfig(appConfig)
     val alertsRepository = createAlertsRepository(appConfig)
     val alertsService = AlertsService(alertsRepository, alertsConfig.engine, prometheusRegistry)
+    val deepLinkLog = LoggerFactory.getLogger("deeplink")
+    val deepLinkStoreSettings = loadDeepLinkStoreSettings(appConfig, deepLinkLog)
+    val deepLinkStore = createDeepLinkStore(deepLinkStoreSettings, deepLinkLog)
+    val deepLinkTtl = deepLinkTtl(deepLinkStoreSettings)
     val integrations = integrationsModule()
     val netflow2Metrics = Netflow2Metrics(prometheusRegistry)
     val netflow2Repository = PostgresNetflow2Repository()
@@ -211,13 +219,17 @@ fun Application.module() {
         referralsPort = referrals,
         experimentsPort = experimentsPort,
         experimentsService = experimentsService,
-        newsConfig = newsConfig
+        newsConfig = newsConfig,
+        deepLinkStore = deepLinkStore,
+        deepLinkTtl = deepLinkTtl,
     )
     val newsScheduler = startNewsPipelineScheduler(
         newsConfig = newsConfig,
         services = services,
         metrics = metrics,
-        config = appConfig
+        config = appConfig,
+        deepLinkStore = services.deepLinkStore,
+        deepLinkTtl = services.deepLinkTtl,
     )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
     val supportRepository = SupportRepository()
@@ -281,8 +293,11 @@ fun Application.module() {
             newsScheduler.stop()
         }
     }
+    environment.monitor.subscribe(ApplicationStopped) {
+        (deepLinkStore as? AutoCloseable)?.close()
+    }
 
-    installGrowthRoutes(prometheusRegistry)
+    installGrowthRoutes(prometheusRegistry, services.deepLinkStore)
 
     routing {
         webVitalsRoutes(vitals)
@@ -292,7 +307,13 @@ fun Application.module() {
         apiDocsRoutes()
         healthRoutes()
         authRoutes(analytics)
-        redirectRoutes(analytics, referrals, newsConfig.botDeepLinkBase, newsConfig.maxPayloadBytes)
+        redirectRoutes(
+            analytics,
+            referrals,
+            newsConfig.botDeepLinkBase,
+            services.deepLinkStore,
+            services.deepLinkTtl,
+        )
         supportRoutes(supportRepository, services.analytics, supportRateLimiter)
         pricingRoutes(experimentsService, pricingService, services.analytics, eventsCounter)
         experimentsRoutes(experimentsService)
@@ -409,7 +430,9 @@ private fun Application.ensureBillingServices(
     referralsPort: ReferralsPort,
     experimentsPort: ExperimentsPort,
     experimentsService: ExperimentsService,
-    newsConfig: NewsConfig
+    newsConfig: NewsConfig,
+    deepLinkStore: DeepLinkStore,
+    deepLinkTtl: Duration,
 ): Services {
     if (attributes.contains(Services.Key)) {
         val existing = attributes[Services.Key]
@@ -419,7 +442,9 @@ private fun Application.ensureBillingServices(
             referrals = referralsPort,
             experimentsPort = experimentsPort,
             experimentsService = experimentsService,
-            newsConfig = newsConfig
+            newsConfig = newsConfig,
+            deepLinkStore = deepLinkStore,
+            deepLinkTtl = deepLinkTtl,
         )
         val currentRoutingServices = if (attributes.contains(BillingRouteServicesKey)) {
             attributes[BillingRouteServicesKey]
@@ -486,7 +511,9 @@ private fun Application.ensureBillingServices(
         referrals = referralsPort,
         experimentsPort = experimentsPort,
         experimentsService = experimentsService,
-        newsConfig = newsConfig
+        newsConfig = newsConfig,
+        deepLinkStore = deepLinkStore,
+        deepLinkTtl = deepLinkTtl,
     )
     attributes.put(Services.Key, services)
     attributes.put(
@@ -565,7 +592,9 @@ private fun Application.startNewsPipelineScheduler(
     newsConfig: NewsConfig,
     services: Services,
     metrics: DomainMetrics,
-    config: ApplicationConfig
+    config: ApplicationConfig,
+    deepLinkStore: DeepLinkStore,
+    deepLinkTtl: Duration,
 ): NewsPipelineScheduler {
     val logger = LoggerFactory.getLogger("NewsPipelineScheduler")
     val intervalRaw = config.propertyOrNull("news.pipelineIntervalSeconds")?.getString()?.toLongOrNull()
@@ -594,7 +623,9 @@ private fun Application.startNewsPipelineScheduler(
             config = newsConfig,
             idempotencyStore = idempotencyStore
         ),
-        idempotencyStore = idempotencyStore
+        idempotencyStore = idempotencyStore,
+        deepLinkStore = deepLinkStore,
+        deepLinkTtl = deepLinkTtl,
     )
 
     val meterRegistry = metrics.meterRegistry
@@ -897,6 +928,8 @@ data class Services(
     val experimentsPort: ExperimentsPort? = null,
     val experimentsService: ExperimentsService? = null,
     val newsConfig: NewsConfig? = null,
+    val deepLinkStore: DeepLinkStore,
+    val deepLinkTtl: Duration,
 ) {
     companion object {
         val Key: AttributeKey<Services> = AttributeKey("AppServices")

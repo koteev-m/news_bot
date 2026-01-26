@@ -1,16 +1,17 @@
 package routes
 
 import analytics.AnalyticsPort
+import deeplink.DeepLinkPayload
+import deeplink.InMemoryDeepLinkStore
 import io.ktor.client.request.get
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import java.net.URI
-import java.net.URLDecoder
 import java.time.Instant
-import java.nio.charset.StandardCharsets
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import referrals.ReferralCode
 import referrals.ReferralsPort
 import referrals.UTM
@@ -20,10 +21,11 @@ class RedirectRoutesTest {
     fun `redirect returns deep link and tracks analytics`() = testApplication {
         val analytics = RecordingAnalytics()
         val referrals = RecordingReferrals()
+        val store = InMemoryDeepLinkStore()
 
         application {
             routing {
-                redirectRoutes(analytics, referrals, "https://t.me/test_bot", 64)
+                redirectRoutes(analytics, referrals, "https://t.me/test_bot", store, 14.days)
             }
         }
 
@@ -35,9 +37,8 @@ class RedirectRoutesTest {
         val location = response.headers["Location"] ?: error("missing location")
         assertTrue(location.startsWith("https://t.me/test_bot?start="))
 
-        val payload = extractStartPayload(location)
-        assertTrue(payload.startsWith("id=news"))
-        assertTrue(payload.toByteArray(StandardCharsets.UTF_8).size <= 64)
+        val payload = payloadFrom(store, location)
+        assertEquals("news", payload?.id)
 
         val event = analytics.events.single()
         assertEquals("cta_click", event.type)
@@ -48,21 +49,23 @@ class RedirectRoutesTest {
     fun `redirect captures referral and utm params`() = testApplication {
         val analytics = RecordingAnalytics()
         val referrals = RecordingReferrals()
+        val store = InMemoryDeepLinkStore()
 
         application {
             routing {
-                redirectRoutes(analytics, referrals, "https://t.me/test_bot", 64)
+                redirectRoutes(analytics, referrals, "https://t.me/test_bot", store, 14.days)
             }
         }
 
         val client = createClient {
             followRedirects = false
         }
-        val response = client.get("/go/promo?ref=R7G5K2&utm_source=channel&utm_medium=cta&utm_campaign=october&utm_extra=${"x".repeat(100)}")
+        val response = client.get(
+            "/go/promo?ref=R7G5K2&utm_source=channel&utm_medium=cta&utm_campaign=october&utm_extra=${"x".repeat(100)}"
+        )
         assertEquals(302, response.status.value)
-        val payload = extractStartPayload(response.headers["Location"]!!)
-        assertTrue(payload.contains("ref=R7G5K2"))
-        assertTrue(payload.toByteArray(StandardCharsets.UTF_8).size <= 64)
+        val payload = payloadFrom(store, response.headers["Location"]!!)
+        assertEquals("R7G5K2", payload?.ref)
 
         val visit = referrals.visits.single()
         assertEquals("R7G5K2", visit.code)
@@ -74,12 +77,12 @@ class RedirectRoutesTest {
         assertEquals("", event.props["cta"])
     }
 
-    private fun extractStartPayload(location: String): String {
+    private fun payloadFrom(store: InMemoryDeepLinkStore, location: String): DeepLinkPayload? {
         val uri = URI(location)
-        val query = uri.query ?: return ""
-        val startParam = query.split('&').firstOrNull { it.startsWith("start=") } ?: return ""
+        val query = uri.query ?: return null
+        val startParam = query.split('&').firstOrNull { it.startsWith("start=") } ?: return null
         val value = startParam.substringAfter('=')
-        return URLDecoder.decode(value, StandardCharsets.UTF_8)
+        return store.get(value)
     }
 
     private class RecordingAnalytics : AnalyticsPort {

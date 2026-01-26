@@ -23,6 +23,7 @@ otel = "1.40.0"
 otelAlpha = "1.40.0-alpha"
 sentry = "8.23.0"
 kover = "0.8.3"
+lettuce = "6.3.2.RELEASE"
 
 
 [libraries]
@@ -76,6 +77,7 @@ opentelemetry-semconv = { module = "io.opentelemetry.semconv:opentelemetry-semco
 opentelemetry-context = { module = "io.opentelemetry:opentelemetry-context", version.ref = "otel" }
 sentry-core = { module = "io.sentry:sentry", version.ref = "sentry" }
 sentry-logback = { module = "io.sentry:sentry-logback", version.ref = "sentry" }
+lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 
 # test
 opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing", version.ref = "otel" }

@@ -1,5 +1,6 @@
 package growth
 
+import deeplink.DeepLinkStore
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.plugins.origin
@@ -22,7 +23,7 @@ private const val METRIC_BOT_START = "bot_start_total"
  * Метрики соответствуют PRD (Micrometer/Prometheus). Значение payload — канонический ID,
  * не сырой base64url.
  */
-fun Application.installGrowthRoutes(meterRegistry: MeterRegistry) {
+fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore: DeepLinkStore) {
     val log = LoggerFactory.getLogger("growth.routes")
 
     val cfg = environment.config
@@ -31,8 +32,8 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry) {
             log.warn("telegram.botUsername is required; skipping growth routes")
             return
         }
-    val limStart = cfg.propertyOrNull("growth.limits.start")?.getString()?.toIntOrNull() ?: 64
-    val limStartApp = cfg.propertyOrNull("growth.limits.startapp")?.getString()?.toIntOrNull() ?: 512
+    val limStart = cfg.propertyOrNull("growth.limits.start")?.getString()?.toIntOrNull() ?: 12
+    val limStartApp = cfg.propertyOrNull("growth.limits.startapp")?.getString()?.toIntOrNull() ?: 12
 
     val registry = DeepLinkRegistry(limitStart = limStart, limitStartApp = limStartApp)
 
@@ -43,7 +44,7 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry) {
             val parsed = registry.parseStart(call.request.queryParameters["start"].orEmpty())
             val payloadLabel = when (parsed) {
                 null -> "INVALID"
-                else -> parsed.canonicalId
+                else -> deepLinkStore.get(parsed.raw)?.canonicalLabel() ?: "UNKNOWN"
             }
 
             // Метрика клика
@@ -85,10 +86,11 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry) {
             val parsed = registry.parseStartApp(call.request.queryParameters["startapp"].orEmpty())
 
             if (parsed != null) {
+                val payloadLabel = deepLinkStore.get(parsed.raw)?.canonicalLabel() ?: "UNKNOWN"
                 meterRegistry.counter(
                     METRIC_BOT_START,
                     listOf(
-                        Tag.of("payload", parsed.canonicalId),
+                        Tag.of("payload", payloadLabel),
                     ),
                 ).increment()
             }
