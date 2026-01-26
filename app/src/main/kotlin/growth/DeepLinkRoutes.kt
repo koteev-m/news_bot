@@ -10,7 +10,9 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tag
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
@@ -50,6 +52,10 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
                     try {
                         val payload = withContext(Dispatchers.IO) { deepLinkStore.get(parsed.raw) }
                         payload?.canonicalLabel() ?: "UNKNOWN"
+                    } catch (e: TimeoutCancellationException) {
+                        throw e
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         log.warn("deeplink store get failed for cta redirect", e)
                         "STORE_ERROR"
@@ -99,6 +105,10 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
                 val payloadLabel = try {
                     val payload = withContext(Dispatchers.IO) { deepLinkStore.get(parsed.raw) }
                     payload?.canonicalLabel() ?: "UNKNOWN"
+                } catch (e: TimeoutCancellationException) {
+                    throw e
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     log.warn("deeplink store get failed for app redirect", e)
                     "STORE_ERROR"

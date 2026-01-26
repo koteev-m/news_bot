@@ -14,7 +14,9 @@ import referrals.ReferralsPort
 import referrals.UTM
 import security.userIdOrNull
 import kotlin.time.Duration
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
@@ -60,6 +62,10 @@ fun Route.redirectRoutes(
         val payload = buildPayload(id = id, utm = utm, ref = ref)
         val shortCode = try {
             withContext(Dispatchers.IO) { deepLinkStore.put(payload, deepLinkTtl) }
+        } catch (e: TimeoutCancellationException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log.warn("deeplink store put failed; redirecting without start", e)
             null
