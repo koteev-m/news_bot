@@ -6,10 +6,12 @@ import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup
 import com.pengrad.telegrambot.model.request.ParseMode
 import com.pengrad.telegrambot.request.SendMessage
 import com.pengrad.telegrambot.response.SendResponse
+import java.sql.SQLException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import news.render.ModerationTemplates
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.slf4j.LoggerFactory
-import news.render.ModerationTemplates
-import java.sql.SQLException
 
 class ModerationQueueDatabase(
     private val repository: ModerationRepository,
@@ -17,16 +19,35 @@ class ModerationQueueDatabase(
     private val config: ModerationBotConfig,
 ) : ModerationQueue {
     private val logger = LoggerFactory.getLogger(ModerationQueueDatabase::class.java)
+    private val clusterConstraintName = "uk_moderation_queue_cluster"
 
     override suspend fun enqueue(candidate: ModerationCandidate): ModerationItem? {
         val item = try {
             repository.enqueue(candidate)
         } catch (ex: ExposedSQLException) {
-            if (!isUniqueClusterViolation(ex)) {
+            if (!isUniqueViolation(ex)) {
                 logger.error("Failed to enqueue moderation candidate for cluster {}", candidate.clusterKey, ex)
                 throw ex
             }
-            val existing = repository.findByClusterKey(candidate.clusterKey) ?: return null
+            val constraintName = extractConstraintName(ex)
+            if (constraintName != null && !constraintName.equals(clusterConstraintName, ignoreCase = true)) {
+                logger.error(
+                    "Unexpected unique constraint {} violation for cluster {}",
+                    constraintName,
+                    candidate.clusterKey,
+                    ex
+                )
+                throw ex
+            }
+            val existing = repository.findByClusterKey(candidate.clusterKey)
+            if (existing == null) {
+                logger.error(
+                    "Unique violation without existing moderation item for cluster {}",
+                    candidate.clusterKey,
+                    ex
+                )
+                throw ex
+            }
             if (shouldRetrySend(existing)) {
                 sendCard(existing)
                 return existing
@@ -69,28 +90,52 @@ class ModerationQueueDatabase(
         return item.status == ModerationStatus.PENDING || item.status == ModerationStatus.EDIT_REQUESTED
     }
 
-    private fun sendCard(item: ModerationItem) {
+    private suspend fun sendCard(item: ModerationItem) {
         val text = ModerationTemplates.renderAdminCard(item.candidate)
         val markup = buildKeyboard(item.moderationId.toString())
         val request = SendMessage(config.adminChatId, text)
             .parseMode(ParseMode.MarkdownV2)
             .replyMarkup(markup)
         config.adminThreadId?.let { request.messageThreadId(it.toInt()) }
-        val response: SendResponse = bot.execute(request)
+        val response: SendResponse = try {
+            withContext(Dispatchers.IO) {
+                bot.execute(request)
+            }
+        } catch (ex: Exception) {
+            logger.warn("Failed to send moderation card for cluster {}", item.candidate.clusterKey, ex)
+            return
+        }
         if (!response.isOk) {
             logger.warn("Failed to send moderation card for cluster {}", item.candidate.clusterKey)
             return
         }
         val messageId = response.message()?.messageId()
         if (messageId != null) {
-            repository.markCardSent(item.moderationId, config.adminChatId, config.adminThreadId, messageId.toLong())
+            try {
+                repository.markCardSent(
+                    item.moderationId,
+                    config.adminChatId,
+                    config.adminThreadId,
+                    messageId.toLong()
+                )
+            } catch (ex: Exception) {
+                logger.error("Failed to mark moderation card sent for cluster {}", item.candidate.clusterKey, ex)
+            }
         }
     }
 
-    private fun isUniqueClusterViolation(ex: ExposedSQLException): Boolean {
+    private fun isUniqueViolation(ex: ExposedSQLException): Boolean {
         val sqlState = ex.sqlState ?: (ex.cause as? SQLException)?.sqlState
-        val message = ex.message ?: ex.cause?.message
-        val hasConstraint = message?.contains("uk_moderation_queue_cluster", ignoreCase = true) == true
-        return (sqlState == "23505" && hasConstraint) || hasConstraint || sqlState == "23505"
+        return sqlState == "23505"
+    }
+
+    private fun extractConstraintName(ex: ExposedSQLException): String? {
+        val message = ex.message ?: ex.cause?.message ?: return null
+        val postgresMatch = Regex("constraint \"([^\"]+)\"", RegexOption.IGNORE_CASE).find(message)
+        if (postgresMatch != null) {
+            return postgresMatch.groupValues.getOrNull(1)
+        }
+        val mysqlMatch = Regex("key '([^']+)'", RegexOption.IGNORE_CASE).find(message)
+        return mysqlMatch?.groupValues?.getOrNull(1)
     }
 }
