@@ -33,6 +33,11 @@ class ModerationBotHandler(
     suspend fun handleUpdate(update: Update): Boolean {
         val callback = update.callbackQuery()
         if (callback != null && callback.data()?.startsWith("mod:") == true) {
+            val chatId = callback.message()?.chat()?.id()
+            if (chatId != config.adminChatId) {
+                bot.execute(AnswerCallbackQuery(callback.id()))
+                return true
+            }
             handleCallback(callback.id(), callback.data()!!)
             return true
         }

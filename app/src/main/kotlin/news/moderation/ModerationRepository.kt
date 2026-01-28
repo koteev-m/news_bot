@@ -23,8 +23,10 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
 
     suspend fun enqueue(candidate: ModerationCandidate): ModerationItem? {
         val now = OffsetDateTime.ofInstant(candidate.createdAt, ZoneOffset.UTC)
-        val inserted = DatabaseFactory.dbQuery {
+        val moderationId = UUID.randomUUID()
+        DatabaseFactory.dbQuery {
             ModerationQueueTable.insert {
+                it[ModerationQueueTable.moderationId] = moderationId
                 it[clusterId] = candidate.clusterId
                 it[clusterKey] = candidate.clusterKey
                 it[suggestedMode] = candidate.suggestedMode.name
@@ -42,7 +44,6 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
                 it[status] = ModerationStatus.PENDING.name
             }
         }
-        val moderationId = inserted[ModerationQueueTable.moderationId]
         logger.info("Moderation candidate queued for cluster {}", candidate.clusterKey)
         return ModerationItem(
             moderationId = moderationId,
@@ -54,6 +55,15 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
             actionId = null,
             editedText = null,
         )
+    }
+
+    suspend fun findByClusterKey(clusterKey: String): ModerationItem? {
+        return DatabaseFactory.dbQuery {
+            ModerationQueueTable.select { ModerationQueueTable.clusterKey eq clusterKey }
+                .limit(1)
+                .map { row -> rowToItem(row) }
+                .firstOrNull()
+        }
     }
 
     suspend fun markCardSent(
@@ -75,34 +85,7 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
         return DatabaseFactory.dbQuery {
             ModerationQueueTable.select { ModerationQueueTable.moderationId eq moderationId }
                 .limit(1)
-                .map { row ->
-                    val candidate = ModerationCandidate(
-                        clusterId = row[ModerationQueueTable.clusterId],
-                        clusterKey = row[ModerationQueueTable.clusterKey],
-                        suggestedMode = ModerationSuggestedMode.valueOf(row[ModerationQueueTable.suggestedMode]),
-                        score = row[ModerationQueueTable.score].toDouble(),
-                        confidence = row[ModerationQueueTable.confidence].toDouble(),
-                        links = row[ModerationQueueTable.links].split('|').filter { it.isNotBlank() },
-                        sourceDomain = row[ModerationQueueTable.sourceDomain],
-                        entityHashes = row[ModerationQueueTable.entityHashes].split('|').filter { it.isNotBlank() },
-                        primaryEntityHash = row[ModerationQueueTable.primaryEntityHash],
-                        title = row[ModerationQueueTable.title],
-                        summary = row[ModerationQueueTable.summary],
-                        topics = row[ModerationQueueTable.topics].split(',').filter { it.isNotBlank() }.toSet(),
-                        deepLink = row[ModerationQueueTable.deepLink],
-                        createdAt = row[ModerationQueueTable.createdAt].toInstant(),
-                    )
-                    ModerationItem(
-                        moderationId = row[ModerationQueueTable.moderationId],
-                        candidate = candidate,
-                        status = ModerationStatus.valueOf(row[ModerationQueueTable.status]),
-                        adminChatId = row[ModerationQueueTable.adminChatId],
-                        adminThreadId = row[ModerationQueueTable.adminThreadId],
-                        adminMessageId = row[ModerationQueueTable.adminMessageId],
-                        actionId = row[ModerationQueueTable.actionId],
-                        editedText = row[ModerationQueueTable.editedText],
-                    )
-                }
+                .map { row -> rowToItem(row) }
                 .firstOrNull()
         }
     }
@@ -111,34 +94,7 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
         return DatabaseFactory.dbQuery {
             ModerationQueueTable.select { ModerationQueueTable.adminMessageId eq messageId }
                 .limit(1)
-                .map { row ->
-                    val candidate = ModerationCandidate(
-                        clusterId = row[ModerationQueueTable.clusterId],
-                        clusterKey = row[ModerationQueueTable.clusterKey],
-                        suggestedMode = ModerationSuggestedMode.valueOf(row[ModerationQueueTable.suggestedMode]),
-                        score = row[ModerationQueueTable.score].toDouble(),
-                        confidence = row[ModerationQueueTable.confidence].toDouble(),
-                        links = row[ModerationQueueTable.links].split('|').filter { it.isNotBlank() },
-                        sourceDomain = row[ModerationQueueTable.sourceDomain],
-                        entityHashes = row[ModerationQueueTable.entityHashes].split('|').filter { it.isNotBlank() },
-                        primaryEntityHash = row[ModerationQueueTable.primaryEntityHash],
-                        title = row[ModerationQueueTable.title],
-                        summary = row[ModerationQueueTable.summary],
-                        topics = row[ModerationQueueTable.topics].split(',').filter { it.isNotBlank() }.toSet(),
-                        deepLink = row[ModerationQueueTable.deepLink],
-                        createdAt = row[ModerationQueueTable.createdAt].toInstant(),
-                    )
-                    ModerationItem(
-                        moderationId = row[ModerationQueueTable.moderationId],
-                        candidate = candidate,
-                        status = ModerationStatus.valueOf(row[ModerationQueueTable.status]),
-                        adminChatId = row[ModerationQueueTable.adminChatId],
-                        adminThreadId = row[ModerationQueueTable.adminThreadId],
-                        adminMessageId = row[ModerationQueueTable.adminMessageId],
-                        actionId = row[ModerationQueueTable.actionId],
-                        editedText = row[ModerationQueueTable.editedText],
-                    )
-                }
+                .map { row -> rowToItem(row) }
                 .firstOrNull()
         }
     }
@@ -258,5 +214,34 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
                 }
             }
         }
+    }
+
+    private fun rowToItem(row: org.jetbrains.exposed.sql.ResultRow): ModerationItem {
+        val candidate = ModerationCandidate(
+            clusterId = row[ModerationQueueTable.clusterId],
+            clusterKey = row[ModerationQueueTable.clusterKey],
+            suggestedMode = ModerationSuggestedMode.valueOf(row[ModerationQueueTable.suggestedMode]),
+            score = row[ModerationQueueTable.score].toDouble(),
+            confidence = row[ModerationQueueTable.confidence].toDouble(),
+            links = row[ModerationQueueTable.links].split('|').filter { it.isNotBlank() },
+            sourceDomain = row[ModerationQueueTable.sourceDomain],
+            entityHashes = row[ModerationQueueTable.entityHashes].split('|').filter { it.isNotBlank() },
+            primaryEntityHash = row[ModerationQueueTable.primaryEntityHash],
+            title = row[ModerationQueueTable.title],
+            summary = row[ModerationQueueTable.summary],
+            topics = row[ModerationQueueTable.topics].split(',').filter { it.isNotBlank() }.toSet(),
+            deepLink = row[ModerationQueueTable.deepLink],
+            createdAt = row[ModerationQueueTable.createdAt].toInstant(),
+        )
+        return ModerationItem(
+            moderationId = row[ModerationQueueTable.moderationId],
+            candidate = candidate,
+            status = ModerationStatus.valueOf(row[ModerationQueueTable.status]),
+            adminChatId = row[ModerationQueueTable.adminChatId],
+            adminThreadId = row[ModerationQueueTable.adminThreadId],
+            adminMessageId = row[ModerationQueueTable.adminMessageId],
+            actionId = row[ModerationQueueTable.actionId],
+            editedText = row[ModerationQueueTable.editedText],
+        )
     }
 }
