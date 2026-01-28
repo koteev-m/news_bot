@@ -13,6 +13,12 @@ import news.config.NewsConfig
 import news.dedup.Clusterer
 import news.model.Article
 import news.model.Cluster
+import news.moderation.ModerationCandidate
+import news.moderation.ModerationHashes
+import news.moderation.ModerationIds
+import news.moderation.ModerationQueue
+import news.moderation.ModerationScorer
+import news.moderation.ModerationSuggestedMode
 import news.publisher.IdempotencyStore
 import news.publisher.TelegramPublisher
 import news.sources.NewsSource
@@ -29,6 +35,8 @@ class NewsPipeline(
     private val idempotencyStore: IdempotencyStore,
     private val deepLinkStore: DeepLinkStore,
     private val deepLinkTtl: Duration,
+    private val moderationQueue: ModerationQueue = ModerationQueue.Noop,
+    private val moderationScorer: ModerationScorer = ModerationScorer(config),
 ) {
     private val logger = LoggerFactory.getLogger(NewsPipeline::class.java)
     private val canonicalPicker = CanonicalPicker(config)
@@ -44,8 +52,9 @@ class NewsPipeline(
             logger.info("No clusters generated")
             return@coroutineScope 0
         }
+        val moderatedClusters = applyModeration(clusters)
         if (config.modeDigestOnly) {
-            val posted = telegramPublisher.publishDigest(clusters, ::deepLink)
+            val posted = telegramPublisher.publishDigest(moderatedClusters, ::deepLink)
             if (posted) {
                 logger.info("Published digest post")
                 return@coroutineScope 1
@@ -57,7 +66,7 @@ class NewsPipeline(
             logger.info("Breaking autopublish disabled")
             return@coroutineScope 0
         }
-        val breakingCandidates = selectBreaking(clusters)
+        val breakingCandidates = selectBreaking(moderatedClusters)
             .filterNot { idempotencyStore.seen(it.clusterKey) }
         var published = 0
         for (cluster in breakingCandidates) {
@@ -87,6 +96,62 @@ class NewsPipeline(
                 .thenByDescending { it.canonical.publishedAt }
         )
         return sorted.take(2)
+    }
+
+    private suspend fun applyModeration(clusters: List<Cluster>): List<Cluster> {
+        if (!config.moderationEnabled) {
+            return clusters
+        }
+        val allowed = mutableListOf<Cluster>()
+        for (cluster in clusters) {
+            val score = moderationScorer.score(cluster)
+            val suggested = moderationScorer.suggestedMode(cluster, score)
+            val candidate = buildCandidate(cluster, score, suggested)
+            if (isMuted(candidate)) {
+                logger.info("Cluster {} skipped due to mute", cluster.clusterKey)
+                continue
+            }
+            if (score.tier0 && score.confident) {
+                allowed.add(cluster)
+            } else {
+                moderationQueue.enqueue(candidate)
+            }
+        }
+        return allowed
+    }
+
+    private suspend fun isMuted(candidate: ModerationCandidate): Boolean {
+        if (moderationQueue.isSourceMuted(candidate.sourceDomain)) {
+            return true
+        }
+        return candidate.entityHashes.any { moderationQueue.isEntityMuted(it) }
+    }
+
+    private fun buildCandidate(
+        cluster: Cluster,
+        score: ModerationScorer.ModerationScore,
+        suggestedMode: ModerationSuggestedMode
+    ): ModerationCandidate {
+        val links = cluster.articles.map { it.url }.distinct().take(5)
+        val entities = cluster.articles.flatMap { it.entities }.map { it.trim() }.filter { it.isNotBlank() }
+        val entityHashes = entities.map { ModerationHashes.hashEntity(it) }.distinct()
+        val primaryEntity = entityHashes.firstOrNull()
+        return ModerationCandidate(
+            clusterId = ModerationIds.clusterIdFromKey(cluster.clusterKey),
+            clusterKey = cluster.clusterKey,
+            suggestedMode = suggestedMode,
+            score = score.score,
+            confidence = score.confidence,
+            links = links,
+            sourceDomain = cluster.canonical.domain,
+            entityHashes = entityHashes,
+            primaryEntityHash = primaryEntity,
+            title = cluster.canonical.title,
+            summary = cluster.canonical.summary,
+            topics = cluster.topics,
+            deepLink = deepLink(cluster),
+            createdAt = cluster.createdAt,
+        )
     }
 
     private fun deepLink(cluster: Cluster): String {

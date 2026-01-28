@@ -107,6 +107,11 @@ import news.publisher.store.InMemoryIdempotencyStore
 import news.rss.RssFetcher
 import news.sources.CbrSource
 import news.sources.MoexSource
+import news.moderation.ModerationBotConfig
+import news.moderation.ModerationBotHandler
+import news.moderation.ModerationQueue
+import news.moderation.ModerationQueueDatabase
+import news.moderation.ModerationRepository
 import observability.DomainMetrics
 import observability.EventsCounter
 import observability.Observability
@@ -224,6 +229,27 @@ fun Application.module() {
         deepLinkStore = deepLinkStore,
         deepLinkTtl = deepLinkTtl,
     )
+    val moderationConfig = loadModerationBotConfig(newsConfig)
+    val moderationRepository = moderationConfig?.let { ModerationRepository() }
+    val moderationQueue: ModerationQueue = if (moderationConfig != null && moderationRepository != null) {
+        ModerationQueueDatabase(
+            repository = moderationRepository,
+            bot = services.telegramBot,
+            config = moderationConfig
+        )
+    } else {
+        ModerationQueue.Noop
+    }
+    val moderationHandler = if (moderationConfig != null && moderationRepository != null) {
+        ModerationBotHandler(
+            bot = services.telegramBot,
+            repository = moderationRepository,
+            newsConfig = newsConfig,
+            config = moderationConfig
+        )
+    } else {
+        null
+    }
     val newsScheduler = startNewsPipelineScheduler(
         newsConfig = newsConfig,
         services = services,
@@ -231,6 +257,7 @@ fun Application.module() {
         config = appConfig,
         deepLinkStore = services.deepLinkStore,
         deepLinkTtl = services.deepLinkTtl,
+        moderationQueue = moderationQueue,
     )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
     val supportRepository = SupportRepository()
@@ -354,6 +381,9 @@ fun Application.module() {
             val bot = servicesAttr.telegramBot
             val billingSvc = servicesAttr.billingService
             val route = StarsBotRouter.route(botUpdate)
+            if (moderationHandler != null && moderationHandler.handleUpdate(botUpdate)) {
+                return@post
+            }
             if (route == Unknown) {
                 return@post
             }
@@ -567,13 +597,42 @@ private fun Application.loadNewsConfig(): NewsConfig {
         ?: defaults.modeAutopublishBreaking
     val digestMinIntervalSeconds = config.propertyOrNull("news.digestMinIntervalSeconds")?.getString()?.toLongOrNull()
         ?.coerceAtLeast(0L) ?: defaults.digestMinIntervalSeconds
+    val moderationEnabled = config.propertyOrNull("news.moderation.enabled")?.getString()?.toBooleanStrictOrNull()
+        ?: defaults.moderationEnabled
+    val moderationTier0Weight = config.propertyOrNull("news.moderation.tier0Weight")?.getString()?.toIntOrNull()
+        ?: defaults.moderationTier0Weight
+    val moderationConfidenceThreshold = config.propertyOrNull("news.moderation.confidenceThreshold")?.getString()
+        ?.toDoubleOrNull() ?: defaults.moderationConfidenceThreshold
+    val moderationBreakingAgeMinutes = config.propertyOrNull("news.moderation.breakingAgeMinutes")?.getString()
+        ?.toLongOrNull() ?: defaults.moderationBreakingAgeMinutes
     return defaults.copy(
         botDeepLinkBase = botBase,
         maxPayloadBytes = maxBytes,
         channelId = channelId,
         modeDigestOnly = digestOnly,
         modeAutopublishBreaking = autopublishBreaking,
-        digestMinIntervalSeconds = digestMinIntervalSeconds
+        digestMinIntervalSeconds = digestMinIntervalSeconds,
+        moderationEnabled = moderationEnabled,
+        moderationTier0Weight = moderationTier0Weight,
+        moderationConfidenceThreshold = moderationConfidenceThreshold,
+        moderationBreakingAgeMinutes = moderationBreakingAgeMinutes
+    )
+}
+
+private fun Application.loadModerationBotConfig(newsConfig: NewsConfig): ModerationBotConfig? {
+    if (!newsConfig.moderationEnabled) {
+        return null
+    }
+    val config = environment.config
+    val adminChatId = config.propertyOrNull("news.moderation.adminChatId")?.getString()?.toLongOrNull()
+    requireNotNull(adminChatId) { "news.moderation.adminChatId must be set when moderation is enabled" }
+    val adminThreadId = config.propertyOrNull("news.moderation.adminThreadId")?.getString()?.toLongOrNull()
+    val muteHours = config.propertyOrNull("news.moderation.muteHours")?.getString()?.toLongOrNull() ?: 24L
+    return ModerationBotConfig(
+        enabled = true,
+        adminChatId = adminChatId,
+        adminThreadId = adminThreadId,
+        muteHours = muteHours,
     )
 }
 
@@ -595,6 +654,7 @@ private fun Application.startNewsPipelineScheduler(
     config: ApplicationConfig,
     deepLinkStore: DeepLinkStore,
     deepLinkTtl: Duration,
+    moderationQueue: ModerationQueue,
 ): NewsPipelineScheduler {
     val logger = LoggerFactory.getLogger("NewsPipelineScheduler")
     val intervalRaw = config.propertyOrNull("news.pipelineIntervalSeconds")?.getString()?.toLongOrNull()
@@ -626,6 +686,7 @@ private fun Application.startNewsPipelineScheduler(
         idempotencyStore = idempotencyStore,
         deepLinkStore = deepLinkStore,
         deepLinkTtl = deepLinkTtl,
+        moderationQueue = moderationQueue,
     )
 
     val meterRegistry = metrics.meterRegistry
