@@ -9,6 +9,7 @@ import com.pengrad.telegrambot.response.SendResponse
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.slf4j.LoggerFactory
 import news.render.ModerationTemplates
+import java.sql.SQLException
 
 class ModerationQueueDatabase(
     private val repository: ModerationRepository,
@@ -21,25 +22,19 @@ class ModerationQueueDatabase(
         val item = try {
             repository.enqueue(candidate)
         } catch (ex: ExposedSQLException) {
-            logger.info("Moderation candidate already queued for cluster {}", candidate.clusterKey)
+            if (!isUniqueClusterViolation(ex)) {
+                logger.error("Failed to enqueue moderation candidate for cluster {}", candidate.clusterKey, ex)
+                throw ex
+            }
+            val existing = repository.findByClusterKey(candidate.clusterKey) ?: return null
+            if (shouldRetrySend(existing)) {
+                sendCard(existing)
+                return existing
+            }
             return null
         }
         if (item == null) return null
-        val text = ModerationTemplates.renderAdminCard(candidate)
-        val markup = buildKeyboard(item.moderationId.toString())
-        val request = SendMessage(config.adminChatId, text)
-            .parseMode(ParseMode.MarkdownV2)
-            .replyMarkup(markup)
-        config.adminThreadId?.let { request.messageThreadId(it.toInt()) }
-        val response: SendResponse = bot.execute(request)
-        if (!response.isOk) {
-            logger.warn("Failed to send moderation card for cluster {}", candidate.clusterKey)
-            return item
-        }
-        val messageId = response.message()?.messageId()
-        if (messageId != null) {
-            repository.markCardSent(item.moderationId, config.adminChatId, config.adminThreadId, messageId.toLong())
-        }
+        sendCard(item)
         return item
     }
 
@@ -66,5 +61,36 @@ class ModerationQueueDatabase(
                 InlineKeyboardButton("🔕 Mute entity 24h").callbackData("mod:$id:mute_entity")
             )
         )
+    }
+
+    private fun shouldRetrySend(item: ModerationItem): Boolean {
+        if (item.adminMessageId != null) return false
+        if (item.actionId != null) return false
+        return item.status == ModerationStatus.PENDING || item.status == ModerationStatus.EDIT_REQUESTED
+    }
+
+    private fun sendCard(item: ModerationItem) {
+        val text = ModerationTemplates.renderAdminCard(item.candidate)
+        val markup = buildKeyboard(item.moderationId.toString())
+        val request = SendMessage(config.adminChatId, text)
+            .parseMode(ParseMode.MarkdownV2)
+            .replyMarkup(markup)
+        config.adminThreadId?.let { request.messageThreadId(it.toInt()) }
+        val response: SendResponse = bot.execute(request)
+        if (!response.isOk) {
+            logger.warn("Failed to send moderation card for cluster {}", item.candidate.clusterKey)
+            return
+        }
+        val messageId = response.message()?.messageId()
+        if (messageId != null) {
+            repository.markCardSent(item.moderationId, config.adminChatId, config.adminThreadId, messageId.toLong())
+        }
+    }
+
+    private fun isUniqueClusterViolation(ex: ExposedSQLException): Boolean {
+        val sqlState = ex.sqlState ?: (ex.cause as? SQLException)?.sqlState
+        val message = ex.message ?: ex.cause?.message
+        val hasConstraint = message?.contains("uk_moderation_queue_cluster", ignoreCase = true) == true
+        return (sqlState == "23505" && hasConstraint) || hasConstraint || sqlState == "23505"
     }
 }
