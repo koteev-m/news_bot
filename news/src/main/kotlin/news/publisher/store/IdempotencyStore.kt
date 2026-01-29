@@ -5,8 +5,8 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 interface IdempotencyStore {
-    fun seen(key: String): Boolean
-    fun mark(key: String)
+    suspend fun seen(key: String): Boolean
+    suspend fun mark(key: String)
 }
 
 class InMemoryIdempotencyStore(
@@ -15,7 +15,7 @@ class InMemoryIdempotencyStore(
 ) : IdempotencyStore {
     private val entries = ConcurrentHashMap<String, Instant>()
 
-    override fun seen(key: String): Boolean {
+    override suspend fun seen(key: String): Boolean {
         purgeExpired()
         val expiresAt = entries[key] ?: return false
         if (expiresAt.isBefore(clock.instant())) {
@@ -25,7 +25,7 @@ class InMemoryIdempotencyStore(
         return true
     }
 
-    override fun mark(key: String) {
+    override suspend fun mark(key: String) {
         purgeExpired()
         val expiry = clock.instant().plusSeconds(ttlMinutes * 60)
         entries[key] = expiry

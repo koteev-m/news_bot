@@ -17,8 +17,11 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import news.config.NewsConfig
+import news.publisher.PostHash
 import news.render.ModerationTemplates
-import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.insertIgnore
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
 
 class ModerationBotHandler(
@@ -187,20 +190,33 @@ class ModerationBotHandler(
             }
             val messageId = response.message()?.messageId()
             if (messageId != null) {
-                recordPostStats(candidate.clusterId, newsConfig.channelId, messageId)
+                recordPostStats(candidate.clusterId, newsConfig.channelId, messageId, text)
             }
             messageId?.toLong()
         }
     }
 
-    private suspend fun recordPostStats(clusterId: UUID, channelId: Long, messageId: Int) {
+    private suspend fun recordPostStats(clusterId: UUID, channelId: Long, messageId: Int, text: String) {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
+        val contentHash = PostHash.hash(text)
         DatabaseFactory.dbQuery {
-            PostStatsTable.insert {
+            PostStatsTable.insertIgnore {
                 it[PostStatsTable.channelId] = channelId
                 it[PostStatsTable.messageId] = messageId.toLong()
                 it[PostStatsTable.clusterId] = clusterId
                 it[PostStatsTable.postedAt] = now
+                it[PostStatsTable.updatedAt] = now
+                it[PostStatsTable.duplicateCount] = 0
+                it[PostStatsTable.contentHash] = contentHash
+            }
+            PostStatsTable.update(
+                where = {
+                    (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
+                }
+            ) {
+                it[PostStatsTable.messageId] = messageId.toLong()
+                it[PostStatsTable.updatedAt] = now
+                it[PostStatsTable.contentHash] = contentHash
             }
         }
     }
