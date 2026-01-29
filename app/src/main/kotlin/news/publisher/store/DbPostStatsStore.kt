@@ -39,8 +39,8 @@ class DbPostStatsStore(
 
     override suspend fun recordNew(channelId: Long, clusterId: UUID, messageId: Long, contentHash: String) {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
-        DatabaseFactory.dbQuery {
-            try {
+        try {
+            DatabaseFactory.dbQuery {
                 PostStatsTable.insert {
                     it[PostStatsTable.channelId] = channelId
                     it[PostStatsTable.messageId] = messageId
@@ -50,34 +50,36 @@ class DbPostStatsStore(
                     it[PostStatsTable.updatedAt] = now
                     it[PostStatsTable.duplicateCount] = 0
                 }
-            } catch (ex: ExposedSQLException) {
-                if (!isUniqueViolation(ex)) {
-                    throw ex
-                }
-                logger.warn(
-                    "Unique violation while recording post stats for channel {} cluster {}",
-                    channelId,
-                    clusterId,
-                    ex
-                )
-                val updated = PostStatsTable.update(
-                    where = {
-                        (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
-                    },
-                ) { update ->
-                    update[PostStatsTable.messageId] = messageId
-                    update[PostStatsTable.contentHash] = contentHash
-                    update[PostStatsTable.updatedAt] = now
-                }
-                if (updated == 0) {
-                    logger.error(
-                        "Unique violation without matching post stats row for channel {} cluster {}",
-                        channelId,
-                        clusterId,
-                        ex
-                    )
-                }
             }
+            return
+        } catch (ex: ExposedSQLException) {
+            if (!isUniqueViolation(ex)) {
+                throw ex
+            }
+            logger.warn(
+                "Unique violation while recording post stats for channel {} cluster {}",
+                channelId,
+                clusterId,
+                ex
+            )
+        }
+        val updated = DatabaseFactory.dbQuery {
+            PostStatsTable.update(
+                where = {
+                    (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
+                },
+            ) { update ->
+                update[PostStatsTable.messageId] = messageId
+                update[PostStatsTable.contentHash] = contentHash
+                update[PostStatsTable.updatedAt] = now
+            }
+        }
+        if (updated == 0) {
+            logger.error(
+                "Unique violation without matching post stats row for channel {} cluster {}",
+                channelId,
+                clusterId
+            )
         }
     }
 
