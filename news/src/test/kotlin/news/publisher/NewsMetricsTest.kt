@@ -64,6 +64,18 @@ class NewsMetricsTest {
         override fun incEdit() {
         }
 
+        override fun incCandidatesReceived(sourceId: String, count: Int) {
+        }
+
+        override fun incClustersCreated(eventType: news.model.EventType) {
+        }
+
+        override fun incRouted(route: news.routing.EventRoute) {
+        }
+
+        override fun incDropped(reason: news.routing.DropReason) {
+        }
+
         fun count(type: NewsPublishType, result: NewsPublishResult): Int {
             return counts[type to result] ?: 0
         }
