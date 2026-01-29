@@ -3,8 +3,7 @@ package app
 import com.typesafe.config.ConfigFactory
 import common.runCatchingNonFatal
 
-@Suppress("unused")
-private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
+internal fun ensureCioWorkerThreadsConfigured(): Int = configureCioWorkerThreads()
 
 private fun configureCioWorkerThreads(): Int {
     val existing = System.getProperty("ktor.server.cio.workerCount")?.toIntOrNull()

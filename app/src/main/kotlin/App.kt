@@ -168,6 +168,7 @@ import views.PostViewsService
 import org.jetbrains.exposed.sql.update
 
 fun Application.module() {
+    ensureCioWorkerThreadsConfigured()
     val appConfig = environment.config
     val prometheusRegistry = Observability.install(this)
     val eventsCounter = EventsCounter(prometheusRegistry)
