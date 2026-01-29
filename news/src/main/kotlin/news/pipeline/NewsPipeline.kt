@@ -10,19 +10,23 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.time.Clock
 import news.config.NewsConfig
-import news.config.NewsMode
+import news.classification.EventClassifier
 import news.dedup.Clusterer
+import news.metrics.NewsMetricsPort
 import news.model.Article
 import news.model.Cluster
 import news.moderation.ModerationCandidate
 import news.moderation.ModerationHashes
 import news.moderation.ModerationIds
 import news.moderation.ModerationQueue
-import news.moderation.ModerationScoreProvider
-import news.moderation.ModerationScorer
 import news.moderation.ModerationSuggestedMode
 import news.publisher.PublishResult
 import news.publisher.TelegramPublisher
+import news.routing.EventRoute
+import news.routing.EventRouter
+import news.routing.RouteDecision
+import news.scoring.EventScore
+import news.scoring.EventScorer
 import news.sources.NewsSource
 import org.slf4j.LoggerFactory
 import kotlin.text.Charsets
@@ -37,9 +41,12 @@ class NewsPipeline(
     private val deepLinkStore: DeepLinkStore,
     private val deepLinkTtl: Duration,
     private val moderationQueue: ModerationQueue = ModerationQueue.Noop,
-    private val moderationScorer: ModerationScoreProvider = ModerationScorer(config),
-    private val publishJobQueue: PublishJobQueue = PublishJobQueue.Noop,
     private val clock: Clock = Clock.systemUTC(),
+    private val eventClassifier: EventClassifier = EventClassifier(),
+    private val eventScorer: EventScorer = EventScorer(config, clock),
+    private val eventRouter: EventRouter = EventRouter(config),
+    private val publishJobQueue: PublishJobQueue = PublishJobQueue.Noop,
+    private val metrics: NewsMetricsPort = NewsMetricsPort.Noop,
 ) {
     private val logger = LoggerFactory.getLogger(NewsPipeline::class.java)
     private val digestScheduler = DigestSlotScheduler(
@@ -78,6 +85,7 @@ class NewsPipeline(
                 runCatchingNonFatal { source.fetch() }
                     .onFailure { logger.warn("Source {} failed", source.name, it) }
                     .getOrDefault(emptyList())
+                    .also { articles -> metrics.incCandidatesReceived(source.name, articles.size) }
             }
         }.awaitAll().flatten()
     }
@@ -85,42 +93,59 @@ class NewsPipeline(
     private suspend fun handleClusters(clusters: List<Cluster>): List<PublishOutcomeType> {
         val outcomes = mutableListOf<PublishOutcomeType>()
         for (cluster in clusters.sortedByDescending { it.canonical.publishedAt }) {
-            val score = moderationScorer.score(cluster)
-            val suggested = moderationScorer.suggestedMode(cluster, score)
-            val candidate = buildCandidate(cluster, score, suggested)
+            val eventCandidate = eventClassifier.classify(cluster)
+            metrics.incClustersCreated(eventCandidate.eventType)
+            val score = eventScorer.score(cluster, eventCandidate)
+            val decision = eventRouter.route(score)
+            metrics.incRouted(decision.route)
+            if (decision.route == EventRoute.DROP && decision.dropReason != null) {
+                metrics.incDropped(decision.dropReason)
+            }
+            val candidate = buildCandidate(cluster, score, decision)
             if (isMuted(candidate)) {
                 logger.info("Cluster {} skipped due to mute", cluster.clusterKey)
                 outcomes += PublishOutcomeType.SKIPPED_MUTED
                 continue
             }
-            when (config.mode) {
-                NewsMode.DIGEST_ONLY -> {
-                    outcomes += enqueueDigest(cluster, candidate, score)
-                }
-                NewsMode.HYBRID -> {
-                    if (score.tier0 && score.confidence >= config.scoring.minConfidenceAutopublish) {
-                        outcomes += autoPublish(cluster, candidate, score)
-                    } else {
-                        outcomes += queueForReview(candidate)
-                    }
-                }
-                NewsMode.AUTOPUBLISH -> {
-                    outcomes += autoPublish(cluster, candidate, score)
-                }
-            }
+            logger.info(
+                "Cluster {} routed as {} (eventType={}, score={}, confidence={})",
+                cluster.clusterKey,
+                decision.route,
+                eventCandidate.eventType,
+                "%.2f".format(score.score),
+                "%.2f".format(score.confidence),
+            )
+            outcomes += handleRoute(cluster, candidate, decision, score)
         }
         return outcomes
+    }
+
+    private suspend fun handleRoute(
+        cluster: Cluster,
+        candidate: ModerationCandidate,
+        decision: RouteDecision,
+        score: EventScore,
+    ): PublishOutcomeType {
+        return when (decision.route) {
+            EventRoute.PUBLISH_NOW -> publishBreaking(cluster, candidate, score)
+            EventRoute.DIGEST -> enqueueDigest(cluster, candidate, score)
+            EventRoute.REVIEW -> queueForReview(candidate)
+            EventRoute.DROP -> {
+                logger.info(
+                    "Cluster {} dropped (reason={})",
+                    cluster.clusterKey,
+                    decision.dropReason ?: "unspecified",
+                )
+                PublishOutcomeType.DROPPED
+            }
+        }
     }
 
     private suspend fun enqueueDigest(
         cluster: Cluster,
         candidate: ModerationCandidate,
-        score: ModerationScorer.ModerationScore,
+        score: EventScore,
     ): PublishOutcomeType {
-        if (!score.digestCandidate) {
-            logger.info("Cluster {} skipped due to low digest score {}", cluster.clusterKey, score.score)
-            return PublishOutcomeType.SKIPPED_SCORE
-        }
         val scheduledAt = digestScheduler.nextSlot()
         publishJobQueue.enqueue(
             buildPublishJob(
@@ -148,26 +173,10 @@ class NewsPipeline(
         return PublishOutcomeType.REVIEW_QUEUED
     }
 
-    private suspend fun autoPublish(
-        cluster: Cluster,
-        candidate: ModerationCandidate,
-        score: ModerationScorer.ModerationScore,
-    ): PublishOutcomeType {
-        if (!score.digestCandidate) {
-            logger.info("Cluster {} skipped due to low digest score {}", cluster.clusterKey, score.score)
-            return PublishOutcomeType.SKIPPED_SCORE
-        }
-        val plannedTarget = if (score.breakingCandidate) PublishTarget.BREAKING else PublishTarget.DIGEST
-        return if (plannedTarget == PublishTarget.BREAKING) {
-            publishBreaking(cluster, candidate)
-        } else {
-            enqueueDigest(cluster, candidate, score)
-        }
-    }
-
     private suspend fun publishBreaking(
         cluster: Cluster,
         candidate: ModerationCandidate,
+        score: EventScore,
     ): PublishOutcomeType {
         val gate = antiNoisePolicy.allowBreaking()
         if (!gate.allowed) {
@@ -176,7 +185,7 @@ class NewsPipeline(
                 cluster.clusterKey,
                 gate.reason
             )
-            return enqueueDigest(cluster, candidate, moderationScorer.score(cluster))
+            return enqueueDigest(cluster, candidate, score)
         }
         val deepLink = candidate.deepLink
         val result = telegramPublisher.publishBreaking(cluster, deepLink)
@@ -206,13 +215,18 @@ class NewsPipeline(
 
     private fun buildCandidate(
         cluster: Cluster,
-        score: ModerationScorer.ModerationScore,
-        suggestedMode: ModerationSuggestedMode
+        score: EventScore,
+        decision: RouteDecision,
     ): ModerationCandidate {
         val links = cluster.articles.map { it.url }.distinct().take(5)
         val entities = cluster.articles.flatMap { it.entities }.map { it.trim() }.filter { it.isNotBlank() }
         val entityHashes = entities.map { ModerationHashes.hashEntity(it) }.distinct()
         val primaryEntity = entityHashes.firstOrNull()
+        val suggestedMode = if (decision.route == EventRoute.PUBLISH_NOW) {
+            ModerationSuggestedMode.BREAKING
+        } else {
+            ModerationSuggestedMode.DIGEST
+        }
         return ModerationCandidate(
             clusterId = ModerationIds.clusterIdFromKey(cluster.clusterKey),
             clusterKey = cluster.clusterKey,
@@ -277,5 +291,5 @@ private enum class PublishOutcomeType {
     DIGEST_QUEUED,
     REVIEW_QUEUED,
     SKIPPED_MUTED,
-    SKIPPED_SCORE,
+    DROPPED,
 }

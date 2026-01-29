@@ -32,6 +32,12 @@ data class NewsScoringConfig(
     val minConfidenceAutopublish: Double,
 )
 
+data class EventScoringConfig(
+    val eventSeverity: Map<news.model.EventType, Double>,
+    val primaryTickers: Set<String>,
+    val primaryTickerBoost: Double,
+)
+
 data class NewsConfig(
     val userAgent: String,
     val httpTimeoutMs: Long,
@@ -43,6 +49,7 @@ data class NewsConfig(
     val digestMinIntervalSeconds: Long = 21_600,
     val antiNoise: AntiNoiseConfig = NewsDefaults.defaultAntiNoise,
     val scoring: NewsScoringConfig = NewsDefaults.defaultScoring,
+    val eventScoring: EventScoringConfig = NewsDefaults.defaultEventScoring,
     val moderationEnabled: Boolean = false,
     val moderationTier0Weight: Int = 90,
     val moderationConfidenceThreshold: Double = 0.7,
@@ -72,6 +79,20 @@ object NewsDefaults {
         minConfidenceAutopublish = 0.65,
     )
 
+    val defaultEventScoring = EventScoringConfig(
+        eventSeverity = mapOf(
+            news.model.EventType.CBR_RATE to 1.4,
+            news.model.EventType.CBR_STATEMENT to 1.2,
+            news.model.EventType.MOEX_TRADING_STATUS to 1.3,
+            news.model.EventType.LISTING_DELISTING to 1.15,
+            news.model.EventType.CORPORATE_ACTION to 1.1,
+            news.model.EventType.MARKET_NEWS to 1.0,
+            news.model.EventType.UNKNOWN to 0.8,
+        ),
+        primaryTickers = setOf("GAZP", "SBER", "LKOH", "YNDX", "ROSN"),
+        primaryTickerBoost = 1.15,
+    )
+
     val defaultConfig: NewsConfig = NewsConfig(
         userAgent = "news-bot/1.0",
         httpTimeoutMs = 30_000,
@@ -83,6 +104,7 @@ object NewsDefaults {
         mode = NewsMode.DIGEST_ONLY,
         antiNoise = defaultAntiNoise,
         scoring = defaultScoring,
+        eventScoring = defaultEventScoring,
         moderationEnabled = false,
         moderationTier0Weight = 90,
         moderationConfidenceThreshold = 0.7,

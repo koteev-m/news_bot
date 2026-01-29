@@ -587,7 +587,9 @@ private fun Application.loadNewsConfig(): NewsConfig {
         ?: config.propertyOrNull("telegram.channelId")?.getString()?.toLongOrNull()
         ?: defaults.channelId
     val digestOnly = config.propertyOrNull("news.modeDigestOnly")?.getString()?.toBooleanStrictOrNull()
-    val autopublishBreaking = config.propertyOrNull("news.modeAutopublishBreaking")?.getString()?.toBooleanStrictOrNull()
+    val autopublishBreaking = config.propertyOrNull(
+        "news.modeAutopublishBreaking"
+    )?.getString()?.toBooleanStrictOrNull()
     val explicitMode = NewsMode.parse(config.propertyOrNull("news.mode")?.getString())
     val mode = explicitMode ?: when {
         digestOnly == true -> NewsMode.DIGEST_ONLY
@@ -610,6 +612,12 @@ private fun Application.loadNewsConfig(): NewsConfig {
         ?: defaults.scoring.digestMinScore
     val minConfidenceAutopublish = config.propertyOrNull("news.scoring.minConfidenceAutopublish")?.getString()
         ?.toDoubleOrNull() ?: defaults.scoring.minConfidenceAutopublish
+    val primaryTickers = parseTickers(
+        config.propertyOrNull("news.scoring.primaryTickers")?.getString(),
+        defaults.eventScoring.primaryTickers,
+    )
+    val primaryTickerBoost = config.propertyOrNull("news.scoring.primaryTickerBoost")?.getString()?.toDoubleOrNull()
+        ?.coerceAtLeast(1.0) ?: defaults.eventScoring.primaryTickerBoost
     val moderationEnabled = config.propertyOrNull("news.moderation.enabled")?.getString()?.toBooleanStrictOrNull()
         ?: defaults.moderationEnabled
     val moderationTier0Weight = config.propertyOrNull("news.moderation.tier0Weight")?.getString()?.toIntOrNull()
@@ -634,6 +642,10 @@ private fun Application.loadNewsConfig(): NewsConfig {
             digestMinScore = digestMinScore,
             minConfidenceAutopublish = minConfidenceAutopublish,
         ),
+        eventScoring = defaults.eventScoring.copy(
+            primaryTickers = primaryTickers,
+            primaryTickerBoost = primaryTickerBoost,
+        ),
         moderationEnabled = moderationEnabled,
         moderationTier0Weight = moderationTier0Weight,
         moderationConfidenceThreshold = moderationConfidenceThreshold,
@@ -650,6 +662,18 @@ private fun parseDigestSlots(raw: String?, fallback: List<LocalTime>): List<Loca
             if (trimmed.isEmpty()) return@mapNotNull null
             runCatching { LocalTime.parse(trimmed, formatter) }.getOrNull()
         }
+        .ifEmpty { fallback }
+}
+
+private fun parseTickers(raw: String?, fallback: Set<String>): Set<String> {
+    if (raw.isNullOrBlank()) return fallback
+    return raw.split(",")
+        .mapNotNull { value ->
+            val trimmed = value.trim()
+            if (trimmed.isEmpty()) return@mapNotNull null
+            trimmed.uppercase()
+        }
+        .toSet()
         .ifEmpty { fallback }
 }
 
@@ -729,6 +753,7 @@ private fun Application.startNewsPipelineScheduler(
         deepLinkTtl = deepLinkTtl,
         moderationQueue = moderationQueue,
         publishJobQueue = publishJobQueue,
+        metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
     )
     val digestWorker = DigestPublishWorker(
         queue = publishJobQueue,
