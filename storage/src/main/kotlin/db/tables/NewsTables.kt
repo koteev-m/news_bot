@@ -44,7 +44,9 @@ object NewsItemsTable : Table("news_items") {
 
 object NewsClustersTable : Table("news_clusters") {
     val clusterId = uuid("cluster_id").defaultExpression(genRandomUuid())
-    val canonicalItemId = long("canonical_item_id").references(NewsItemsTable.itemId, onDelete = ReferenceOption.SET_NULL).nullable()
+    val canonicalItemId = long(
+        "canonical_item_id"
+    ).references(NewsItemsTable.itemId, onDelete = ReferenceOption.SET_NULL).nullable()
     val canonicalUrl = text("canonical_url").uniqueIndex().nullable()
     val score = decimal("score", 10, 4).default(BigDecimal("0"))
     val firstSeen = timestampWithTimeZone("first_seen")
@@ -66,4 +68,28 @@ object NewsPipelineStateTable : Table("news_pipeline_state") {
     val leaseOwner = text("lease_owner").nullable()
     val updatedAt = timestampWithTimeZone("updated_at")
     override val primaryKey = PrimaryKey(key)
+}
+
+object PublishJobsTable : Table("publish_jobs") {
+    val jobId = uuid("job_id").defaultExpression(genRandomUuid())
+    val clusterId = uuid("cluster_id")
+    val clusterKey = text("cluster_key")
+    val target = text("target")
+    val status = text("status")
+    val scheduledAt = timestampWithTimeZone("scheduled_at")
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+    val publishedAt = timestampWithTimeZone("published_at").nullable()
+    val processingOwner = text("processing_owner").nullable()
+    val title = text("title")
+    val summary = text("summary").nullable()
+    val sourceDomain = text("source_domain")
+    val topics = text("topics")
+    val deepLink = text("deep_link")
+    override val primaryKey = PrimaryKey(jobId)
+    init {
+        uniqueIndex("uk_publish_jobs_cluster_target", clusterId, target)
+        index("idx_publish_jobs_status_schedule", false, status, scheduledAt)
+        index("idx_publish_jobs_target_status", false, target, status)
+    }
 }
