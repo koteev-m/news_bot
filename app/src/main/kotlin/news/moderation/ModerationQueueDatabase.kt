@@ -7,6 +7,7 @@ import com.pengrad.telegrambot.model.request.ParseMode
 import com.pengrad.telegrambot.request.SendMessage
 import com.pengrad.telegrambot.response.SendResponse
 import java.sql.SQLException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import news.render.ModerationTemplates
@@ -101,6 +102,8 @@ class ModerationQueueDatabase(
             withContext(Dispatchers.IO) {
                 bot.execute(request)
             }
+        } catch (ex: CancellationException) {
+            throw ex
         } catch (ex: Exception) {
             logger.warn("Failed to send moderation card for cluster {}", item.candidate.clusterKey, ex)
             return
@@ -118,6 +121,8 @@ class ModerationQueueDatabase(
                     config.adminThreadId,
                     messageId.toLong()
                 )
+            } catch (ex: CancellationException) {
+                throw ex
             } catch (ex: Exception) {
                 logger.error("Failed to mark moderation card sent for cluster {}", item.candidate.clusterKey, ex)
             }
