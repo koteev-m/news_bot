@@ -19,7 +19,7 @@ import news.moderation.ModerationIds
 import news.moderation.ModerationQueue
 import news.moderation.ModerationScorer
 import news.moderation.ModerationSuggestedMode
-import news.publisher.IdempotencyStore
+import news.publisher.PublishResult
 import news.publisher.TelegramPublisher
 import news.sources.NewsSource
 import org.slf4j.LoggerFactory
@@ -32,7 +32,6 @@ class NewsPipeline(
     private val sources: List<NewsSource>,
     private val clusterer: Clusterer,
     private val telegramPublisher: TelegramPublisher,
-    private val idempotencyStore: IdempotencyStore,
     private val deepLinkStore: DeepLinkStore,
     private val deepLinkTtl: Duration,
     private val moderationQueue: ModerationQueue = ModerationQueue.Noop,
@@ -54,8 +53,8 @@ class NewsPipeline(
         }
         val moderatedClusters = applyModeration(clusters)
         if (config.modeDigestOnly) {
-            val posted = telegramPublisher.publishDigest(moderatedClusters, ::deepLink)
-            if (posted) {
+            val outcome = telegramPublisher.publishDigest(moderatedClusters, ::deepLink)
+            if (outcome.result == PublishResult.CREATED || outcome.result == PublishResult.EDITED) {
                 logger.info("Published digest post")
                 return@coroutineScope 1
             }
@@ -67,12 +66,11 @@ class NewsPipeline(
             return@coroutineScope 0
         }
         val breakingCandidates = selectBreaking(moderatedClusters)
-            .filterNot { idempotencyStore.seen(it.clusterKey) }
         var published = 0
         for (cluster in breakingCandidates) {
             val deepLink = deepLink(cluster)
-            val posted = telegramPublisher.publishBreaking(cluster, deepLink)
-            if (posted) {
+            val result = telegramPublisher.publishBreaking(cluster, deepLink)
+            if (result.result == PublishResult.CREATED || result.result == PublishResult.EDITED) {
                 published += 1
             }
         }

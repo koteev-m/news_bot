@@ -103,7 +103,8 @@ import news.dedup.Clusterer
 import news.pipeline.NewsPipeline
 import news.publisher.PengradTelegramClient
 import news.publisher.TelegramPublisher
-import news.publisher.store.InMemoryIdempotencyStore
+import news.publisher.store.DbIdempotencyStore
+import news.publisher.store.DbPostStatsStore
 import news.rss.RssFetcher
 import news.sources.CbrSource
 import news.sources.MoexSource
@@ -673,7 +674,8 @@ private fun Application.startNewsPipelineScheduler(
         CbrSource(fetcher),
         MoexSource(fetcher)
     )
-    val idempotencyStore = InMemoryIdempotencyStore()
+    val idempotencyStore = DbIdempotencyStore()
+    val postStatsStore = DbPostStatsStore()
     val pipeline = NewsPipeline(
         config = newsConfig,
         sources = sources,
@@ -681,9 +683,10 @@ private fun Application.startNewsPipelineScheduler(
         telegramPublisher = TelegramPublisher(
             client = PengradTelegramClient(services.telegramBot),
             config = newsConfig,
-            idempotencyStore = idempotencyStore
+            postStatsStore = postStatsStore,
+            idempotencyStore = idempotencyStore,
+            metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
         ),
-        idempotencyStore = idempotencyStore,
         deepLinkStore = deepLinkStore,
         deepLinkTtl = deepLinkTtl,
         moderationQueue = moderationQueue,

@@ -2,7 +2,6 @@ package news.publisher
 
 import com.pengrad.telegrambot.TelegramBot
 import com.pengrad.telegrambot.request.BaseRequest
-import com.pengrad.telegrambot.request.SendMessage
 import com.pengrad.telegrambot.response.BaseResponse
 import com.pengrad.telegrambot.response.SendResponse
 import kotlin.test.Test
@@ -12,6 +11,8 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import news.config.NewsDefaults
 import news.metrics.NewsMetricsPort
+import news.metrics.NewsPublishResult
+import news.metrics.NewsPublishType
 import news.publisher.store.InMemoryIdempotencyStore
 
 class NewsMetricsTest {
@@ -31,7 +32,7 @@ class NewsMetricsTest {
         val result = publisher.publish("cluster-key", "text", null)
 
         assertTrue(result)
-        assertEquals(1, metrics.publishes)
+        assertEquals(1, metrics.count(NewsPublishType.BREAKING, NewsPublishResult.CREATED))
         assertEquals(1, bot.executed.size)
     }
 
@@ -47,15 +48,24 @@ class NewsMetricsTest {
 
         assertTrue(first)
         assertFalse(second)
-        assertEquals(1, metrics.publishes)
+        assertEquals(1, metrics.count(NewsPublishType.BREAKING, NewsPublishResult.CREATED))
+        assertEquals(1, metrics.count(NewsPublishType.BREAKING, NewsPublishResult.SKIPPED))
         assertEquals(1, bot.executed.size)
     }
 
     private class RecordingMetrics : NewsMetricsPort {
-        var publishes: Int = 0
+        private val counts = mutableMapOf<Pair<NewsPublishType, NewsPublishResult>, Int>()
 
-        override fun incPublish() {
-            publishes += 1
+        override fun incPublish(type: NewsPublishType, result: NewsPublishResult) {
+            val key = type to result
+            counts[key] = (counts[key] ?: 0) + 1
+        }
+
+        override fun incEdit() {
+        }
+
+        fun count(type: NewsPublishType, result: NewsPublishResult): Int {
+            return counts[type to result] ?: 0
         }
     }
 
