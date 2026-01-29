@@ -1,8 +1,35 @@
 package news.config
 
+import java.time.LocalTime
+
 data class SourceWeight(
     val domain: String,
     val weight: Int
+)
+
+enum class NewsMode {
+    DIGEST_ONLY,
+    HYBRID,
+    AUTOPUBLISH;
+
+    companion object {
+        fun parse(raw: String?): NewsMode? {
+            if (raw.isNullOrBlank()) return null
+            return entries.firstOrNull { it.name.equals(raw.trim(), ignoreCase = true) }
+        }
+    }
+}
+
+data class AntiNoiseConfig(
+    val maxPostsPerDay: Int,
+    val minIntervalBreakingMinutes: Long,
+    val digestSlots: List<LocalTime>,
+)
+
+data class NewsScoringConfig(
+    val breakingThreshold: Double,
+    val digestMinScore: Double,
+    val minConfidenceAutopublish: Double,
 )
 
 data class NewsConfig(
@@ -12,9 +39,10 @@ data class NewsConfig(
     val channelId: Long,
     val botDeepLinkBase: String,
     val maxPayloadBytes: Int = 64,
-    val modeDigestOnly: Boolean = true,
-    val modeAutopublishBreaking: Boolean = false,
+    val mode: NewsMode = NewsMode.DIGEST_ONLY,
     val digestMinIntervalSeconds: Long = 21_600,
+    val antiNoise: AntiNoiseConfig = NewsDefaults.defaultAntiNoise,
+    val scoring: NewsScoringConfig = NewsDefaults.defaultScoring,
     val moderationEnabled: Boolean = false,
     val moderationTier0Weight: Int = 90,
     val moderationConfidenceThreshold: Double = 0.7,
@@ -32,6 +60,18 @@ object NewsDefaults {
         SourceWeight("kommersant.ru", 50)
     )
 
+    val defaultAntiNoise = AntiNoiseConfig(
+        maxPostsPerDay = 12,
+        minIntervalBreakingMinutes = 30,
+        digestSlots = listOf(LocalTime.of(9, 0)),
+    )
+
+    val defaultScoring = NewsScoringConfig(
+        breakingThreshold = 80.0,
+        digestMinScore = 45.0,
+        minConfidenceAutopublish = 0.65,
+    )
+
     val defaultConfig: NewsConfig = NewsConfig(
         userAgent = "news-bot/1.0",
         httpTimeoutMs = 30_000,
@@ -39,9 +79,10 @@ object NewsDefaults {
         channelId = 0L,
         botDeepLinkBase = "https://t.me/example_bot",
         maxPayloadBytes = 64,
-        modeDigestOnly = true,
-        modeAutopublishBreaking = false,
         digestMinIntervalSeconds = 21_600,
+        mode = NewsMode.DIGEST_ONLY,
+        antiNoise = defaultAntiNoise,
+        scoring = defaultScoring,
         moderationEnabled = false,
         moderationTier0Weight = 90,
         moderationConfidenceThreshold = 0.7,

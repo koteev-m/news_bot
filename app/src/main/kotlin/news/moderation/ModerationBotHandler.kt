@@ -17,6 +17,10 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import news.config.NewsConfig
+import news.pipeline.DigestSlotScheduler
+import news.pipeline.PublishJobQueue
+import news.pipeline.PublishJobRequest
+import news.pipeline.PublishTarget
 import news.publisher.PostHash
 import news.render.ModerationTemplates
 import org.jetbrains.exposed.sql.insertIgnore
@@ -29,6 +33,8 @@ class ModerationBotHandler(
     private val repository: ModerationRepository,
     private val newsConfig: NewsConfig,
     private val config: ModerationBotConfig,
+    private val publishJobQueue: PublishJobQueue,
+    private val digestScheduler: DigestSlotScheduler,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val logger = LoggerFactory.getLogger(ModerationBotHandler::class.java)
@@ -67,7 +73,7 @@ class ModerationBotHandler(
         }
         when (action) {
             "publish" -> publishNow(moderationId, queryId)
-            "digest" -> markAction(moderationId, queryId, ModerationStatus.DIGEST)
+            "digest" -> enqueueDigest(moderationId, queryId)
             "ignore" -> markAction(moderationId, queryId, ModerationStatus.IGNORED)
             "mute_source" -> muteSource(moderationId, queryId)
             "mute_entity" -> muteEntity(moderationId, queryId)
@@ -81,6 +87,33 @@ class ModerationBotHandler(
         if (!updated) {
             bot.execute(AnswerCallbackQuery(actionId).text("Уже обработано"))
             return
+        }
+        bot.execute(AnswerCallbackQuery(actionId).text("Готово"))
+    }
+
+    private suspend fun enqueueDigest(moderationId: UUID, actionId: String) {
+        val updated = repository.markActionIfPending(moderationId, actionId, ModerationStatus.DIGEST)
+        if (!updated) {
+            bot.execute(AnswerCallbackQuery(actionId).text("Уже обработано"))
+            return
+        }
+        val item = repository.findByModerationId(moderationId)
+        if (item != null) {
+            val scheduledAt = digestScheduler.nextSlot()
+            publishJobQueue.enqueue(
+                PublishJobRequest(
+                    clusterId = item.candidate.clusterId,
+                    clusterKey = item.candidate.clusterKey,
+                    target = PublishTarget.DIGEST,
+                    scheduledAt = scheduledAt,
+                    title = item.candidate.title,
+                    summary = item.candidate.summary,
+                    sourceDomain = item.candidate.sourceDomain,
+                    topics = item.candidate.topics,
+                    deepLink = item.candidate.deepLink,
+                    createdAt = item.candidate.createdAt,
+                )
+            )
         }
         bot.execute(AnswerCallbackQuery(actionId).text("Готово"))
     }

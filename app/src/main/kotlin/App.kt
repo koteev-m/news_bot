@@ -11,6 +11,7 @@ import db.DatabaseFactory
 import docs.apiDocsRoutes
 import news.config.NewsConfig
 import news.config.NewsDefaults
+import news.config.NewsMode
 import repo.ExperimentsRepository
 import repo.SupportRepository
 import repo.ReferralsRepository
@@ -94,13 +95,19 @@ import kotlinx.coroutines.isActive
 import kotlinx.serialization.decodeFromString
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import news.metrics.NewsMetricsPort
 import news.dedup.Clusterer
+import news.pipeline.DbPublishJobRepository
+import news.pipeline.DigestPublishWorker
+import news.pipeline.DigestSlotScheduler
 import news.pipeline.NewsPipeline
+import news.pipeline.PublishJobQueue
 import news.publisher.PengradTelegramClient
 import news.publisher.TelegramPublisher
 import news.publisher.store.DbIdempotencyStore
@@ -161,7 +168,6 @@ import webhook.OverflowMode
 import webhook.WebhookQueue
 import common.runCatchingNonFatal
 import views.PostViewsService
-import db.tables.NewsPipelineStateTable
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
@@ -230,6 +236,11 @@ fun Application.module() {
         deepLinkStore = deepLinkStore,
         deepLinkTtl = deepLinkTtl,
     )
+    val publishJobQueue = DbPublishJobRepository()
+    val digestScheduler = DigestSlotScheduler(
+        slots = newsConfig.antiNoise.digestSlots,
+        fallbackIntervalSeconds = newsConfig.digestMinIntervalSeconds,
+    )
     val moderationConfig = loadModerationBotConfig(newsConfig)
     val moderationRepository = moderationConfig?.let { ModerationRepository() }
     val moderationQueue: ModerationQueue = if (moderationConfig != null && moderationRepository != null) {
@@ -246,7 +257,9 @@ fun Application.module() {
             bot = services.telegramBot,
             repository = moderationRepository,
             newsConfig = newsConfig,
-            config = moderationConfig
+            config = moderationConfig,
+            publishJobQueue = publishJobQueue,
+            digestScheduler = digestScheduler,
         )
     } else {
         null
@@ -259,6 +272,7 @@ fun Application.module() {
         deepLinkStore = services.deepLinkStore,
         deepLinkTtl = services.deepLinkTtl,
         moderationQueue = moderationQueue,
+        publishJobQueue = publishJobQueue,
     )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
     val supportRepository = SupportRepository()
@@ -593,11 +607,29 @@ private fun Application.loadNewsConfig(): NewsConfig {
         ?: config.propertyOrNull("telegram.channelId")?.getString()?.toLongOrNull()
         ?: defaults.channelId
     val digestOnly = config.propertyOrNull("news.modeDigestOnly")?.getString()?.toBooleanStrictOrNull()
-        ?: defaults.modeDigestOnly
     val autopublishBreaking = config.propertyOrNull("news.modeAutopublishBreaking")?.getString()?.toBooleanStrictOrNull()
-        ?: defaults.modeAutopublishBreaking
+    val explicitMode = NewsMode.parse(config.propertyOrNull("news.mode")?.getString())
+    val mode = explicitMode ?: when {
+        digestOnly == true -> NewsMode.DIGEST_ONLY
+        autopublishBreaking == true -> NewsMode.AUTOPUBLISH
+        else -> defaults.mode
+    }
     val digestMinIntervalSeconds = config.propertyOrNull("news.digestMinIntervalSeconds")?.getString()?.toLongOrNull()
         ?.coerceAtLeast(0L) ?: defaults.digestMinIntervalSeconds
+    val maxPostsPerDay = config.propertyOrNull("news.antiNoise.maxPostsPerDay")?.getString()?.toIntOrNull()
+        ?.coerceAtLeast(0) ?: defaults.antiNoise.maxPostsPerDay
+    val minIntervalBreakingMinutes = config.propertyOrNull("news.antiNoise.minIntervalBreakingMinutes")
+        ?.getString()?.toLongOrNull()?.coerceAtLeast(0L) ?: defaults.antiNoise.minIntervalBreakingMinutes
+    val digestSlots = parseDigestSlots(
+        config.propertyOrNull("news.antiNoise.digestSlots")?.getString(),
+        defaults.antiNoise.digestSlots,
+    )
+    val breakingThreshold = config.propertyOrNull("news.scoring.breakingThreshold")?.getString()?.toDoubleOrNull()
+        ?: defaults.scoring.breakingThreshold
+    val digestMinScore = config.propertyOrNull("news.scoring.digestMinScore")?.getString()?.toDoubleOrNull()
+        ?: defaults.scoring.digestMinScore
+    val minConfidenceAutopublish = config.propertyOrNull("news.scoring.minConfidenceAutopublish")?.getString()
+        ?.toDoubleOrNull() ?: defaults.scoring.minConfidenceAutopublish
     val moderationEnabled = config.propertyOrNull("news.moderation.enabled")?.getString()?.toBooleanStrictOrNull()
         ?: defaults.moderationEnabled
     val moderationTier0Weight = config.propertyOrNull("news.moderation.tier0Weight")?.getString()?.toIntOrNull()
@@ -610,14 +642,35 @@ private fun Application.loadNewsConfig(): NewsConfig {
         botDeepLinkBase = botBase,
         maxPayloadBytes = maxBytes,
         channelId = channelId,
-        modeDigestOnly = digestOnly,
-        modeAutopublishBreaking = autopublishBreaking,
+        mode = mode,
         digestMinIntervalSeconds = digestMinIntervalSeconds,
+        antiNoise = defaults.antiNoise.copy(
+            maxPostsPerDay = maxPostsPerDay,
+            minIntervalBreakingMinutes = minIntervalBreakingMinutes,
+            digestSlots = digestSlots,
+        ),
+        scoring = defaults.scoring.copy(
+            breakingThreshold = breakingThreshold,
+            digestMinScore = digestMinScore,
+            minConfidenceAutopublish = minConfidenceAutopublish,
+        ),
         moderationEnabled = moderationEnabled,
         moderationTier0Weight = moderationTier0Weight,
         moderationConfidenceThreshold = moderationConfidenceThreshold,
         moderationBreakingAgeMinutes = moderationBreakingAgeMinutes
     )
+}
+
+private fun parseDigestSlots(raw: String?, fallback: List<LocalTime>): List<LocalTime> {
+    if (raw.isNullOrBlank()) return fallback
+    val formatter = DateTimeFormatter.ofPattern("H:mm")
+    return raw.split(",")
+        .mapNotNull { value ->
+            val trimmed = value.trim()
+            if (trimmed.isEmpty()) return@mapNotNull null
+            runCatching { LocalTime.parse(trimmed, formatter) }.getOrNull()
+        }
+        .ifEmpty { fallback }
 }
 
 private fun Application.loadModerationBotConfig(newsConfig: NewsConfig): ModerationBotConfig? {
@@ -656,8 +709,12 @@ private fun Application.startNewsPipelineScheduler(
     deepLinkStore: DeepLinkStore,
     deepLinkTtl: Duration,
     moderationQueue: ModerationQueue,
+    publishJobQueue: PublishJobQueue,
 ): NewsPipelineScheduler {
     val logger = LoggerFactory.getLogger("NewsPipelineScheduler")
+    if (newsConfig.mode == NewsMode.HYBRID && !newsConfig.moderationEnabled) {
+        logger.warn("News mode HYBRID with moderation disabled; Tier1/2 items will not reach review")
+    }
     val intervalRaw = config.propertyOrNull("news.pipelineIntervalSeconds")?.getString()?.toLongOrNull()
     val intervalSeconds = if (intervalRaw == null || intervalRaw <= 0L) {
         logger.warn(
@@ -676,20 +733,27 @@ private fun Application.startNewsPipelineScheduler(
     )
     val idempotencyStore = DbIdempotencyStore()
     val postStatsStore = DbPostStatsStore()
+    val telegramPublisher = TelegramPublisher(
+        client = PengradTelegramClient(services.telegramBot),
+        config = newsConfig,
+        postStatsStore = postStatsStore,
+        idempotencyStore = idempotencyStore,
+        metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
+    )
     val pipeline = NewsPipeline(
         config = newsConfig,
         sources = sources,
         clusterer = Clusterer(newsConfig),
-        telegramPublisher = TelegramPublisher(
-            client = PengradTelegramClient(services.telegramBot),
-            config = newsConfig,
-            postStatsStore = postStatsStore,
-            idempotencyStore = idempotencyStore,
-            metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
-        ),
+        telegramPublisher = telegramPublisher,
         deepLinkStore = deepLinkStore,
         deepLinkTtl = deepLinkTtl,
         moderationQueue = moderationQueue,
+        publishJobQueue = publishJobQueue,
+    )
+    val digestWorker = DigestPublishWorker(
+        queue = publishJobQueue,
+        publisher = telegramPublisher,
+        instanceId = UUID.randomUUID().toString(),
     )
 
     val meterRegistry = metrics.meterRegistry
@@ -697,72 +761,22 @@ private fun Application.startNewsPipelineScheduler(
     val counterOk = meterRegistry.counter("news_pipeline_run_total", "result", "ok")
     val counterEmpty = meterRegistry.counter("news_pipeline_run_total", "result", "empty")
     val counterError = meterRegistry.counter("news_pipeline_run_total", "result", "error")
-    val digestSkippedInterval = meterRegistry.counter("news_digest_skipped_total", "reason", "interval")
-    val digestSkippedLease = meterRegistry.counter("news_digest_skipped_total", "reason", "lease")
     val digestPublished = meterRegistry.counter("news_digest_published_total")
+    val digestRunOk = meterRegistry.counter("news_digest_run_total", "result", "ok")
+    val digestRunEmpty = meterRegistry.counter("news_digest_run_total", "result", "empty")
+    val digestRunError = meterRegistry.counter("news_digest_run_total", "result", "error")
     val lastSuccess = AtomicLong(0L)
     meterRegistry.gauge("news_pipeline_last_success_ts", lastSuccess)
-    val instanceId = UUID.randomUUID().toString()
-    val leaseSeconds = 600L
 
     val job = SupervisorJob()
     val scope = CoroutineScope(job + Dispatchers.IO + CoroutineName("news-pipeline-scheduler"))
     scope.launch {
         while (isActive) {
-            var leaseAcquired = false
-            if (newsConfig.modeDigestOnly) {
-                val minInterval = newsConfig.digestMinIntervalSeconds
-                val leaseDecision = runCatchingNonFatal {
-                    acquireDigestLease(
-                        instanceId = instanceId,
-                        minIntervalSeconds = minInterval,
-                        leaseSeconds = leaseSeconds
-                    )
-                }.getOrElse { ex ->
-                    logger.error("Failed to acquire digest lease", ex)
-                    delay(intervalSeconds.seconds)
-                    continue
-                }
-                if (!leaseDecision.acquired) {
-                    when (leaseDecision.reason) {
-                        DigestSkipReason.Interval -> {
-                            digestSkippedInterval.increment()
-                            logger.debug(
-                                "Skipping digest publish due to min interval (elapsed={}s, minInterval={}s)",
-                                leaseDecision.elapsedSeconds,
-                                minInterval
-                            )
-                        }
-                        DigestSkipReason.Lease -> {
-                            digestSkippedLease.increment()
-                            logger.debug("Skipping digest publish due to active lease")
-                        }
-                        null -> Unit
-                    }
-                    delay(intervalSeconds.seconds)
-                    continue
-                }
-                leaseAcquired = true
-            }
             val sample = Timer.start(meterRegistry)
             val result = runCatchingNonFatal { pipeline.runOnce() }
             sample.stop(timer)
             result.onSuccess { published ->
                 lastSuccess.set(Instant.now().epochSecond)
-                if (newsConfig.modeDigestOnly && leaseAcquired) {
-                    runCatchingNonFatal {
-                        releaseDigestLease(
-                            instanceId = instanceId,
-                            published = published > 0
-                        )
-                    }.onFailure { ex ->
-                        logger.error("Failed to release digest lease", ex)
-                    }
-                    if (published > 0) {
-                        digestPublished.increment()
-                        logger.info("Digest post published")
-                    }
-                }
                 if (published > 0) {
                     counterOk.increment()
                 } else {
@@ -771,100 +785,28 @@ private fun Application.startNewsPipelineScheduler(
             }.onFailure { ex ->
                 counterError.increment()
                 logger.error("News pipeline run failed", ex)
-                if (newsConfig.modeDigestOnly && leaseAcquired) {
-                    runCatchingNonFatal {
-                        releaseDigestLease(
-                            instanceId = instanceId,
-                            published = false
-                        )
-                    }.onFailure { releaseEx ->
-                        logger.error("Failed to release digest lease after error", releaseEx)
-                    }
+            }
+            delay(intervalSeconds.seconds)
+        }
+    }
+    scope.launch {
+        while (isActive) {
+            val result = runCatchingNonFatal { digestWorker.runOnce() }
+            result.onSuccess { published ->
+                if (published > 0) {
+                    digestPublished.increment(published.toDouble())
+                    digestRunOk.increment()
+                } else {
+                    digestRunEmpty.increment()
                 }
+            }.onFailure { ex ->
+                digestRunError.increment()
+                logger.error("Digest worker failed", ex)
             }
             delay(intervalSeconds.seconds)
         }
     }
     return NewsPipelineScheduler(scope, job, httpClient)
-}
-
-private enum class DigestSkipReason {
-    Interval,
-    Lease
-}
-
-private data class DigestLeaseDecision(
-    val acquired: Boolean,
-    val reason: DigestSkipReason?,
-    val elapsedSeconds: Long = 0L
-)
-
-private const val DIGEST_GATE_KEY = "digest"
-
-private suspend fun acquireDigestLease(
-    instanceId: String,
-    minIntervalSeconds: Long,
-    leaseSeconds: Long
-): DigestLeaseDecision {
-    val now = Instant.now().epochSecond
-    return DatabaseFactory.dbQuery {
-        exec(
-            """
-            INSERT INTO news_pipeline_state
-                (key, last_published_epoch_seconds, lease_until_epoch_seconds, updated_at)
-            VALUES
-                ('$DIGEST_GATE_KEY', 0, 0, now())
-            ON CONFLICT (key) DO NOTHING
-            """.trimIndent()
-        )
-        val state = NewsPipelineStateTable.select { NewsPipelineStateTable.key eq DIGEST_GATE_KEY }
-            .first()
-        val lastPublished = state[NewsPipelineStateTable.lastPublishedEpochSeconds]
-        val leaseUntil = state[NewsPipelineStateTable.leaseUntilEpochSeconds]
-        val elapsed = now - lastPublished
-        if (leaseUntil > now) {
-            return@dbQuery DigestLeaseDecision(acquired = false, reason = DigestSkipReason.Lease)
-        }
-        if (minIntervalSeconds > 0 && elapsed < minIntervalSeconds) {
-            return@dbQuery DigestLeaseDecision(
-                acquired = false,
-                reason = DigestSkipReason.Interval,
-                elapsedSeconds = elapsed
-            )
-        }
-        val updated = NewsPipelineStateTable.update({
-            (NewsPipelineStateTable.key eq DIGEST_GATE_KEY) and
-                (NewsPipelineStateTable.leaseUntilEpochSeconds lessEq now) and
-                (NewsPipelineStateTable.lastPublishedEpochSeconds lessEq (now - minIntervalSeconds))
-        }) {
-            it[NewsPipelineStateTable.leaseUntilEpochSeconds] = now + leaseSeconds
-            it[NewsPipelineStateTable.leaseOwner] = instanceId
-            it[NewsPipelineStateTable.updatedAt] = OffsetDateTime.now(ZoneOffset.UTC)
-        }
-        if (updated == 0) {
-            DigestLeaseDecision(acquired = false, reason = DigestSkipReason.Lease)
-        } else {
-            DigestLeaseDecision(acquired = true, reason = null)
-        }
-    }
-}
-
-private suspend fun releaseDigestLease(instanceId: String, published: Boolean) {
-    DatabaseFactory.dbQuery {
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
-        val nowEpoch = now.toInstant().epochSecond
-        NewsPipelineStateTable.update({
-            (NewsPipelineStateTable.key eq DIGEST_GATE_KEY) and
-                (NewsPipelineStateTable.leaseOwner eq instanceId)
-        }) {
-            it[NewsPipelineStateTable.leaseUntilEpochSeconds] = 0L
-            it[NewsPipelineStateTable.leaseOwner] = null
-            it[NewsPipelineStateTable.updatedAt] = now
-            if (published) {
-                it[NewsPipelineStateTable.lastPublishedEpochSeconds] = nowEpoch
-            }
-        }
-    }
 }
 
 private fun Application.billingDefaultDuration(): Long {

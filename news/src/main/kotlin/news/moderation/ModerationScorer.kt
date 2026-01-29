@@ -6,10 +6,15 @@ import news.canonical.CanonicalPicker
 import news.config.NewsConfig
 import news.model.Cluster
 
+interface ModerationScoreProvider {
+    fun score(cluster: Cluster): ModerationScorer.ModerationScore
+    fun suggestedMode(cluster: Cluster, score: ModerationScorer.ModerationScore): ModerationSuggestedMode
+}
+
 class ModerationScorer(
     private val config: NewsConfig,
     private val clock: Clock = Clock.systemUTC(),
-) {
+) : ModerationScoreProvider {
     private val canonicalPicker = CanonicalPicker(config)
 
     data class ModerationScore(
@@ -17,6 +22,8 @@ class ModerationScorer(
         val confidence: Double,
         val tier0: Boolean,
         val confident: Boolean,
+        val breakingCandidate: Boolean,
+        val digestCandidate: Boolean,
     )
 
     fun score(cluster: Cluster): ModerationScore {
@@ -25,20 +32,23 @@ class ModerationScorer(
         val freshness = freshnessFactor(cluster)
         val base = weight.toDouble() * freshness
         val confidence = (weight / 100.0) * freshness
+        val ageMinutes = Duration.between(cluster.canonical.publishedAt, clock.instant()).toMinutes()
+        val breakingCandidate = base >= config.scoring.breakingThreshold &&
+            confidence >= config.scoring.minConfidenceAutopublish &&
+            ageMinutes <= config.moderationBreakingAgeMinutes
+        val digestCandidate = base >= config.scoring.digestMinScore
         return ModerationScore(
             score = base,
             confidence = confidence,
             tier0 = tier0,
             confident = confidence >= config.moderationConfidenceThreshold,
+            breakingCandidate = breakingCandidate,
+            digestCandidate = digestCandidate,
         )
     }
 
     fun suggestedMode(cluster: Cluster, score: ModerationScore): ModerationSuggestedMode {
-        if (!score.tier0 || !score.confident) {
-            return ModerationSuggestedMode.DIGEST
-        }
-        val ageMinutes = Duration.between(cluster.canonical.publishedAt, clock.instant()).toMinutes()
-        return if (ageMinutes <= config.moderationBreakingAgeMinutes) {
+        return if (score.breakingCandidate) {
             ModerationSuggestedMode.BREAKING
         } else {
             ModerationSuggestedMode.DIGEST
