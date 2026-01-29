@@ -8,6 +8,7 @@ import com.pengrad.telegrambot.request.EditMessageText
 import com.pengrad.telegrambot.request.SendMessage
 import java.security.MessageDigest
 import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import news.config.NewsConfig
 import news.metrics.NewsMetricsPort
 import news.metrics.NewsPublishResult
@@ -59,7 +60,7 @@ class TelegramPublisher(
                 logger.info("Skipping cluster {} due to unchanged content", cluster.clusterKey)
                 return PublishOutcome(PublishResult.SKIPPED, existing.messageId)
             }
-            val editResult = editMessage(existing.messageId, text, deepLink)
+            val editResult = editMessage(existing.messageId, text, deepLink, "cluster ${cluster.clusterKey}")
             return if (editResult.ok) {
                 postStatsStore.recordEdit(config.channelId, clusterId, contentHash)
                 metrics.incPublish(NewsPublishType.BREAKING, NewsPublishResult.EDITED)
@@ -72,7 +73,7 @@ class TelegramPublisher(
                 PublishOutcome(PublishResult.FAILED, existing.messageId)
             }
         }
-        val sendResult = sendMessage(text, deepLink)
+        val sendResult = sendMessage(text, deepLink, "cluster ${cluster.clusterKey}")
         if (sendResult.ok && sendResult.messageId != null) {
             postStatsStore.recordNew(config.channelId, clusterId, sendResult.messageId, contentHash)
             metrics.incPublish(NewsPublishType.BREAKING, NewsPublishResult.CREATED)
@@ -95,7 +96,7 @@ class TelegramPublisher(
         }
         val deepLink = deepLinkBuilder(clusters.first())
         val text = PostTemplates.renderDigest(clusters, deepLinkBuilder)
-        val result = sendMessage(text, deepLink)
+        val result = sendMessage(text, deepLink, "digest $digestKey")
         if (result.ok) {
             idempotencyStore.mark(idempotencyKey)
             metrics.incPublish(NewsPublishType.DIGEST, NewsPublishResult.CREATED)
@@ -107,26 +108,30 @@ class TelegramPublisher(
         return PublishOutcome(PublishResult.FAILED, result.messageId)
     }
 
-    private fun sendMessage(text: String, deepLink: String): TelegramResult {
+    private fun sendMessage(text: String, deepLink: String, context: String): TelegramResult {
         return try {
             val request = SendMessage(config.channelId, text)
                 .parseMode(ParseMode.MarkdownV2)
                 .replyMarkup(InlineKeyboardMarkup(InlineKeyboardButton("Открыть в боте").url(deepLink)))
             client.send(request)
+        } catch (ex: CancellationException) {
+            throw ex
         } catch (ex: Exception) {
-            logger.error("Telegram send threw", ex)
+            logger.error("Telegram send failed for {}", context, ex)
             TelegramResult(ok = false, description = ex.message)
         }
     }
 
-    private fun editMessage(messageId: Long, text: String, deepLink: String): TelegramResult {
+    private fun editMessage(messageId: Long, text: String, deepLink: String, context: String): TelegramResult {
         return try {
             val request = EditMessageText(config.channelId, messageId.toInt(), text)
                 .parseMode(ParseMode.MarkdownV2)
                 .replyMarkup(InlineKeyboardMarkup(InlineKeyboardButton("Открыть в боте").url(deepLink)))
             client.edit(request)
+        } catch (ex: CancellationException) {
+            throw ex
         } catch (ex: Exception) {
-            logger.error("Telegram edit threw for {}", messageId, ex)
+            logger.error("Telegram edit failed for {} messageId {}", context, messageId, ex)
             TelegramResult(ok = false, description = ex.message, messageId = messageId)
         }
     }
