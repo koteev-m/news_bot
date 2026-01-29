@@ -26,7 +26,7 @@ class ModerationScorer(
         val digestCandidate: Boolean,
     )
 
-    fun score(cluster: Cluster): ModerationScore {
+    override fun score(cluster: Cluster): ModerationScore {
         val weight = canonicalPicker.weightFor(cluster.canonical.domain).coerceAtLeast(0)
         val tier0 = weight >= config.moderationTier0Weight
         val freshness = freshnessFactor(cluster)
@@ -47,7 +47,7 @@ class ModerationScorer(
         )
     }
 
-    fun suggestedMode(cluster: Cluster, score: ModerationScore): ModerationSuggestedMode {
+    override fun suggestedMode(cluster: Cluster, score: ModerationScore): ModerationSuggestedMode {
         return if (score.breakingCandidate) {
             ModerationSuggestedMode.BREAKING
         } else {
