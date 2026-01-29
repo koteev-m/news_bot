@@ -138,7 +138,10 @@ class TelegramPublisher(
 
     private fun digestKey(clusters: List<Cluster>): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        val joined = clusters.joinToString(separator = "|") { it.clusterKey }
+        val joined = clusters.map { it.clusterKey }
+            .distinct()
+            .sorted()
+            .joinToString(separator = "|")
         val hash = digest.digest(joined.toByteArray(Charsets.UTF_8))
         return "digest:" + Base64.getUrlEncoder().withoutPadding().encodeToString(hash.copyOf(12))
     }

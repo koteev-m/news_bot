@@ -1,7 +1,6 @@
 package news.pipeline
 
 import java.time.Clock
-import java.time.Instant
 import news.model.Article
 import news.model.Cluster
 import news.publisher.PublishResult
@@ -21,7 +20,11 @@ class DigestPublishWorker(
         val now = clock.instant()
         val jobs = queue.claimDueDigestJobs(now, batchSize, instanceId)
         if (jobs.isEmpty()) return 0
-        val orderedJobs = jobs.sortedByDescending { it.createdAt }
+        val orderedJobs = jobs.sortedWith(
+            compareByDescending<PublishJob> { it.createdAt }
+                .thenBy { it.clusterKey }
+                .thenBy { it.jobId }
+        )
         val deepLinks = orderedJobs.associateBy({ it.clusterKey }, { it.deepLink })
         val clusters = orderedJobs.map { it.toCluster() }
         val outcome = publisher.publishDigest(clusters) { cluster ->

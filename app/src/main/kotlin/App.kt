@@ -6,7 +6,6 @@ import ab.ExperimentsServiceImpl
 import chaos.ChaosConfig
 import chaos.ChaosMetrics
 import chaos.maybeInjectChaos
-import com.typesafe.config.ConfigFactory
 import db.DatabaseFactory
 import docs.apiDocsRoutes
 import news.config.NewsConfig
@@ -96,8 +95,6 @@ import kotlinx.serialization.decodeFromString
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalTime
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
@@ -168,13 +165,7 @@ import webhook.OverflowMode
 import webhook.WebhookQueue
 import common.runCatchingNonFatal
 import views.PostViewsService
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
-import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.update
-
-@Suppress("unused")
-private val configuredCioWorkerThreads: Int = configureCioWorkerThreads()
 
 fun Application.module() {
     val appConfig = environment.config
@@ -453,18 +444,6 @@ private fun Application.createAlertsRepository(config: ApplicationConfig): Alert
             throw it
         }
     }
-}
-
-private fun configureCioWorkerThreads(): Int {
-    val existing = System.getProperty("ktor.server.cio.workerCount")?.toIntOrNull()
-    if (existing != null && existing > 0) {
-        return existing
-    }
-    val config = ConfigFactory.load()
-    val fromConfig = runCatchingNonFatal { config.getInt("performance.workerThreads") }.getOrNull()
-    val resolved = (fromConfig ?: Runtime.getRuntime().availableProcessors()).coerceAtLeast(1)
-    System.setProperty("ktor.server.cio.workerCount", resolved.toString())
-    return resolved
 }
 
 private fun Application.ensureBillingServices(
