@@ -37,10 +37,10 @@ class DbPublishJobRepositoryMetricsIT {
             )
 
             val claimed = repository.claimDueDigestJobs(now, limit = 10, owner = "worker-1")
-            assertEquals(1, claimed.size)
+            assertEquals(2, claimed.size)
 
             repository.markJobsStatus(
-                jobIds = listOf(claimed.first().jobId),
+                jobIds = claimed.map { it.jobId },
                 status = PublishJobStatus.PUBLISHED,
                 publishedAt = now,
             )
@@ -54,8 +54,8 @@ class DbPublishJobRepositoryMetricsIT {
             repository.markPendingDigestSkipped(skipped.clusterId)
 
             assertEquals(1, metrics.totalFor(PublishJobStatus.PENDING))
-            assertEquals(1, metrics.totalFor(PublishJobStatus.PROCESSING))
-            assertEquals(1, metrics.totalFor(PublishJobStatus.PUBLISHED))
+            assertEquals(2, metrics.totalFor(PublishJobStatus.PROCESSING))
+            assertEquals(2, metrics.totalFor(PublishJobStatus.PUBLISHED))
             assertEquals(1, metrics.totalFor(PublishJobStatus.SKIPPED))
         }
     }
