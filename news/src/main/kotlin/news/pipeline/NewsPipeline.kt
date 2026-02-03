@@ -149,14 +149,7 @@ class NewsPipeline(
             EventRoute.PUBLISH_NOW -> publishBreaking(cluster, candidate, score)
             EventRoute.DIGEST -> enqueueDigest(cluster, candidate, score)
             EventRoute.REVIEW -> queueForReview(candidate)
-            EventRoute.DROP -> {
-                logger.info(
-                    "Cluster {} dropped (reason={})",
-                    cluster.clusterKey,
-                    decision.dropReason ?: "unspecified",
-                )
-                PublishOutcomeType.DROPPED
-            }
+            EventRoute.DROP -> error("DROP should be handled before handleRoute")
         }
     }
 

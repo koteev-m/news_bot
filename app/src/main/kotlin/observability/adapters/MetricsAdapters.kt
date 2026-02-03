@@ -12,9 +12,9 @@ import news.routing.EventRoute
 import news.rss.RssFetchMetrics
 import observability.DomainMetrics
 import io.micrometer.core.instrument.Tags
-import io.micrometer.core.instrument.util.AtomicDouble
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 class AlertMetricsAdapter(private val metrics: DomainMetrics) : AlertMetricsPort {
     override fun incPush() {
@@ -27,10 +27,16 @@ class AlertMetricsAdapter(private val metrics: DomainMetrics) : AlertMetricsPort
 }
 
 class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
-    private val dedupRatio = AtomicDouble(0.0)
+    private val dedupRatio = AtomicReference(0.0)
+    private val dedupRatioGaugeNames = listOf("news_dedup_ratio", "dedup_ratio")
+    private val publishJobsCounterNames = listOf("news_publish_jobs_total", "publish_jobs_total")
+    private val moderationQueueCounterNames = listOf("news_moderation_queue_total", "moderation_queue_total")
 
     init {
-        metrics.meterRegistry.gauge("dedup_ratio", dedupRatio)
+        // Keep legacy metric names for compatibility while rolling out news_* convention.
+        dedupRatioGaugeNames.forEach { name ->
+            metrics.meterRegistry.gauge(name, Tags.empty(), dedupRatio) { holder -> holder.get() }
+        }
     }
 
     override fun incPublish(type: NewsPublishType, result: NewsPublishResult) {
@@ -81,24 +87,32 @@ class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
 
     override fun incPublishJobStatus(status: PublishJobStatus, count: Int) {
         if (count <= 0) return
-        metrics.meterRegistry.counter(
-            "publish_jobs_total",
+        incrementCounters(
+            publishJobsCounterNames,
+            count.toDouble(),
             "status",
             status.name.lowercase(),
-        ).increment(count.toDouble())
+        )
     }
 
     override fun incModerationQueueStatus(status: ModerationStatus, count: Int) {
         if (count <= 0) return
-        metrics.meterRegistry.counter(
-            "moderation_queue_total",
+        incrementCounters(
+            moderationQueueCounterNames,
+            count.toDouble(),
             "status",
             status.name.lowercase(),
-        ).increment(count.toDouble())
+        )
     }
 
     override fun setDedupRatio(ratio: Double) {
         dedupRatio.set(ratio.coerceIn(0.0, 1.0))
+    }
+
+    private fun incrementCounters(names: List<String>, count: Double, vararg tags: String) {
+        names.forEach { name ->
+            metrics.meterRegistry.counter(name, *tags).increment(count)
+        }
     }
 }
 
