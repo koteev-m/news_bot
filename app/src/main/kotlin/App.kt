@@ -357,6 +357,10 @@ fun Application.module() {
         demoRoutes()
 
         post("/telegram/webhook") {
+            if (!webhookConfig.enabled) {
+                call.respond(HttpStatusCode.Forbidden)
+                return@post
+            }
             val expectedSecret = webhookConfig.secret
             val providedSecret = call.request.headers["X-Telegram-Bot-Api-Secret-Token"]
             if (expectedSecret.isNullOrBlank() || providedSecret != expectedSecret) {
