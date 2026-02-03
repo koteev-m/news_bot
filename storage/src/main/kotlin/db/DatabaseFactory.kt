@@ -29,6 +29,8 @@ object DatabaseFactory {
         }
     }
 
+    fun isInitialized(): Boolean = ::dataSource.isInitialized
+
     fun <T> withConnection(block: (java.sql.Connection) -> T): T {
         check(::dataSource.isInitialized) { "DatabaseFactory not initialized" }
         return dataSource.connection.use(block)

@@ -109,7 +109,7 @@ class DeepLinkRoutesTest : FunSpec({
             val resp = client.get("/r/app?startapp=$shortCode")
             resp.status shouldBe HttpStatusCode.Found
             resp.headers["Location"] shouldBe "https://t.me/my_test_bot?startapp=$shortCode"
-            meterRegistry.get("bot_start_total").tag("payload", "TICKER_BTC").counter().count() shouldBe 1.0
+            meterRegistry.get("bot_start_total").tag("payload", "TICKER").counter().count() shouldBe 1.0
         }
     }
 })

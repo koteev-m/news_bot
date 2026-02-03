@@ -14,7 +14,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneOffset
+import java.util.UUID
+import org.jetbrains.exposed.sql.insert
 import org.slf4j.LoggerFactory
+import db.DatabaseFactory
+import db.tables.CtaClicksTable
+import deeplink.DeepLinkPayload
 
 private const val METRIC_CTA_CLICK = "cta_click_total"
 private const val METRIC_BOT_START = "bot_start_total"
@@ -46,32 +53,29 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             val postId = call.parameters["postId"].orEmpty()
             val ab = call.request.queryParameters["ab"].orEmpty()
             val parsed = registry.parseStart(call.request.queryParameters["start"].orEmpty())
-            val payloadLabel = when (parsed) {
-                null -> "INVALID"
-                else -> {
-                    try {
-                        val payload = withContext(Dispatchers.IO) { deepLinkStore.get(parsed.raw) }
-                        payload?.canonicalLabel() ?: "UNKNOWN"
-                    } catch (e: TimeoutCancellationException) {
-                        throw e
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        log.warn("deeplink store get failed for cta redirect", e)
-                        "STORE_ERROR"
-                    }
-                }
-            }
+            val payloadLabel = resolvePayloadMetricLabel(
+                parsed = parsed,
+                deepLinkStore = deepLinkStore,
+                log = log,
+                context = "cta redirect",
+            )
+            val abLabel = normalizeAbVariant(ab)
 
             // Метрика клика
             meterRegistry.counter(
                 METRIC_CTA_CLICK,
                 listOf(
-                    Tag.of("post_id", postId),
-                    Tag.of("ab", if (ab.isBlank()) "NA" else ab),
+                    Tag.of("ab", abLabel),
                     Tag.of("payload", payloadLabel),
                 ),
             ).increment()
+
+            recordCtaClick(
+                log = log,
+                postId = postId,
+                abVariant = abLabel,
+                userAgent = call.request.headers["User-Agent"],
+            )
 
             val location = if (parsed == null) {
                 "https://t.me/$bot"
@@ -90,7 +94,7 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             log.info(
                 "cta_redirect post={} ab={} src={}",
                 postId,
-                if (ab.isBlank()) "NA" else ab,
+                abLabel,
                 sourceIp,
             )
 
@@ -102,17 +106,12 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             val parsed = registry.parseStartApp(call.request.queryParameters["startapp"].orEmpty())
 
             if (parsed != null) {
-                val payloadLabel = try {
-                    val payload = withContext(Dispatchers.IO) { deepLinkStore.get(parsed.raw) }
-                    payload?.canonicalLabel() ?: "UNKNOWN"
-                } catch (e: TimeoutCancellationException) {
-                    throw e
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    log.warn("deeplink store get failed for app redirect", e)
-                    "STORE_ERROR"
-                }
+                val payloadLabel = resolvePayloadMetricLabel(
+                    parsed = parsed,
+                    deepLinkStore = deepLinkStore,
+                    log = log,
+                    context = "app redirect",
+                )
                 meterRegistry.counter(
                     METRIC_BOT_START,
                     listOf(
@@ -139,4 +138,88 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             call.respondRedirect(url = location, permanent = false)
         }
     }
+}
+
+private suspend fun resolvePayloadMetricLabel(
+    parsed: DeepLinkRegistry.Parsed?,
+    deepLinkStore: DeepLinkStore,
+    log: org.slf4j.Logger,
+    context: String,
+): String {
+    if (parsed == null) {
+        return PayloadMetricLabel.INVALID.value
+    }
+    return try {
+        val payload = withContext(Dispatchers.IO) { deepLinkStore.get(parsed.raw) }
+        payload?.toMetricLabel() ?: PayloadMetricLabel.UNKNOWN.value
+    } catch (e: TimeoutCancellationException) {
+        throw e
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log.warn("deeplink store get failed for {}", context, e)
+        PayloadMetricLabel.STORE_ERROR.value
+    }
+}
+
+private fun DeepLinkPayload.toMetricLabel(): String {
+    return when (type) {
+        deeplink.DeepLinkType.TICKER -> PayloadMetricLabel.TICKER.value
+        deeplink.DeepLinkType.TOPIC -> PayloadMetricLabel.TOPIC.value
+        deeplink.DeepLinkType.PORTFOLIO -> PayloadMetricLabel.PORTFOLIO.value
+    }
+}
+
+private fun normalizeAbVariant(raw: String): String {
+    if (raw.isBlank()) {
+        return "NA"
+    }
+    return when {
+        raw.trim().startsWith("A", ignoreCase = true) -> "A"
+        raw.trim().startsWith("B", ignoreCase = true) -> "B"
+        else -> "NA"
+    }
+}
+
+private suspend fun recordCtaClick(
+    log: org.slf4j.Logger,
+    postId: String,
+    abVariant: String,
+    userAgent: String?,
+) {
+    if (!DatabaseFactory.isInitialized()) {
+        log.debug("cta_clicks insert skipped: DatabaseFactory not initialized")
+        return
+    }
+    val normalizedPostId = postId.toLongOrNull()?.takeIf { it > 0 }
+    val normalizedUserAgent = userAgent?.trim()?.takeIf { it.isNotEmpty() }
+    val now = Instant.now().atOffset(ZoneOffset.UTC)
+    val redirectId = UUID.randomUUID()
+    try {
+        DatabaseFactory.dbQuery {
+            CtaClicksTable.insert {
+                it[CtaClicksTable.postId] = normalizedPostId
+                it[CtaClicksTable.clusterId] = null
+                it[CtaClicksTable.variant] = abVariant
+                it[CtaClicksTable.redirectId] = redirectId
+                it[CtaClicksTable.clickedAt] = now
+                it[CtaClicksTable.userAgent] = normalizedUserAgent
+            }
+        }
+    } catch (e: TimeoutCancellationException) {
+        throw e
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log.warn("cta_clicks insert failed", e)
+    }
+}
+
+private enum class PayloadMetricLabel(val value: String) {
+    PORTFOLIO("PORTFOLIO"),
+    TICKER("TICKER"),
+    TOPIC("TOPIC"),
+    UNKNOWN("UNKNOWN"),
+    INVALID("INVALID"),
+    STORE_ERROR("STORE_ERROR"),
 }
