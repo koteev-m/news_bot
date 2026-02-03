@@ -70,6 +70,17 @@ object NewsPipelineStateTable : Table("news_pipeline_state") {
     override val primaryKey = PrimaryKey(key)
 }
 
+object FeedStateTable : Table("feed_state") {
+    val sourceId = text("source_id")
+    val etag = text("etag").nullable()
+    val lastModified = text("last_modified").nullable()
+    val lastFetchedAt = timestampWithTimeZone("last_fetched_at")
+    val lastSuccessAt = timestampWithTimeZone("last_success_at").nullable()
+    val failureCount = integer("failure_count").default(0)
+    val cooldownUntil = timestampWithTimeZone("cooldown_until").nullable()
+    override val primaryKey = PrimaryKey(sourceId)
+}
+
 object PublishJobsTable : Table("publish_jobs") {
     val jobId = uuid("job_id").defaultExpression(genRandomUuid())
     val clusterId = uuid("cluster_id")

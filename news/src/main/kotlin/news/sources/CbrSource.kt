@@ -20,7 +20,7 @@ class CbrSource(
     override val name: String = "cbr.ru"
 
     override suspend fun fetch(): List<Article> {
-        return fetcher.fetchRss(feedUrl).map { it.toArticle() }
+        return fetcher.fetchRss(name, feedUrl).map { it.toArticle() }
     }
 
     private fun RssItem.toArticle(): Article {

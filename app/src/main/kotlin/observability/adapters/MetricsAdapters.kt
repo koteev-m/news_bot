@@ -7,7 +7,11 @@ import news.metrics.NewsPublishType
 import news.model.EventType
 import news.routing.DropReason
 import news.routing.EventRoute
+import news.rss.RssFetchMetrics
 import observability.DomainMetrics
+import io.micrometer.core.instrument.Tags
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 class AlertMetricsAdapter(private val metrics: DomainMetrics) : AlertMetricsPort {
     override fun incPush() {
@@ -64,5 +68,26 @@ class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
             "reason",
             reason.name.lowercase(),
         ).increment()
+    }
+}
+
+class RssFetchMetricsAdapter(private val metrics: DomainMetrics) : RssFetchMetrics {
+    private val cooldownActive = ConcurrentHashMap<String, AtomicInteger>()
+
+    override fun incCooldownTotal(sourceId: String) {
+        metrics.meterRegistry.counter(
+            "feed_cooldown_total",
+            "src",
+            sourceId,
+        ).increment()
+    }
+
+    override fun markCooldownActive(sourceId: String, active: Boolean) {
+        val gauge = cooldownActive.computeIfAbsent(sourceId) { key ->
+            val holder = AtomicInteger(0)
+            metrics.meterRegistry.gauge("feed_cooldown_active", Tags.of("src", key), holder)
+            holder
+        }
+        gauge.set(if (active) 1 else 0)
     }
 }

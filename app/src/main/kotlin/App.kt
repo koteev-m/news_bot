@@ -11,6 +11,7 @@ import docs.apiDocsRoutes
 import news.config.NewsConfig
 import news.config.NewsDefaults
 import news.config.NewsMode
+import news.config.RssBackoffConfig
 import repo.ExperimentsRepository
 import repo.SupportRepository
 import repo.ReferralsRepository
@@ -62,6 +63,7 @@ import di.PrivacyModule
 import di.ensureTelegramBot
 import demo.demoRoutes
 import di.installPortfolioModule
+import io.lettuce.core.RedisClient
 import integrations.integrationsModule
 import integrations.mtprotoViewsConfig
 import features.FeatureFlagsService
@@ -109,6 +111,10 @@ import news.publisher.PengradTelegramClient
 import news.publisher.TelegramPublisher
 import news.publisher.store.DbIdempotencyStore
 import news.publisher.store.DbPostStatsStore
+import news.rss.DbFeedStateStore
+import news.rss.FeedStateStore
+import news.rss.RedisFeedStateSettings
+import news.rss.RedisFeedStateStore
 import news.rss.RssFetcher
 import news.sources.CbrSource
 import news.sources.MoexSource
@@ -124,6 +130,7 @@ import observability.WebVitals
 import observability.WebhookMetrics
 import observability.adapters.AlertMetricsAdapter
 import observability.adapters.NewsMetricsAdapter
+import observability.adapters.RssFetchMetricsAdapter
 import observability.feed.Netflow2Metrics
 import observability.installMdcTrace
 import observability.installSentry
@@ -632,6 +639,14 @@ private fun Application.loadNewsConfig(): NewsConfig {
         ?.toDoubleOrNull() ?: defaults.moderationConfidenceThreshold
     val moderationBreakingAgeMinutes = config.propertyOrNull("news.moderation.breakingAgeMinutes")?.getString()
         ?.toLongOrNull() ?: defaults.moderationBreakingAgeMinutes
+    val rssBackoff = RssBackoffConfig(
+        minFailures = config.propertyOrNull("news.rssBackoff.minFailures")?.getString()?.toIntOrNull()
+            ?.coerceAtLeast(1) ?: defaults.rssBackoff.minFailures,
+        baseCooldownSeconds = config.propertyOrNull("news.rssBackoff.baseCooldownSeconds")?.getString()?.toLongOrNull()
+            ?.coerceAtLeast(1) ?: defaults.rssBackoff.baseCooldownSeconds,
+        maxCooldownSeconds = config.propertyOrNull("news.rssBackoff.maxCooldownSeconds")?.getString()?.toLongOrNull()
+            ?.coerceAtLeast(1) ?: defaults.rssBackoff.maxCooldownSeconds,
+    )
     return defaults.copy(
         botDeepLinkBase = botBase,
         maxPayloadBytes = maxBytes,
@@ -652,6 +667,7 @@ private fun Application.loadNewsConfig(): NewsConfig {
             primaryTickers = primaryTickers,
             primaryTickerBoost = primaryTickerBoost,
         ),
+        rssBackoff = rssBackoff,
         moderationEnabled = moderationEnabled,
         moderationTier0Weight = moderationTier0Weight,
         moderationConfidenceThreshold = moderationConfidenceThreshold,
@@ -736,7 +752,19 @@ private fun Application.startNewsPipelineScheduler(
         intervalRaw
     }
     val httpClient = RssFetcher.defaultClient(newsConfig)
-    val fetcher = RssFetcher(newsConfig, httpClient)
+    val feedStateStore = createFeedStateStore(config)
+    if (feedStateStore is RedisFeedStateStore) {
+        environment.monitor.subscribe(ApplicationStopped) {
+            feedStateStore.close()
+        }
+    }
+    val rssMetrics = RssFetchMetricsAdapter(metrics)
+    val fetcher = RssFetcher(
+        config = newsConfig,
+        client = httpClient,
+        stateStore = feedStateStore,
+        metrics = rssMetrics,
+    )
     val sources = listOf(
         CbrSource(fetcher),
         MoexSource(fetcher)
@@ -818,6 +846,27 @@ private fun Application.startNewsPipelineScheduler(
         }
     }
     return NewsPipelineScheduler(scope, job, httpClient)
+}
+
+private fun Application.createFeedStateStore(config: ApplicationConfig): FeedStateStore {
+    val logger = LoggerFactory.getLogger("FeedStateStore")
+    val settings = readRedisSettings(config, "news.rss.redis")
+        ?: readRedisSettings(config, "deeplink.redis")
+    if (settings == null) {
+        logger.info("Feed state store: using database")
+        return DbFeedStateStore()
+    }
+    logger.info("Feed state store: using Redis at {}:{}", settings.host, settings.port)
+    val client = RedisFeedStateStore.buildRedisUri(settings).let { RedisFeedStateStore(RedisClient.create(it)) }
+    return client
+}
+
+private fun readRedisSettings(config: ApplicationConfig, prefix: String): RedisFeedStateSettings? {
+    val host = config.propertyOrNull("$prefix.host")?.getString()?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val port = config.propertyOrNull("$prefix.port")?.getString()?.toIntOrNull() ?: 6379
+    val db = config.propertyOrNull("$prefix.db")?.getString()?.toIntOrNull() ?: 0
+    val password = config.propertyOrNull("$prefix.password")?.getString()?.takeIf { it.isNotBlank() }
+    return RedisFeedStateSettings(host = host, port = port, db = db, password = password)
 }
 
 private fun Application.billingDefaultDuration(): Long {
