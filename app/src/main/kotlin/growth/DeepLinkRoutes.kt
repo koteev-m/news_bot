@@ -25,6 +25,7 @@ import deeplink.DeepLinkPayload
 
 private const val METRIC_CTA_CLICK = "cta_click_total"
 private const val METRIC_BOT_START = "bot_start_total"
+internal const val USER_AGENT_MAX_LEN = 512
 
 /**
  * Установка роутов:
@@ -170,7 +171,7 @@ private fun DeepLinkPayload.toMetricLabel(): String {
     }
 }
 
-private fun normalizeAbVariant(raw: String): String {
+internal fun normalizeAbVariant(raw: String): String {
     if (raw.isBlank()) {
         return "NA"
     }
@@ -179,6 +180,15 @@ private fun normalizeAbVariant(raw: String): String {
         raw.trim().startsWith("B", ignoreCase = true) -> "B"
         else -> "NA"
     }
+}
+
+internal fun normalizeUserAgent(userAgent: String?): String? {
+    val normalized = userAgent?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return normalized.take(USER_AGENT_MAX_LEN)
+}
+
+internal fun parsePostId(postId: String): Long? {
+    return postId.toLongOrNull()?.takeIf { it > 0 }
 }
 
 private suspend fun recordCtaClick(
@@ -191,8 +201,12 @@ private suspend fun recordCtaClick(
         log.debug("cta_clicks insert skipped: DatabaseFactory not initialized")
         return
     }
-    val normalizedPostId = postId.toLongOrNull()?.takeIf { it > 0 }
-    val normalizedUserAgent = userAgent?.trim()?.takeIf { it.isNotEmpty() }
+    val normalizedPostId = parsePostId(postId)
+    if (normalizedPostId == null) {
+        log.debug("cta_clicks insert skipped: invalid postId")
+        return
+    }
+    val normalizedUserAgent = normalizeUserAgent(userAgent)
     val now = Instant.now().atOffset(ZoneOffset.UTC)
     val redirectId = UUID.randomUUID()
     try {
