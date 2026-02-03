@@ -9,6 +9,7 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
+import news.metrics.NewsMetricsPort
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
@@ -18,7 +19,10 @@ import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
 
-class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
+class ModerationRepository(
+    private val clock: Clock = Clock.systemUTC(),
+    private val metrics: NewsMetricsPort = NewsMetricsPort.Noop,
+) {
     private val logger = LoggerFactory.getLogger(ModerationRepository::class.java)
 
     suspend fun enqueue(candidate: ModerationCandidate): ModerationItem? {
@@ -44,6 +48,7 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
                 it[status] = ModerationStatus.PENDING.name
             }
         }
+        metrics.incModerationQueueStatus(ModerationStatus.PENDING)
         logger.info("Moderation candidate queued for cluster {}", candidate.clusterKey)
         return ModerationItem(
             moderationId = moderationId,
@@ -106,7 +111,7 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
         editedText: String? = null,
     ): Boolean {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
-        return DatabaseFactory.dbQuery {
+        val updated = DatabaseFactory.dbQuery {
             ModerationQueueTable.update({
                 (ModerationQueueTable.moderationId eq moderationId) and
                     ModerationQueueTable.actionId.isNull()
@@ -115,32 +120,44 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
                 it[ModerationQueueTable.actionId] = expectedActionId
                 it[ModerationQueueTable.actionAt] = now
                 it[ModerationQueueTable.editedText] = editedText
-            } > 0
+            }
         }
+        if (updated > 0) {
+            metrics.incModerationQueueStatus(newStatus)
+        }
+        return updated > 0
     }
 
     suspend fun markEditRequested(moderationId: UUID): Boolean {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
-        return DatabaseFactory.dbQuery {
+        val updated = DatabaseFactory.dbQuery {
             ModerationQueueTable.update({
                 (ModerationQueueTable.moderationId eq moderationId) and
                     (ModerationQueueTable.status eq ModerationStatus.PENDING.name)
             }) {
                 it[ModerationQueueTable.status] = ModerationStatus.EDIT_REQUESTED.name
                 it[ModerationQueueTable.editRequestedAt] = now
-            } > 0
+            }
         }
+        if (updated > 0) {
+            metrics.incModerationQueueStatus(ModerationStatus.EDIT_REQUESTED)
+        }
+        return updated > 0
     }
 
     suspend fun markFailed(moderationId: UUID, actionId: String): Boolean {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
-        return DatabaseFactory.dbQuery {
+        val updated = DatabaseFactory.dbQuery {
             ModerationQueueTable.update({ ModerationQueueTable.moderationId eq moderationId }) {
                 it[ModerationQueueTable.status] = ModerationStatus.FAILED.name
                 it[ModerationQueueTable.actionId] = actionId
                 it[ModerationQueueTable.actionAt] = now
-            } > 0
+            }
         }
+        if (updated > 0) {
+            metrics.incModerationQueueStatus(ModerationStatus.FAILED)
+        }
+        return updated > 0
     }
 
     suspend fun markPublished(
@@ -151,17 +168,21 @@ class ModerationRepository(private val clock: Clock = Clock.systemUTC()) {
         edited: Boolean
     ): Boolean {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
-        return DatabaseFactory.dbQuery {
+        val status = if (edited) ModerationStatus.PUBLISHED_EDITED else ModerationStatus.PUBLISHED
+        val updated = DatabaseFactory.dbQuery {
             ModerationQueueTable.update({ ModerationQueueTable.moderationId eq moderationId }) {
-                it[ModerationQueueTable.status] =
-                    if (edited) ModerationStatus.PUBLISHED_EDITED.name else ModerationStatus.PUBLISHED.name
+                it[ModerationQueueTable.status] = status.name
                 it[ModerationQueueTable.publishedChannelId] = channelId
                 it[ModerationQueueTable.publishedMessageId] = messageId
                 it[ModerationQueueTable.publishedAt] = now
                 it[ModerationQueueTable.actionId] = actionId
                 it[ModerationQueueTable.actionAt] = now
-            } > 0
+            }
         }
+        if (updated > 0) {
+            metrics.incModerationQueueStatus(status)
+        }
+        return updated > 0
     }
 
     suspend fun isSourceMuted(domain: String, now: Instant = clock.instant()): Boolean {

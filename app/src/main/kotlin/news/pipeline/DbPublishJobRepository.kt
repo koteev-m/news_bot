@@ -9,6 +9,7 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
+import news.metrics.NewsMetricsPort
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory
 
 class DbPublishJobRepository(
     private val clock: Clock = Clock.systemUTC(),
+    private val metrics: NewsMetricsPort = NewsMetricsPort.Noop,
 ) : PublishJobQueue {
     private val logger = LoggerFactory.getLogger(DbPublishJobRepository::class.java)
     private val processingTimeout = Duration.ofMinutes(15)
@@ -49,6 +51,7 @@ class DbPublishJobRepository(
                     it[deepLink] = job.deepLink
                 }
             }
+            metrics.incPublishJobStatus(job.status)
             job.toPublishJob(jobId, job.status, job.publishedAt)
         } catch (ex: ExposedSQLException) {
             if (!isUniqueViolation(ex)) {
@@ -87,6 +90,7 @@ class DbPublishJobRepository(
         }
         if (reclaimed > 0) {
             logger.info("Reclaimed {} digest publish jobs stuck in processing", reclaimed)
+            metrics.incPublishJobStatus(PublishJobStatus.PENDING, reclaimed)
         }
         if (due.isEmpty()) return emptyList()
         val updated = DatabaseFactory.dbQuery {
@@ -98,6 +102,9 @@ class DbPublishJobRepository(
                 it[PublishJobsTable.processingOwner] = owner
                 it[PublishJobsTable.updatedAt] = nowTs
             }
+        }
+        if (updated > 0) {
+            metrics.incPublishJobStatus(PublishJobStatus.PROCESSING, updated)
         }
         if (updated == 0) return emptyList()
         return DatabaseFactory.dbQuery {
@@ -112,7 +119,7 @@ class DbPublishJobRepository(
     override suspend fun markJobsStatus(jobIds: List<UUID>, status: PublishJobStatus, publishedAt: Instant?) {
         if (jobIds.isEmpty()) return
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
-        DatabaseFactory.dbQuery {
+        val updated = DatabaseFactory.dbQuery {
             PublishJobsTable.update({ PublishJobsTable.jobId inList jobIds }) {
                 it[PublishJobsTable.status] = status.name
                 it[PublishJobsTable.updatedAt] = now
@@ -122,11 +129,14 @@ class DbPublishJobRepository(
                 }
             }
         }
+        if (updated > 0) {
+            metrics.incPublishJobStatus(status, updated)
+        }
     }
 
     override suspend fun markPendingDigestSkipped(clusterId: UUID) {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
-        DatabaseFactory.dbQuery {
+        val updated = DatabaseFactory.dbQuery {
             PublishJobsTable.update({
                 (PublishJobsTable.clusterId eq clusterId) and
                     (PublishJobsTable.target eq PublishTarget.DIGEST.name) and
@@ -135,6 +145,9 @@ class DbPublishJobRepository(
                 it[PublishJobsTable.status] = PublishJobStatus.SKIPPED.name
                 it[PublishJobsTable.updatedAt] = now
             }
+        }
+        if (updated > 0) {
+            metrics.incPublishJobStatus(PublishJobStatus.SKIPPED, updated)
         }
     }
 

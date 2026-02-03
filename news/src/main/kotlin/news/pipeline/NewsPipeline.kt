@@ -64,9 +64,11 @@ class NewsPipeline(
         val fetchedArticles = fetchSources()
         if (fetchedArticles.isEmpty()) {
             logger.info("No articles fetched")
+            metrics.setDedupRatio(0.0)
             return@coroutineScope 0
         }
         val clusters = clusterer.cluster(fetchedArticles)
+        metrics.setDedupRatio(dedupRatio(fetchedArticles.size, clusters.size))
         if (clusters.isEmpty()) {
             logger.info("No clusters generated")
             return@coroutineScope 0
@@ -88,6 +90,12 @@ class NewsPipeline(
                     .also { articles -> metrics.incCandidatesReceived(source.name, articles.size) }
             }
         }.awaitAll().flatten()
+    }
+
+    private fun dedupRatio(candidates: Int, clusters: Int): Double {
+        if (candidates <= 0) return 0.0
+        val uniqueRatio = clusters.toDouble() / candidates.toDouble()
+        return (1.0 - uniqueRatio).coerceIn(0.0, 1.0)
     }
 
     private suspend fun handleClusters(clusters: List<Cluster>): List<PublishOutcomeType> {
