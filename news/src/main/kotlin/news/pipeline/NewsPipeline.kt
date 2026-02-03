@@ -101,8 +101,8 @@ class NewsPipeline(
             if (decision.route == EventRoute.DROP && decision.dropReason != null) {
                 metrics.incDropped(decision.dropReason)
             }
-            val candidate = buildCandidate(cluster, score, decision)
-            if (isMuted(candidate)) {
+            val entityHashes = extractEntityHashes(cluster)
+            if (isMuted(cluster.canonical.domain, entityHashes)) {
                 logger.info("Cluster {} skipped due to mute", cluster.clusterKey)
                 outcomes += PublishOutcomeType.SKIPPED_MUTED
                 continue
@@ -115,6 +115,17 @@ class NewsPipeline(
                 "%.2f".format(score.score),
                 "%.2f".format(score.confidence),
             )
+            if (decision.route == EventRoute.DROP) {
+                logger.info(
+                    "Cluster {} dropped (reason={})",
+                    cluster.clusterKey,
+                    decision.dropReason ?: "unspecified",
+                )
+                outcomes += PublishOutcomeType.DROPPED
+                continue
+            }
+            val deepLink = deepLink(cluster)
+            val candidate = buildCandidate(cluster, score, decision, entityHashes, deepLink)
             outcomes += handleRoute(cluster, candidate, decision, score)
         }
         return outcomes
@@ -206,21 +217,21 @@ class NewsPipeline(
         return PublishOutcomeType.BREAKING_FAILED
     }
 
-    private suspend fun isMuted(candidate: ModerationCandidate): Boolean {
-        if (moderationQueue.isSourceMuted(candidate.sourceDomain)) {
+    private suspend fun isMuted(sourceDomain: String, entityHashes: List<String>): Boolean {
+        if (moderationQueue.isSourceMuted(sourceDomain)) {
             return true
         }
-        return candidate.entityHashes.any { moderationQueue.isEntityMuted(it) }
+        return entityHashes.any { moderationQueue.isEntityMuted(it) }
     }
 
     private fun buildCandidate(
         cluster: Cluster,
         score: EventScore,
         decision: RouteDecision,
+        entityHashes: List<String>,
+        deepLink: String,
     ): ModerationCandidate {
         val links = cluster.articles.map { it.url }.distinct().take(5)
-        val entities = cluster.articles.flatMap { it.entities }.map { it.trim() }.filter { it.isNotBlank() }
-        val entityHashes = entities.map { ModerationHashes.hashEntity(it) }.distinct()
         val primaryEntity = entityHashes.firstOrNull()
         val suggestedMode = if (decision.route == EventRoute.PUBLISH_NOW) {
             ModerationSuggestedMode.BREAKING
@@ -240,9 +251,14 @@ class NewsPipeline(
             title = cluster.canonical.title,
             summary = cluster.canonical.summary,
             topics = cluster.topics,
-            deepLink = deepLink(cluster),
+            deepLink = deepLink,
             createdAt = cluster.createdAt,
         )
+    }
+
+    private fun extractEntityHashes(cluster: Cluster): List<String> {
+        val entities = cluster.articles.flatMap { it.entities }.map { it.trim() }.filter { it.isNotBlank() }
+        return entities.map { ModerationHashes.hashEntity(it) }.distinct()
     }
 
     private fun buildPublishJob(
