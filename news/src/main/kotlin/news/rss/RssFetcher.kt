@@ -1,7 +1,6 @@
 package news.rss
 
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpRequestRetry
@@ -10,12 +9,12 @@ import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.get
 import io.ktor.client.request.header
-import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import java.io.ByteArrayInputStream
 import java.security.MessageDigest
+import java.time.Clock
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -28,17 +27,136 @@ import kotlin.text.Charsets
 
 class RssFetcher(
     private val config: NewsConfig,
-    private val client: HttpClient = defaultClient(config)
+    private val client: HttpClient = defaultClient(config),
+    private val stateStore: FeedStateStore = FeedStateStore.Noop,
+    private val metrics: RssFetchMetrics = RssFetchMetrics.Noop,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val logger = LoggerFactory.getLogger(RssFetcher::class.java)
 
-    suspend fun fetchRss(url: String): List<RssItem> {
+    suspend fun fetchRss(sourceId: String, url: String): List<RssItem> {
+        val now = clock.instant()
+        val state = stateStore.get(sourceId)
+        if (state?.cooldownUntil?.isAfter(now) == true) {
+            metrics.markCooldownActive(sourceId, true)
+            logger.debug(
+                "Skipping RSS fetch for {} (cooldown active until {})",
+                sourceId,
+                state.cooldownUntil
+            )
+            return emptyList()
+        }
+        metrics.markCooldownActive(sourceId, false)
         logger.info("Fetching RSS feed: {}", sanitizeUrl(url))
-        val response = client.get(url)
-        val payload = response.bodyAsText()
-        val normalized = parseRss(payload)
-        logger.info("Parsed {} RSS items from {}", normalized.size, sanitizeUrl(url))
-        return normalized
+        return runCatching {
+            val response = client.get(url) {
+                state?.etag?.let { header(HttpHeaders.IfNoneMatch, it) }
+                state?.lastModified?.let { header(HttpHeaders.IfModifiedSince, it) }
+            }
+            if (response.status == HttpStatusCode.NotModified) {
+                val updated = updateState(
+                    sourceId = sourceId,
+                    previous = state,
+                    now = now,
+                    etag = response.headers[HttpHeaders.ETag],
+                    lastModified = response.headers[HttpHeaders.LastModified],
+                    failureCount = 0,
+                    cooldownUntil = null,
+                )
+                stateStore.upsert(updated)
+                logger.info("RSS feed not modified: {}", sanitizeUrl(url))
+                return emptyList()
+            }
+            if (response.status.value !in 200..299) {
+                handleFailure(sourceId, state, now, "HTTP ${response.status.value}")
+                return emptyList()
+            }
+            val payload = response.bodyAsText()
+            val normalized = parseRss(payload)
+            val updated = updateState(
+                sourceId = sourceId,
+                previous = state,
+                now = now,
+                etag = response.headers[HttpHeaders.ETag],
+                lastModified = response.headers[HttpHeaders.LastModified],
+                failureCount = 0,
+                cooldownUntil = null,
+            )
+            stateStore.upsert(updated)
+            logger.info("Parsed {} RSS items from {}", normalized.size, sanitizeUrl(url))
+            return normalized
+        }.getOrElse { ex ->
+            handleFailure(sourceId, state, now, ex.message, ex)
+            emptyList()
+        }
+    }
+
+    private suspend fun handleFailure(
+        sourceId: String,
+        state: FeedState?,
+        now: Instant,
+        details: String?,
+        ex: Throwable? = null,
+    ) {
+        val failureCount = (state?.failureCount ?: 0) + 1
+        val cooldownSeconds = calculateCooldownSeconds(failureCount)
+        val cooldownUntil = cooldownSeconds?.let { now.plusSeconds(it) }
+        val updated = updateState(
+            sourceId = sourceId,
+            previous = state,
+            now = now,
+            etag = state?.etag,
+            lastModified = state?.lastModified,
+            failureCount = failureCount,
+            cooldownUntil = cooldownUntil,
+        )
+        stateStore.upsert(updated)
+        if (cooldownUntil != null) {
+            metrics.incCooldownTotal(sourceId)
+            metrics.markCooldownActive(sourceId, true)
+        }
+        val message = if (cooldownUntil != null) {
+            "RSS fetch failed for $sourceId, cooldown ${cooldownSeconds}s"
+        } else {
+            "RSS fetch failed for $sourceId"
+        }
+        if (ex != null) {
+            logger.warn("{} (details={})", message, details, ex)
+        } else {
+            logger.warn("{} (details={})", message, details)
+        }
+    }
+
+    private fun calculateCooldownSeconds(failureCount: Int): Long? {
+        val backoff = config.rssBackoff
+        if (failureCount < backoff.minFailures) {
+            return null
+        }
+        val exponent = (failureCount - backoff.minFailures).coerceAtLeast(0)
+        val base = backoff.baseCooldownSeconds.coerceAtLeast(1)
+        val multiplier = 1L shl exponent.coerceAtMost(30)
+        val value = base * multiplier
+        return value.coerceAtMost(backoff.maxCooldownSeconds)
+    }
+
+    private fun updateState(
+        sourceId: String,
+        previous: FeedState?,
+        now: Instant,
+        etag: String?,
+        lastModified: String?,
+        failureCount: Int,
+        cooldownUntil: Instant?,
+    ): FeedState {
+        return FeedState(
+            sourceId = sourceId,
+            etag = etag ?: previous?.etag,
+            lastModified = lastModified ?: previous?.lastModified,
+            lastFetchedAt = now,
+            lastSuccessAt = if (failureCount == 0) now else previous?.lastSuccessAt,
+            failureCount = failureCount,
+            cooldownUntil = cooldownUntil,
+        )
     }
 
     private fun parseRss(payload: String): List<RssItem> {

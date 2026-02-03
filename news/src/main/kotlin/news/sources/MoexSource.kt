@@ -15,7 +15,7 @@ class MoexSource(
     override val name: String = "moex.com"
 
     override suspend fun fetch(): List<Article> {
-        return fetcher.fetchRss(feedUrl).map { it.toArticle() }
+        return fetcher.fetchRss(name, feedUrl).map { it.toArticle() }
     }
 
     private fun RssItem.toArticle(): Article {

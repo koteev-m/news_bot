@@ -32,6 +32,12 @@ data class NewsScoringConfig(
     val minConfidenceAutopublish: Double,
 )
 
+data class RssBackoffConfig(
+    val minFailures: Int,
+    val baseCooldownSeconds: Long,
+    val maxCooldownSeconds: Long,
+)
+
 data class EventScoringConfig(
     val eventSeverity: Map<news.model.EventType, Double>,
     val primaryTickers: Set<String>,
@@ -50,6 +56,7 @@ data class NewsConfig(
     val antiNoise: AntiNoiseConfig = NewsDefaults.defaultAntiNoise,
     val scoring: NewsScoringConfig = NewsDefaults.defaultScoring,
     val eventScoring: EventScoringConfig = NewsDefaults.defaultEventScoring,
+    val rssBackoff: RssBackoffConfig = NewsDefaults.defaultRssBackoff,
     val moderationEnabled: Boolean = false,
     val moderationTier0Weight: Int = 90,
     val moderationConfidenceThreshold: Double = 0.7,
@@ -93,6 +100,12 @@ object NewsDefaults {
         primaryTickerBoost = 1.15,
     )
 
+    val defaultRssBackoff = RssBackoffConfig(
+        minFailures = 2,
+        baseCooldownSeconds = 60,
+        maxCooldownSeconds = 3600,
+    )
+
     val defaultConfig: NewsConfig = NewsConfig(
         userAgent = "news-bot/1.0",
         httpTimeoutMs = 30_000,
@@ -105,6 +118,7 @@ object NewsDefaults {
         antiNoise = defaultAntiNoise,
         scoring = defaultScoring,
         eventScoring = defaultEventScoring,
+        rssBackoff = defaultRssBackoff,
         moderationEnabled = false,
         moderationTier0Weight = 90,
         moderationConfidenceThreshold = 0.7,
