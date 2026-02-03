@@ -16,11 +16,11 @@
 ## Редиректы
 
 - `/r/cta/{postId}?ab=A2&start=...` → `302` на `https://t.me/<bot>?start=...`
-  Метрика: `cta_click_total{post_id,ab,payload}` где `payload` — канонический ID.
-  Значения `payload` ограничены фиксированными идентификаторами (`TICKER_*`, `TOPIC_*`, `PORTFOLIO`) во избежание роста кардинальности.
+  Метрика: `cta_click_total{ab,payload}` где `payload` — тип из whitelist (`PORTFOLIO`, `TICKER`, `TOPIC`, `UNKNOWN`, `INVALID`, `STORE_ERROR`).
+  Детализация кликов (post_id, variant, user_agent, timestamp) хранится в таблице `cta_clicks`.
 
 - `/r/app?startapp=...` → `302` на `https://t.me/<bot>?startapp=...`
-  Метрика: `bot_start_total{payload}` где `payload` — канонический ID.
+  Метрика: `bot_start_total{payload}` где `payload` — тип из whitelist (`PORTFOLIO`, `TICKER`, `TOPIC`, `UNKNOWN`, `INVALID`, `STORE_ERROR`).
 
 > Логи не содержат значение payload; только длины и валидность.
 > Для неподдерживаемых/невалидных decoded-json `payload` может быть `UNKNOWN` / `UNKNOWN_VERSION`.
