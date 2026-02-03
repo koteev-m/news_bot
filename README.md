@@ -9,9 +9,9 @@
 
 ENV (пример):
 ```env
-VAULT_TRANSIT_BASE=https://vault.example/v1/transit
-VAULT_TOKEN=***
-VAULT_KEY_ID=newsbot-app-key
+VAULT_TRANSIT_BASE=<TO_FILL>
+VAULT_TOKEN=<TO_FILL>
+VAULT_KEY_ID=<TO_FILL>
 ```
 
 ## Build & Quality Checks

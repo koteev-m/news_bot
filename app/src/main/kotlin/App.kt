@@ -181,6 +181,8 @@ fun Application.module() {
     val alertsConfig = loadAlertsConfig(appConfig)
     val alertsRepository = createAlertsRepository(appConfig)
     val alertsService = AlertsService(alertsRepository, alertsConfig.engine, prometheusRegistry)
+    val webhookConfig = TelegramWebhookConfig.from(appConfig)
+    validateTelegramWebhookConfig(webhookConfig)
     val appProfile = (System.getenv("APP_PROFILE") ?: "dev").lowercase()
     val deepLinkLog = LoggerFactory.getLogger("deeplink")
     val deepLinkStoreSettings = loadDeepLinkStoreSettings(appConfig, deepLinkLog)
@@ -355,7 +357,7 @@ fun Application.module() {
         demoRoutes()
 
         post("/telegram/webhook") {
-            val expectedSecret = environment.config.propertyOrNull("telegram.webhookSecret")?.getString()
+            val expectedSecret = webhookConfig.secret
             val providedSecret = call.request.headers["X-Telegram-Bot-Api-Secret-Token"]
             if (expectedSecret.isNullOrBlank() || providedSecret != expectedSecret) {
                 call.respond(HttpStatusCode.Forbidden)
@@ -843,6 +845,20 @@ private data class WebhookQueueConfig(
     val mode: OverflowMode,
     val shutdownTimeout: Duration
 )
+
+private fun Application.validateTelegramWebhookConfig(config: TelegramWebhookConfig) {
+    if (!config.enabled) {
+        return
+    }
+    if (config.secret != null) {
+        return
+    }
+    val logger = LoggerFactory.getLogger("TelegramWebhook")
+    logger.error("telegram webhook secret is missing while webhook mode is enabled")
+    if (config.failFastOnMissingSecret) {
+        throw IllegalStateException("telegram webhook secret is required when webhook mode is enabled")
+    }
+}
 
 private fun Application.webhookQueueConfig(): WebhookQueueConfig {
     val config = environment.config
