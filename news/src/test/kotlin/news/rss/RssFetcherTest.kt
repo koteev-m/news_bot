@@ -9,12 +9,16 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Headers
 import io.ktor.http.headersOf
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlinx.coroutines.test.runTest
 import news.config.NewsDefaults
+import news.config.RssBackoffConfig
 import news.sources.CbrSource
 import news.sources.MoexSource
 
@@ -96,6 +100,42 @@ class RssFetcherTest {
         assertNull(requestHeaders.first()[HttpHeaders.IfModifiedSince])
         assertEquals("\"etag-value\"", requestHeaders.last()[HttpHeaders.IfNoneMatch])
         assertNotNull(requestHeaders.last()[HttpHeaders.IfModifiedSince])
+    }
+
+    @Test
+    fun `cooldown skips repeated failures`() = runTest {
+        var callCount = 0
+        val client = HttpClient(
+            MockEngine {
+                callCount += 1
+                respond(
+                    content = "",
+                    status = HttpStatusCode.InternalServerError,
+                )
+            }
+        ) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = 1000
+                connectTimeoutMillis = 1000
+            }
+        }
+        val clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneOffset.UTC)
+        val store = InMemoryFeedStateStore()
+        val testConfig = NewsDefaults.defaultConfig.copy(
+            rssBackoff = RssBackoffConfig(
+                minFailures = 1,
+                baseCooldownSeconds = 60,
+                maxCooldownSeconds = 3600,
+            )
+        )
+        val fetcher = RssFetcher(testConfig, client, store, clock = clock)
+
+        val first = fetcher.fetchRss("cbr", "https://test.local/cbr.xml")
+        val second = fetcher.fetchRss("cbr", "https://test.local/cbr.xml")
+
+        assertEquals(0, first.size)
+        assertEquals(0, second.size)
+        assertEquals(1, callCount)
     }
 
     private fun httpClient(payload: String): HttpClient {

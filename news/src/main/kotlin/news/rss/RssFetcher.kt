@@ -20,6 +20,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlinx.coroutines.CancellationException
 import news.config.NewsConfig
 import org.slf4j.LoggerFactory
 import org.w3c.dom.Element
@@ -36,7 +37,7 @@ class RssFetcher(
 
     suspend fun fetchRss(sourceId: String, url: String): List<RssItem> {
         val now = clock.instant()
-        val state = stateStore.get(sourceId)
+        val state = safeGetState(sourceId)
         if (state?.cooldownUntil?.isAfter(now) == true) {
             metrics.markCooldownActive(sourceId, true)
             logger.debug(
@@ -48,7 +49,7 @@ class RssFetcher(
         }
         metrics.markCooldownActive(sourceId, false)
         logger.info("Fetching RSS feed: {}", sanitizeUrl(url))
-        return runCatching {
+        return try {
             val response = client.get(url) {
                 state?.etag?.let { header(HttpHeaders.IfNoneMatch, it) }
                 state?.lastModified?.let { header(HttpHeaders.IfModifiedSince, it) }
@@ -63,7 +64,7 @@ class RssFetcher(
                     failureCount = 0,
                     cooldownUntil = null,
                 )
-                stateStore.upsert(updated)
+                safeUpsertState(updated)
                 logger.info("RSS feed not modified: {}", sanitizeUrl(url))
                 return emptyList()
             }
@@ -82,10 +83,12 @@ class RssFetcher(
                 failureCount = 0,
                 cooldownUntil = null,
             )
-            stateStore.upsert(updated)
+            safeUpsertState(updated)
             logger.info("Parsed {} RSS items from {}", normalized.size, sanitizeUrl(url))
             return normalized
-        }.getOrElse { ex ->
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
             handleFailure(sourceId, state, now, ex.message, ex)
             emptyList()
         }
@@ -110,7 +113,7 @@ class RssFetcher(
             failureCount = failureCount,
             cooldownUntil = cooldownUntil,
         )
-        stateStore.upsert(updated)
+        safeUpsertState(updated)
         if (cooldownUntil != null) {
             metrics.incCooldownTotal(sourceId)
             metrics.markCooldownActive(sourceId, true)
@@ -132,11 +135,47 @@ class RssFetcher(
         if (failureCount < backoff.minFailures) {
             return null
         }
+        val maxCooldownSeconds = backoff.maxCooldownSeconds
+        if (maxCooldownSeconds <= 0) {
+            return 0
+        }
         val exponent = (failureCount - backoff.minFailures).coerceAtLeast(0)
         val base = backoff.baseCooldownSeconds.coerceAtLeast(1)
-        val multiplier = 1L shl exponent.coerceAtMost(30)
-        val value = base * multiplier
-        return value.coerceAtMost(backoff.maxCooldownSeconds)
+        if (maxCooldownSeconds < base) {
+            return maxCooldownSeconds
+        }
+        if (exponent >= 61) {
+            return maxCooldownSeconds
+        }
+        val multiplier = 1L shl exponent
+        val maxAllowed = maxCooldownSeconds / multiplier
+        val value = if (base > maxAllowed) {
+            maxCooldownSeconds
+        } else {
+            base * multiplier
+        }
+        return value.coerceAtMost(maxCooldownSeconds)
+    }
+
+    private suspend fun safeGetState(sourceId: String): FeedState? {
+        return try {
+            stateStore.get(sourceId)
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            logger.warn("Failed to load RSS state for {}", sourceId, ex)
+            null
+        }
+    }
+
+    private suspend fun safeUpsertState(state: FeedState) {
+        try {
+            stateStore.upsert(state)
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            logger.warn("Failed to persist RSS state for {}", state.sourceId, ex)
+        }
     }
 
     private fun updateState(

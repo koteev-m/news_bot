@@ -4,7 +4,7 @@ import db.DatabaseFactory
 import db.tables.FeedStateTable
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.insertIgnore
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.update
 import java.time.OffsetDateTime
@@ -22,7 +22,8 @@ class DbFeedStateStore : FeedStateStore {
 
     override suspend fun upsert(state: FeedState) {
         DatabaseFactory.dbQuery {
-            val updated = FeedStateTable.update({ FeedStateTable.sourceId eq state.sourceId }) { row ->
+            FeedStateTable.insertIgnore { row ->
+                row[FeedStateTable.sourceId] = state.sourceId
                 row[FeedStateTable.etag] = state.etag
                 row[FeedStateTable.lastModified] = state.lastModified
                 row[FeedStateTable.lastFetchedAt] = state.lastFetchedAt.toOffsetDateTime()
@@ -30,16 +31,13 @@ class DbFeedStateStore : FeedStateStore {
                 row[FeedStateTable.failureCount] = state.failureCount
                 row[FeedStateTable.cooldownUntil] = state.cooldownUntil?.toOffsetDateTime()
             }
-            if (updated == 0) {
-                FeedStateTable.insert { row ->
-                    row[FeedStateTable.sourceId] = state.sourceId
-                    row[FeedStateTable.etag] = state.etag
-                    row[FeedStateTable.lastModified] = state.lastModified
-                    row[FeedStateTable.lastFetchedAt] = state.lastFetchedAt.toOffsetDateTime()
-                    row[FeedStateTable.lastSuccessAt] = state.lastSuccessAt?.toOffsetDateTime()
-                    row[FeedStateTable.failureCount] = state.failureCount
-                    row[FeedStateTable.cooldownUntil] = state.cooldownUntil?.toOffsetDateTime()
-                }
+            FeedStateTable.update({ FeedStateTable.sourceId eq state.sourceId }) { row ->
+                row[FeedStateTable.etag] = state.etag
+                row[FeedStateTable.lastModified] = state.lastModified
+                row[FeedStateTable.lastFetchedAt] = state.lastFetchedAt.toOffsetDateTime()
+                row[FeedStateTable.lastSuccessAt] = state.lastSuccessAt?.toOffsetDateTime()
+                row[FeedStateTable.failureCount] = state.failureCount
+                row[FeedStateTable.cooldownUntil] = state.cooldownUntil?.toOffsetDateTime()
             }
         }
     }
