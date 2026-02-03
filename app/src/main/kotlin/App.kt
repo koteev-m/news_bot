@@ -237,13 +237,15 @@ fun Application.module() {
         deepLinkStore = deepLinkStore,
         deepLinkTtl = deepLinkTtl,
     )
-    val publishJobQueue = DbPublishJobRepository()
+    val publishJobQueue = DbPublishJobRepository(metrics = services.newsMetrics ?: NewsMetricsPort.Noop)
     val digestScheduler = DigestSlotScheduler(
         slots = newsConfig.antiNoise.digestSlots,
         fallbackIntervalSeconds = newsConfig.digestMinIntervalSeconds,
     )
     val moderationConfig = loadModerationBotConfig(newsConfig)
-    val moderationRepository = moderationConfig?.let { ModerationRepository() }
+    val moderationRepository = moderationConfig?.let {
+        ModerationRepository(metrics = services.newsMetrics ?: NewsMetricsPort.Noop)
+    }
     val moderationQueue: ModerationQueue = if (moderationConfig != null && moderationRepository != null) {
         ModerationQueueDatabase(
             repository = moderationRepository,

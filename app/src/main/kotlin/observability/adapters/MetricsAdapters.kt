@@ -5,11 +5,14 @@ import news.metrics.NewsMetricsPort
 import news.metrics.NewsPublishResult
 import news.metrics.NewsPublishType
 import news.model.EventType
+import news.moderation.ModerationStatus
+import news.pipeline.PublishJobStatus
 import news.routing.DropReason
 import news.routing.EventRoute
 import news.rss.RssFetchMetrics
 import observability.DomainMetrics
 import io.micrometer.core.instrument.Tags
+import io.micrometer.core.instrument.util.AtomicDouble
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -24,6 +27,12 @@ class AlertMetricsAdapter(private val metrics: DomainMetrics) : AlertMetricsPort
 }
 
 class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
+    private val dedupRatio = AtomicDouble(0.0)
+
+    init {
+        metrics.meterRegistry.gauge("dedup_ratio", dedupRatio)
+    }
+
     override fun incPublish(type: NewsPublishType, result: NewsPublishResult) {
         metrics.meterRegistry.counter(
             "news_publish_total",
@@ -68,6 +77,28 @@ class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
             "reason",
             reason.name.lowercase(),
         ).increment()
+    }
+
+    override fun incPublishJobStatus(status: PublishJobStatus, count: Int) {
+        if (count <= 0) return
+        metrics.meterRegistry.counter(
+            "publish_jobs_total",
+            "status",
+            status.name.lowercase(),
+        ).increment(count.toDouble())
+    }
+
+    override fun incModerationQueueStatus(status: ModerationStatus, count: Int) {
+        if (count <= 0) return
+        metrics.meterRegistry.counter(
+            "moderation_queue_total",
+            "status",
+            status.name.lowercase(),
+        ).increment(count.toDouble())
+    }
+
+    override fun setDedupRatio(ratio: Double) {
+        dedupRatio.set(ratio.coerceIn(0.0, 1.0))
     }
 }
 

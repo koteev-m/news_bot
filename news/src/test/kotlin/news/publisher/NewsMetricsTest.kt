@@ -76,6 +76,15 @@ class NewsMetricsTest {
         override fun incDropped(reason: news.routing.DropReason) {
         }
 
+        override fun incPublishJobStatus(status: news.pipeline.PublishJobStatus, count: Int) {
+        }
+
+        override fun incModerationQueueStatus(status: news.moderation.ModerationStatus, count: Int) {
+        }
+
+        override fun setDedupRatio(ratio: Double) {
+        }
+
         fun count(type: NewsPublishType, result: NewsPublishResult): Int {
             return counts[type to result] ?: 0
         }
