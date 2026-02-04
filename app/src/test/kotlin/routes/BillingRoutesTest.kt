@@ -451,38 +451,68 @@ class BillingRoutesTest {
         )
 
         val scenarios = listOf(
-            Triple(StarsClientRateLimited(retryAfterSeconds = 2), StarsAdminResults.TG_RATE_LIMITED, HttpStatusCode.TooManyRequests),
+            Triple(
+                StarsClientRateLimited(retryAfterSeconds = 2),
+                StarsAdminResults.TG_RATE_LIMITED,
+                HttpStatusCode.TooManyRequests
+            ),
             Triple(StarsClientServerError(500), StarsAdminResults.SERVER, HttpStatusCode.ServiceUnavailable),
             Triple(StarsClientBadRequest(400), StarsAdminResults.BAD_REQUEST, HttpStatusCode.BadGateway),
-            Triple(StarsClientDecodeError(Exception("boom")), StarsAdminResults.DECODE_ERROR, HttpStatusCode.BadGateway),
+            Triple(
+                StarsClientDecodeError(Exception("boom")),
+                StarsAdminResults.DECODE_ERROR,
+                HttpStatusCode.BadGateway
+            ),
             Triple(RuntimeException("boom"), StarsAdminResults.OTHER, HttpStatusCode.InternalServerError),
         )
 
         scenarios.forEach { (error, label, status) ->
             botPort.behavior = { throw error }
-            val response = client.get("/api/admin/stars/bot-balance") { header(HttpHeaders.Authorization, bearerFor("23")) }
+            val response = client.get(
+                "/api/admin/stars/bot-balance"
+            ) { header(HttpHeaders.Authorization, bearerFor("23")) }
             assertEquals(status, response.status)
         }
 
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.TG_RATE_LIMITED).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.TG_RATE_LIMITED
+            ).count(),
         )
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.SERVER).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.SERVER
+            ).count(),
         )
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.BAD_REQUEST).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.BAD_REQUEST
+            ).count(),
         )
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.DECODE_ERROR).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.DECODE_ERROR
+            ).count(),
         )
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.OTHER).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.OTHER
+            ).count(),
         )
         assertEquals(5L, registry.find(StarsMetrics.TIMER_ADMIN).timer()?.count() ?: 0L)
     }
@@ -506,7 +536,9 @@ class BillingRoutesTest {
         val botPort = FakeBotStarBalancePort().apply { behavior = { throw StarsClientRateLimited(retryAfterSeconds = null) } }
         configure(FakeBillingService(), botStarBalancePort = botPort, adminUserIds = setOf(101L))
 
-        val response = client.get("/api/admin/stars/bot-balance") { header(HttpHeaders.Authorization, bearerFor("101")) }
+        val response = client.get(
+            "/api/admin/stars/bot-balance"
+        ) { header(HttpHeaders.Authorization, bearerFor("101")) }
 
         assertEquals(HttpStatusCode.TooManyRequests, response.status)
         assertEquals(null, response.headers[HttpHeaders.RetryAfter])
@@ -571,16 +603,26 @@ class BillingRoutesTest {
         val unauthorized = client.get("/api/admin/stars/bot-balance")
         assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
 
-        val forbidden = client.get("/api/admin/stars/bot-balance") { header(HttpHeaders.Authorization, bearerFor("46")) }
+        val forbidden = client.get(
+            "/api/admin/stars/bot-balance"
+        ) { header(HttpHeaders.Authorization, bearerFor("46")) }
         assertEquals(HttpStatusCode.Forbidden, forbidden.status)
 
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.UNAUTHORIZED).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.UNAUTHORIZED
+            ).count(),
         )
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.FORBIDDEN).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.FORBIDDEN
+            ).count(),
         )
         assertEquals(2L, registry.find(StarsMetrics.TIMER_ADMIN).timer()?.count() ?: 0L)
     }
@@ -601,7 +643,11 @@ class BillingRoutesTest {
         assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
         assertEquals(
             1.0,
-            registry.counter(StarsMetrics.CNT_ADMIN_REQUESTS, StarsMetrics.LABEL_RESULT, StarsAdminResults.UNCONFIGURED).count(),
+            registry.counter(
+                StarsMetrics.CNT_ADMIN_REQUESTS,
+                StarsMetrics.LABEL_RESULT,
+                StarsAdminResults.UNCONFIGURED
+            ).count(),
         )
         assertEquals(1L, registry.find(StarsMetrics.TIMER_ADMIN).timer()?.count() ?: 0L)
     }
@@ -611,7 +657,9 @@ class BillingRoutesTest {
         val botPort = FakeBotStarBalancePort().apply { behavior = { throw RuntimeException("boom") } }
         configure(FakeBillingService(), botStarBalancePort = botPort, adminUserIds = setOf(111L))
 
-        val response = client.get("/api/admin/stars/bot-balance") { header(HttpHeaders.Authorization, bearerFor("111")) }
+        val response = client.get(
+            "/api/admin/stars/bot-balance"
+        ) { header(HttpHeaders.Authorization, bearerFor("111")) }
 
         assertEquals(HttpStatusCode.InternalServerError, response.status)
         assertEquals(null, response.headers[StarsHeaders.CACHE])

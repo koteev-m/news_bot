@@ -40,7 +40,10 @@ private val SecurityHeadersPlugin = createApplicationPlugin("SecurityHeaders") {
             } == true
 
             if (isHtml) {
-                headers.appendIfAbsent("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+                headers.appendIfAbsent(
+                    "Content-Security-Policy",
+                    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+                )
                 if (isProd) {
                     headers.appendIfAbsent("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
                 }

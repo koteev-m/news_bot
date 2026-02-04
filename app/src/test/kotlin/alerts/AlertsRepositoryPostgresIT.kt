@@ -26,9 +26,9 @@ class AlertsRepositoryPostgresIT {
                         tsEpochSec = Instant.parse("2024-01-01T00:00:00Z").epochSecond,
                         userId = userId,
                         items =
-                            listOf(
-                                SignalItem("AAA", "breakout", "daily", pctMove = 3.0),
-                            ),
+                        listOf(
+                            SignalItem("AAA", "breakout", "daily", pctMove = 3.0),
+                        ),
                     )
 
                 val result = service.onSnapshot(snapshot)

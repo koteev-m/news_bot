@@ -15,8 +15,12 @@ private fun genRandomUuid() = CustomFunction<UUID>("gen_random_uuid", org.jetbra
 object AlertsRulesTable : Table("alerts_rules") {
     val ruleId = uuid("rule_id").defaultExpression(genRandomUuid())
     val userId = long("user_id").references(UsersTable.userId, onDelete = ReferenceOption.CASCADE).nullable()
-    val portfolioId = uuid("portfolio_id").references(PortfoliosTable.portfolioId, onDelete = ReferenceOption.CASCADE).nullable()
-    val instrumentId = long("instrument_id").references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.CASCADE).nullable()
+    val portfolioId = uuid(
+        "portfolio_id"
+    ).references(PortfoliosTable.portfolioId, onDelete = ReferenceOption.CASCADE).nullable()
+    val instrumentId = long(
+        "instrument_id"
+    ).references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.CASCADE).nullable()
     val topic = text("topic").nullable()
     val kind = text("kind")
     val windowMinutes = integer("window_minutes")

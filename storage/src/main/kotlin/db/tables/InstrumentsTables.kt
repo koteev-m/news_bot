@@ -22,7 +22,9 @@ object InstrumentsTable : Table("instruments") {
 
 object InstrumentAliasesTable : Table("instrument_aliases") {
     val aliasId = long("alias_id").autoIncrement()
-    val instrumentId = long("instrument_id").references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.CASCADE)
+    val instrumentId = long(
+        "instrument_id"
+    ).references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.CASCADE)
     val alias = text("alias")
     val sourceCol = text("source")
     override val primaryKey = PrimaryKey(aliasId)

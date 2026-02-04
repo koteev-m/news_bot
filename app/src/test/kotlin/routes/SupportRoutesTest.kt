@@ -59,7 +59,10 @@ class SupportRoutesTest {
     fun `feedback is rate limited`() = testApplication {
         val repo = FakeSupportRepository()
         val analytics = RecordingAnalytics()
-        val limiter = RateLimiter(RateLimitConfig(capacity = 1, refillPerMinute = 1), Clock.fixed(Instant.EPOCH, java.time.ZoneOffset.UTC))
+        val limiter = RateLimiter(
+            RateLimitConfig(capacity = 1, refillPerMinute = 1),
+            Clock.fixed(Instant.EPOCH, java.time.ZoneOffset.UTC)
+        )
 
         application {
             installErrorPages()

@@ -32,9 +32,11 @@ object Observability {
 
     fun install(app: Application): PrometheusMeterRegistry {
         val prometheus = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
-        prometheus.config().meterFilter(MeterFilter.deny { id ->
-            id.name == "ktor.http.server.requests" && id.getTag("uri") == "/metrics"
-        })
+        prometheus.config().meterFilter(
+            MeterFilter.deny { id ->
+                id.name == "ktor.http.server.requests" && id.getTag("uri") == "/metrics"
+            }
+        )
 
         app.install(CallId) {
             header(HttpHeaders.XRequestId)

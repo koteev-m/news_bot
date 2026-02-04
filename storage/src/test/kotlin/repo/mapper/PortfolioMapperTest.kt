@@ -39,7 +39,13 @@ class PortfolioMapperTest {
     @Test
     fun `maps new portfolio to insert values`() {
         val createdAt = Instant.parse("2024-01-02T00:00:00Z")
-        val payload = NewPortfolio(userId = 7L, name = "Growth", baseCurrency = "EUR", isActive = false, createdAt = createdAt)
+        val payload = NewPortfolio(
+            userId = 7L,
+            name = "Growth",
+            baseCurrency = "EUR",
+            isActive = false,
+            createdAt = createdAt
+        )
 
         val values = payload.toColumnValues()
 

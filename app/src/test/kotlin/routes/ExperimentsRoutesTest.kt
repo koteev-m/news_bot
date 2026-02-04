@@ -35,7 +35,12 @@ class ExperimentsRoutesTest {
         application {
             installErrorPages()
             install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
+                json(
+                    Json {
+                        ignoreUnknownKeys = true
+                        encodeDefaults = true
+                    }
+                )
             }
             install(testAuthPlugin)
             routing { experimentsRoutes(service) }
@@ -55,7 +60,12 @@ class ExperimentsRoutesTest {
         application {
             installErrorPages()
             install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
+                json(
+                    Json {
+                        ignoreUnknownKeys = true
+                        encodeDefaults = true
+                    }
+                )
             }
             install(testAuthPlugin)
             routing { experimentsRoutes(service) }
@@ -67,7 +77,9 @@ class ExperimentsRoutesTest {
         }
         assertEquals(200, firstResponse.status.value)
         val firstBody = firstResponse.bodyAsText()
-        val firstVariant = Json.parseToJsonElement(firstBody).jsonArray.first().jsonObject["variant"]?.jsonPrimitive?.content
+        val firstVariant = Json.parseToJsonElement(
+            firstBody
+        ).jsonArray.first().jsonObject["variant"]?.jsonPrimitive?.content
         assertEquals(expected, firstVariant)
 
         val secondResponse = client.get("/api/experiments/assignments") {
@@ -75,7 +87,9 @@ class ExperimentsRoutesTest {
         }
         assertEquals(200, secondResponse.status.value)
         val secondBody = secondResponse.bodyAsText()
-        val secondVariant = Json.parseToJsonElement(secondBody).jsonArray.first().jsonObject["variant"]?.jsonPrimitive?.content
+        val secondVariant = Json.parseToJsonElement(
+            secondBody
+        ).jsonArray.first().jsonObject["variant"]?.jsonPrimitive?.content
         assertEquals(expected, secondVariant)
 
         assertTrue(port.assignments.containsKey(userId to "cta_copy"))
@@ -98,7 +112,9 @@ class ExperimentsRoutesTest {
     }
 
     private class StubExperimentsPort : ExperimentsPort {
-        private val experiments = listOf(Experiment(key = "cta_copy", enabled = true, traffic = mapOf("A" to 60, "B" to 40)))
+        private val experiments = listOf(
+            Experiment(key = "cta_copy", enabled = true, traffic = mapOf("A" to 60, "B" to 40))
+        )
         val assignments = mutableMapOf<Pair<Long, String>, Assignment>()
 
         override suspend fun list(): List<Experiment> = experiments

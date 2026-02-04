@@ -34,7 +34,8 @@ class WebVitalsRoutesTest {
                 """[
               {"name":"CLS","value":0.02,"page":"/#/import"},
               {"name":"FID","value":24}
-            ]""".trimIndent()
+            ]
+                """.trimIndent()
             )
         }
         assertEquals(HttpStatusCode.Accepted, batch.status)

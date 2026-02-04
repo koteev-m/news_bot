@@ -59,9 +59,11 @@ class StarsWebhookHandlerTest {
         val receiveCounter = AtomicInteger(0)
         application {
             val app = this
-            app.install(createApplicationPlugin(name = "ReceiveCounter") {
-                onCallReceive { _, _ -> receiveCounter.incrementAndGet() }
-            })
+            app.install(
+                createApplicationPlugin(name = "ReceiveCounter") {
+                    onCallReceive { _, _ -> receiveCounter.incrementAndGet() }
+                }
+            )
             routing {
                 post("/test/parsed") {
                     val raw = call.receiveText()
@@ -156,5 +158,4 @@ class StarsWebhookHandlerTest {
         val providerPaymentId: String?,
         val payload: String?
     )
-
 }

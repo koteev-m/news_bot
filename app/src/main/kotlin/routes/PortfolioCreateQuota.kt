@@ -11,7 +11,10 @@ suspend fun ApplicationCall.ensurePortfolioQuota(quotaService: QuotaService, ctx
     try {
         quotaService.ensurePortfolioQuota(ctx)
     } catch (e: QuotaExceeded) {
-        respond(HttpStatusCode.TooManyRequests, mapOf("code" to "QUOTA_EXCEEDED", "message" to "Portfolio quota exceeded"))
+        respond(
+            HttpStatusCode.TooManyRequests,
+            mapOf("code" to "QUOTA_EXCEEDED", "message" to "Portfolio quota exceeded")
+        )
         throw e
     }
 }

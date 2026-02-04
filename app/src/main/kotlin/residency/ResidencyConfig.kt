@@ -32,7 +32,10 @@ val ResidencyPlugin = createApplicationPlugin(name = "ResidencyPlugin", createCo
             if (policy.region != served) {
                 call.respond(
                     HttpStatusCode.Forbidden,
-                    mapOf("code" to "RESIDENCY_VIOLATION", "message" to "write denied in region=$served, home=${policy.region}")
+                    mapOf(
+                        "code" to "RESIDENCY_VIOLATION",
+                        "message" to "write denied in region=$served, home=${policy.region}"
+                    )
                 )
                 return@onCall
             }

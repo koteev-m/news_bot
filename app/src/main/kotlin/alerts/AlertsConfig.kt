@@ -95,4 +95,3 @@ private fun ApplicationConfig.getLongOrDefault(path: String, default: Long): Lon
 
 private fun ApplicationConfig.getDoubleOrDefault(path: String, default: Double): Double =
     propertyOrNull(path)?.getString()?.toDoubleOrNull() ?: default
-

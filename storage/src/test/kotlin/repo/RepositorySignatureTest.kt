@@ -8,7 +8,11 @@ class RepositorySignatureTest {
     @Test
     fun `portfolio repository exposes expected API`() {
         val functions = PortfolioRepository::class.declaredMemberFunctions.map { it.name }.toSet()
-        assertTrue(functions.containsAll(listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete")))
+        assertTrue(
+            functions.containsAll(
+                listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete")
+            )
+        )
     }
 
     @Test

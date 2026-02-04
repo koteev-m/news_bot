@@ -80,7 +80,7 @@ class InstrumentRepository {
 
     suspend fun search(query: String, limit: Int, offset: Long = 0): List<InstrumentEntity> = dbQuery {
         require(limit > 0) { "limit must be positive" }
-        val pattern = "%${query}%"
+        val pattern = "%$query%"
         InstrumentsTable
             .selectAll()
             .where {

@@ -6,6 +6,7 @@ import kotlinx.serialization.builtins.serializer
 import java.time.Instant
 
 @Serializable data class PaywallCtaPayload(val plan: String, val variant: String)
+
 @Serializable data class PaymentSucceededPayload(val userId: Long, val plan: String)
 
 class AppEventPublishers(private val publisher: KafkaPublisher) {

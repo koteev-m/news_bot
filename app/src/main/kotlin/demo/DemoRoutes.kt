@@ -139,7 +139,9 @@ private suspend fun runSeedScriptOrCheck(app: Application): Pair<HttpStatusCode,
 
 private suspend fun hasDemoData(): Boolean = DatabaseFactory.dbQuery {
     TradesTable
-        .join(PortfoliosTable, JoinType.INNER, additionalConstraint = { TradesTable.portfolioId eq PortfoliosTable.portfolioId })
+        .join(PortfoliosTable, JoinType.INNER, additionalConstraint = {
+            TradesTable.portfolioId eq PortfoliosTable.portfolioId
+        })
         .join(UsersTable, JoinType.INNER, additionalConstraint = { PortfoliosTable.userId eq UsersTable.userId })
         .select {
             (UsersTable.tgUserId eq DEMO_USER_TG_ID) and (PortfoliosTable.name eq DEMO_PORTFOLIO_NAME)

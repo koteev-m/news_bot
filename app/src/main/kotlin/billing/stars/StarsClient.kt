@@ -37,7 +37,7 @@ open class StarsClient(
     private val config: StarsClientConfig,
     client: HttpClient? = null,
     private val baseUrl: String = "https://api.telegram.org",
-): AutoCloseable {
+) : AutoCloseable {
 
     private val logger = LoggerFactory.getLogger(StarsClient::class.java)
     private val json = Json { ignoreUnknownKeys = true }

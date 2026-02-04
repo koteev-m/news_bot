@@ -27,7 +27,11 @@ class AlertsRoutesTest : FunSpec({
 
     fun Application.minimalAlertsModule(internalToken: String? = "secret") {
         install(ContentNegotiation) { json() }
-        val service = AlertsService(AlertsRepositoryMemory(), EngineConfig(zoneId = java.time.ZoneOffset.UTC), SimpleMeterRegistry())
+        val service = AlertsService(
+            AlertsRepositoryMemory(),
+            EngineConfig(zoneId = java.time.ZoneOffset.UTC),
+            SimpleMeterRegistry()
+        )
         routing { alertsRoutes(service, internalToken) }
     }
 

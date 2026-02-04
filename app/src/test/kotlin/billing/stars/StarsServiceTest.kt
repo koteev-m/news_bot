@@ -9,10 +9,7 @@ import billing.stars.StarsMetrics.GAUGE_RATE_LIMIT_REMAINING
 import billing.stars.StarsMetrics.LABEL_OUTCOME
 import billing.stars.StarsMetrics.LABEL_REASON
 import billing.stars.StarsMetrics.LABEL_STATE
-import billing.stars.StarsOutcomes.BAD_REQUEST
 import billing.stars.StarsOutcomes.DECODE_ERROR
-import billing.stars.StarsClientRateLimited
-import billing.stars.StarsOutcomes.RATE_LIMITED
 import billing.stars.StarsOutcomes.SERVER
 import billing.stars.StarsOutcomes.STALE_RETURNED
 import billing.stars.StarsOutcomes.SUCCESS

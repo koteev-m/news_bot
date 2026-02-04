@@ -33,10 +33,6 @@ import portfolio.errors.PortfolioException
 import portfolio.model.Money
 import portfolio.model.PositionView
 import portfolio.model.ValuationMethod
-import routes.HttpErrorResponse
-import routes.TradeRecord
-import routes.TradesData
-import routes.TradesQuery
 import routes.dto.PositionItemResponse
 import routes.dto.TradesPageResponse
 import security.JwtConfig
@@ -169,8 +165,8 @@ class PortfolioPositionsTradesRoutesTest {
         val response =
             get(
                 path =
-                    "/api/portfolio/$portfolioId/trades" +
-                        "?limit=10&offset=5&from=2024-05-01&to=2024-05-31&side=BUY",
+                "/api/portfolio/$portfolioId/trades" +
+                    "?limit=10&offset=5&from=2024-05-01&to=2024-05-31&side=BUY",
                 headers = authHeader(token),
             )
         assertEquals(HttpStatusCode.OK, response.status)
