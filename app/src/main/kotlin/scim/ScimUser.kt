@@ -15,7 +15,16 @@ import java.util.UUID
 fun Route.scimRoutes() {
     route("/scim/v2") {
         get("/ServiceProviderConfig") {
-            call.respond(mapOf("patch" to true, "bulk" to false, "filter" to true, "changePassword" to false, "sort" to false, "etag" to false))
+            call.respond(
+                mapOf(
+                    "patch" to true,
+                    "bulk" to false,
+                    "filter" to true,
+                    "changePassword" to false,
+                    "sort" to false,
+                    "etag" to false
+                )
+            )
         }
         get("/Schemas") { call.respond(listOf(mapOf("id" to "urn:ietf:params:scim:schemas:core:2.0:User"))) }
         // CRUD Users (минимально)

@@ -54,6 +54,7 @@ class StarsClientTest {
         assertEquals("stars-client", headers[HttpHeaders.UserAgent])
         assertEquals("application/json", headers[HttpHeaders.Accept])
     }
+
     @Test
     fun `parses retry-after http date header`() = runBlocking {
         val retryDate = ZonedDateTime.now(ZoneOffset.UTC).plusSeconds(5)

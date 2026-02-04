@@ -10,7 +10,13 @@ import java.time.Instant
 import kotlinx.serialization.Serializable
 
 @Serializable data class UsageIngestReq(val metric: String, val quantity: Double, val occurredAt: String? = null, val dedupKey: String? = null)
-@Serializable data class InvoiceRequest(val tenantId: Long? = null, val from: String, val to: String, val taxRate: Double = 0.0)
+
+@Serializable data class InvoiceRequest(
+    val tenantId: Long? = null,
+    val from: String,
+    val to: String,
+    val taxRate: Double = 0.0
+)
 
 fun Route.usageRoutes(service: UsageService) {
     route("/api/usage") {

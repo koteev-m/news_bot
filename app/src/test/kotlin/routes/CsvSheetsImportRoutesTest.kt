@@ -30,11 +30,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import errors.installErrorPages
 import portfolio.service.CsvImportService
-import routes.ImportByUrlRateLimiterHolder
-import routes.ImportByUrlSettings
 import routes.dto.ImportReportResponse
-import routes.setImportByUrlLimiterHolder
-import routes.setImportByUrlSettings
 import security.JwtConfig
 import security.JwtSupport
 import security.RateLimitConfig
@@ -120,7 +116,12 @@ class CsvSheetsImportRoutesTest {
             path = "/api/portfolio/${UUID.randomUUID()}/trades/import/csv",
             headers = authHeader(token),
             parts = listOf(
-                MultipartPart(name = "meta", filename = null, contentType = "text/plain", content = "value".toByteArray()),
+                MultipartPart(
+                    name = "meta",
+                    filename = null,
+                    contentType = "text/plain",
+                    content = "value".toByteArray()
+                ),
             ),
         )
         assertEquals(HttpStatusCode.BadRequest, response.status)

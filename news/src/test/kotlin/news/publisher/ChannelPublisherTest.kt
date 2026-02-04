@@ -77,7 +77,6 @@ class ChannelPublisherTest {
             return nextResponse as R
         }
     }
-
 }
 
 private fun sendResponse(ok: Boolean, description: String? = null): SendResponse {

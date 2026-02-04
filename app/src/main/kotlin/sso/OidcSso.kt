@@ -14,7 +14,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import tenancy.*
-import sso.GroupMappingRepo
 import sso.repo.IdpRepository
 
 class OidcSso(
@@ -26,13 +25,15 @@ class OidcSso(
     suspend fun exchangeCode(tokenUrl: String, clientId: String, code: String, redirectUri: String, verifier: String): JsonObject {
         val resp: HttpResponse = http.post(tokenUrl) {
             contentType(ContentType.Application.FormUrlEncoded)
-            setBody(Parameters.build {
-                append("grant_type", "authorization_code")
-                append("client_id", clientId)
-                append("code", code)
-                append("redirect_uri", redirectUri)
-                append("code_verifier", verifier)
-            }.formUrlEncode())
+            setBody(
+                Parameters.build {
+                    append("grant_type", "authorization_code")
+                    append("client_id", clientId)
+                    append("code", code)
+                    append("redirect_uri", redirectUri)
+                    append("code_verifier", verifier)
+                }.formUrlEncode()
+            )
         }
         val body = resp.bodyAsText()
         return Json.parseToJsonElement(body).jsonObject
@@ -46,7 +47,9 @@ fun Route.oidcRoutes(oidc: OidcSso) {
             val issuer = call.request.queryParameters["issuer"] ?: return@get call.respond(HttpStatusCode.BadRequest)
             val redirect = call.request.queryParameters["redirect_uri"] ?: return@get call.respond(HttpStatusCode.BadRequest)
             // В реале: Discovery (/.well-known/openid-configuration) и авторизация
-            call.respondRedirect("$issuer/protocol/openid-connect/auth?client_id=CLIENT_ID&response_type=code&redirect_uri=$redirect&scope=openid%20profile%20email&code_challenge=XYZ&code_challenge_method=S256")
+            call.respondRedirect(
+                "$issuer/protocol/openid-connect/auth?client_id=CLIENT_ID&response_type=code&redirect_uri=$redirect&scope=openid%20profile%20email&code_challenge=XYZ&code_challenge_method=S256"
+            )
         }
         // GET /sso/oidc/callback?code=...&state=...
         get("/callback") {

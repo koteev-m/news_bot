@@ -79,8 +79,10 @@ private class PerSubjectTokenBucket(
 ) {
     private val maxTokens = (capacity + burst).toDouble()
     private val refillPerSecond = (refillPerMinute / 60.0).coerceAtLeast(1.0)
+
     @Volatile
     private var tokens = maxTokens
+
     @Volatile
     private var lastRefillNanos = System.nanoTime()
 

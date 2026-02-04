@@ -253,7 +253,9 @@ private class DatabaseValuationStorage(
     private val positionRepository: PositionRepository,
     private val valuationRepository: ValuationRepository,
 ) : ValuationService.Storage {
-    override suspend fun listPositions(portfolioId: java.util.UUID): DomainResult<List<ValuationService.Storage.PositionSnapshot>> =
+    override suspend fun listPositions(
+        portfolioId: java.util.UUID
+    ): DomainResult<List<ValuationService.Storage.PositionSnapshot>> =
         runCatchingNonFatal {
             positionRepository.list(portfolioId, Int.MAX_VALUE).map { dto ->
                 ValuationService.Storage.PositionSnapshot(

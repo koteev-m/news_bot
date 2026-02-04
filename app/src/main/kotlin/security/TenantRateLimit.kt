@@ -15,7 +15,9 @@ class TenantRateLimiter(
 
     fun allow(ctx: TenantContext): Boolean {
         val now = clock.millis()
-        val bucket = buckets.computeIfAbsent(ctx.tenant.tenantId) { Bucket(tokens = rpsHard.toDouble(), lastRefillMs = now) }
+        val bucket = buckets.computeIfAbsent(
+            ctx.tenant.tenantId
+        ) { Bucket(tokens = rpsHard.toDouble(), lastRefillMs = now) }
         val elapsed = (now - bucket.lastRefillMs).coerceAtLeast(0)
         val refill = elapsed / 1000.0 * rpsHard
         bucket.tokens = (bucket.tokens + refill).coerceAtMost(rpsHard.toDouble())

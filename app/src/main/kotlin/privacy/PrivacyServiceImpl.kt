@@ -141,7 +141,9 @@ class PrivacyServiceImpl(
                 "SELECT rule_id FROM alerts_rules WHERE user_id = $userId)"
         val count = countWithQuery(countSql)
         if (!dryRun && count > 0) {
-            exec("DELETE FROM alerts_events WHERE rule_id IN (SELECT rule_id FROM alerts_rules WHERE user_id = $userId)")
+            exec(
+                "DELETE FROM alerts_events WHERE rule_id IN (SELECT rule_id FROM alerts_rules WHERE user_id = $userId)"
+            )
         }
         return count
     }
@@ -170,7 +172,9 @@ class PrivacyServiceImpl(
         cutoff: Instant
     ): Long {
         val cutoffLiteral = "TIMESTAMPTZ '${Timestamp.from(cutoff).toInstant()}'"
-        val count = countWithQuery("SELECT count(*) FROM $table WHERE $tsColumn < $cutoffLiteral AND $userColumn IS NOT NULL")
+        val count = countWithQuery(
+            "SELECT count(*) FROM $table WHERE $tsColumn < $cutoffLiteral AND $userColumn IS NOT NULL"
+        )
         if (count > 0) {
             exec("UPDATE $table SET $userColumn = NULL WHERE $tsColumn < $cutoffLiteral AND $userColumn IS NOT NULL")
         }

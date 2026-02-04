@@ -129,7 +129,9 @@ fun Route.portfolioPositionsTradesRoutes() {
     }
 }
 
-internal val PortfolioPositionsTradesDepsKey = AttributeKey<PortfolioPositionsTradesDeps>("PortfolioPositionsTradesDeps")
+internal val PortfolioPositionsTradesDepsKey = AttributeKey<PortfolioPositionsTradesDeps>(
+    "PortfolioPositionsTradesDeps"
+)
 
 internal data class PortfolioPositionsTradesDeps(
     val listPositions: suspend (UUID) -> Result<List<PositionView>>,

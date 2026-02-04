@@ -5,7 +5,6 @@ import billing.service.BillingService
 import billing.service.EntitlementsService
 import billing.stars.BotBalanceRateLimiter
 import billing.stars.BotStarBalancePort
-import billing.stars.CacheState
 import billing.stars.RateLimitVerdict
 import billing.stars.StarsAdminResults
 import billing.stars.StarsClient
@@ -133,7 +132,12 @@ fun Route.billingRoutes() {
                             is StarsClientRateLimited -> {
                                 record(StarsPublicResults.TG_RATE_LIMITED)
                                 recordOutcome(StarsOutcomes.RATE_LIMITED)
-                                error.retryAfterSeconds?.let { call.response.headers.append(HttpHeaders.RetryAfter, it.toString()) }
+                                error.retryAfterSeconds?.let {
+                                    call.response.headers.append(
+                                        HttpHeaders.RetryAfter,
+                                        it.toString()
+                                    )
+                                }
                                 call.respond(
                                     HttpStatusCode.TooManyRequests,
                                     mapOf("error" to "telegram rate limited"),
@@ -308,7 +312,10 @@ fun Route.billingRoutes() {
                                     StarsAdminResults.TG_RATE_LIMITED,
                                 )?.increment()
                                 if (error.retryAfterSeconds != null) {
-                                    call.response.headers.append(HttpHeaders.RetryAfter, error.retryAfterSeconds.toString())
+                                    call.response.headers.append(
+                                        HttpHeaders.RetryAfter,
+                                        error.retryAfterSeconds.toString()
+                                    )
                                 }
                                 call.respond(HttpStatusCode.TooManyRequests, mapOf("error" to "telegram rate limited"))
                             }
@@ -319,7 +326,10 @@ fun Route.billingRoutes() {
                                     StarsMetrics.LABEL_RESULT,
                                     StarsAdminResults.SERVER,
                                 )?.increment()
-                                call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "telegram unavailable"))
+                                call.respond(
+                                    HttpStatusCode.ServiceUnavailable,
+                                    mapOf("error" to "telegram unavailable")
+                                )
                             }
 
                             is StarsClientBadRequest -> {

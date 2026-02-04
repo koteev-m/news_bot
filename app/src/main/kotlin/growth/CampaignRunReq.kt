@@ -20,8 +20,16 @@ fun Route.growthRoutes(repo: GrowthRepository, engine: GrowthEngine) {
         post("/run-campaign") {
             val req = call.receive<CampaignRunReq>()
             val ctx = call.attributes[TenantContextKey]
-            val campaign = Campaign(req.campaignId, "tmp", "ACTIVE", "telegram", "en", req.templateId, 1, "22:00", "08:00")
-            val template = Template(req.templateId, "tmp", "telegram", "en", null, "👋 {{userId}} — welcome to {{tenant}}")
+            val campaign =
+                Campaign(req.campaignId, "tmp", "ACTIVE", "telegram", "en", req.templateId, 1, "22:00", "08:00")
+            val template = Template(
+                req.templateId,
+                "tmp",
+                "telegram",
+                "en",
+                null,
+                "👋 {{userId}} — welcome to {{tenant}}"
+            )
             val segment = Segment(req.segmentId, "tmp", "SELECT 1")
             engine.runCampaign(ctx, campaign, template, segment)
             call.respond(HttpStatusCode.Accepted)

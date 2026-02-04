@@ -141,7 +141,12 @@ private class FakePrivacyService : PrivacyService {
 
     override suspend fun runErasure(userId: Long, dryRun: Boolean): ErasureReport {
         lastErasure = userId to dryRun
-        return ErasureReport(userId, deleted = mapOf("events" to 1L), anonymized = mapOf("bot_starts" to 1L), dryRun = dryRun)
+        return ErasureReport(
+            userId,
+            deleted = mapOf("events" to 1L),
+            anonymized = mapOf("bot_starts" to 1L),
+            dryRun = dryRun
+        )
     }
 
     override suspend fun runRetention(now: java.time.Instant): RetentionReport {
@@ -149,4 +154,3 @@ private class FakePrivacyService : PrivacyService {
         return RetentionReport(mapOf("events" to 5L))
     }
 }
-

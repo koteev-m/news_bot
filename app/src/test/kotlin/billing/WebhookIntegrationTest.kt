@@ -66,9 +66,11 @@ class WebhookIntegrationTest {
         val receiveCounter = AtomicInteger(0)
         application {
             val appInstance = this
-            appInstance.install(createApplicationPlugin(name = "ReceiveCounter") {
-                onCallReceive { _, _ -> receiveCounter.incrementAndGet() }
-            })
+            appInstance.install(
+                createApplicationPlugin(name = "ReceiveCounter") {
+                    onCallReceive { _, _ -> receiveCounter.incrementAndGet() }
+                }
+            )
             appInstance.routing {
                 post("/telegram/webhook") {
                     val expectedSecret = environment?.config?.propertyOrNull("telegram.webhookSecret")?.getString()

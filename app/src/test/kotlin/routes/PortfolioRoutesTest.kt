@@ -12,7 +12,6 @@ import routes.dto.CreatePortfolioRequest
 import routes.dto.PortfolioItemResponse
 import security.JwtConfig
 import security.JwtSupport
-import routes.ApiErrorResponse
 
 class PortfolioRoutesTest {
     private val jwtConfig = JwtConfig(
@@ -143,7 +142,7 @@ class PortfolioRoutesTest {
                 createException?.let { throw it }
                 counter += 1
                 val record = PortfolioRecord(
-                    id = "portfolio-${counter}",
+                    id = "portfolio-$counter",
                     name = valid.name,
                     baseCurrency = valid.baseCurrency,
                     valuationMethod = valid.valuationMethod,

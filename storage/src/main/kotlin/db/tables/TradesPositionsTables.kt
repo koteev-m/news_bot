@@ -8,7 +8,9 @@ import java.math.BigDecimal
 object TradesTable : Table("trades") {
     val tradeId = long("trade_id").autoIncrement()
     val portfolioId = uuid("portfolio_id").references(PortfoliosTable.portfolioId, onDelete = ReferenceOption.CASCADE)
-    val instrumentId = long("instrument_id").references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.RESTRICT)
+    val instrumentId = long(
+        "instrument_id"
+    ).references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.RESTRICT)
     val datetime = timestampWithTimeZone("datetime")
     val side = text("side")
     val quantity = decimal("quantity", 20, 8)
@@ -39,7 +41,9 @@ object TradesTable : Table("trades") {
 
 object PositionsTable : Table("positions") {
     val portfolioId = uuid("portfolio_id").references(PortfoliosTable.portfolioId, onDelete = ReferenceOption.CASCADE)
-    val instrumentId = long("instrument_id").references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.RESTRICT)
+    val instrumentId = long(
+        "instrument_id"
+    ).references(InstrumentsTable.instrumentId, onDelete = ReferenceOption.RESTRICT)
     val qty = decimal("qty", 20, 8).default(BigDecimal.ZERO)
     val avgPrice = decimal("avg_price", 20, 8).nullable()
     val avgPriceCcy = char("avg_price_ccy", 3).nullable()

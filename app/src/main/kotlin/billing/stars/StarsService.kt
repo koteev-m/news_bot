@@ -15,14 +15,17 @@ class StarsService(
 ) : BotStarBalancePort {
 
     private val logger = LoggerFactory.getLogger(StarsService::class.java)
+
     @Volatile
     private var cache: CachedBalance? = null
     private val fetchMutex = Mutex()
     private val registry = meterRegistry
+
     @Volatile
     private var rateLimitedUntilEpochSeconds: Long = 0
     private val botTimer: Timer? = registry?.let { Timer.builder(StarsMetrics.TIMER_BOT).register(it) }
     private val legacyTimer: Timer? = registry?.let { Timer.builder(StarsMetrics.TIMER_LEGACY).register(it) }
+
     @Suppress("unused")
     private val rateLimitWindowGauge = registry?.gauge(
         StarsMetrics.GAUGE_RATE_LIMIT_REMAINING,
@@ -31,6 +34,7 @@ class StarsService(
         val remaining = svc.rateLimitedUntilEpochSeconds - svc.nowEpochSeconds()
         remaining.coerceAtLeast(0).toDouble()
     }
+
     @Suppress("unused")
     private val cacheAgeGauge = registry?.gauge(
         StarsMetrics.GAUGE_CACHE_AGE,
@@ -39,6 +43,7 @@ class StarsService(
         val cached = svc.cache ?: return@gauge 0.0
         cached.ageSeconds().toDouble()
     }
+
     @Suppress("unused")
     private val cacheTtlGauge = registry?.gauge(
         StarsMetrics.GAUGE_CACHE_TTL,
@@ -77,7 +82,11 @@ class StarsService(
                 recordOutcome(StarsOutcomes.STALE_RETURNED)
                 recordCache(CacheState.STALE)
                 logStale(StarsOutcomes.RATE_LIMITED, it)
-                return BotStarBalanceResult(it.balance.copy(stale = true), CacheState.STALE, cacheAgeSeconds = ageSeconds)
+                return BotStarBalanceResult(
+                    it.balance.copy(stale = true),
+                    CacheState.STALE,
+                    cacheAgeSeconds = ageSeconds
+                )
             }
             recordOutcome(StarsOutcomes.RATE_LIMITED)
             val remainingSeconds = (rateLimitedUntilEpochSeconds - nowSeconds).coerceAtLeast(1)
@@ -114,7 +123,11 @@ class StarsService(
                 recordOutcome(StarsOutcomes.STALE_RETURNED)
                 recordCache(CacheState.STALE)
                 logStale(StarsOutcomes.RATE_LIMITED, it)
-                return BotStarBalanceResult(it.balance.copy(stale = true), CacheState.STALE, cacheAgeSeconds = ageSeconds)
+                return BotStarBalanceResult(
+                    it.balance.copy(stale = true),
+                    CacheState.STALE,
+                    cacheAgeSeconds = ageSeconds
+                )
             }
             recordOutcome(StarsOutcomes.RATE_LIMITED)
             throw e
@@ -130,7 +143,11 @@ class StarsService(
                 recordOutcome(StarsOutcomes.STALE_RETURNED)
                 recordCache(CacheState.STALE)
                 logStale(StarsOutcomes.SERVER, it)
-                return BotStarBalanceResult(it.balance.copy(stale = true), CacheState.STALE, cacheAgeSeconds = ageSeconds)
+                return BotStarBalanceResult(
+                    it.balance.copy(stale = true),
+                    CacheState.STALE,
+                    cacheAgeSeconds = ageSeconds
+                )
             }
             recordOutcome(StarsOutcomes.SERVER)
             throw e
@@ -146,7 +163,11 @@ class StarsService(
                 recordOutcome(StarsOutcomes.STALE_RETURNED)
                 recordCache(CacheState.STALE)
                 logStale(StarsOutcomes.BAD_REQUEST, it)
-                return BotStarBalanceResult(it.balance.copy(stale = true), CacheState.STALE, cacheAgeSeconds = ageSeconds)
+                return BotStarBalanceResult(
+                    it.balance.copy(stale = true),
+                    CacheState.STALE,
+                    cacheAgeSeconds = ageSeconds
+                )
             }
             recordOutcome(StarsOutcomes.BAD_REQUEST)
             throw e
@@ -162,7 +183,11 @@ class StarsService(
                 recordOutcome(StarsOutcomes.STALE_RETURNED)
                 recordCache(CacheState.STALE)
                 logStale(StarsOutcomes.DECODE_ERROR, it)
-                return BotStarBalanceResult(it.balance.copy(stale = true), CacheState.STALE, cacheAgeSeconds = ageSeconds)
+                return BotStarBalanceResult(
+                    it.balance.copy(stale = true),
+                    CacheState.STALE,
+                    cacheAgeSeconds = ageSeconds
+                )
             }
             recordOutcome(StarsOutcomes.DECODE_ERROR)
             throw e
@@ -178,7 +203,11 @@ class StarsService(
                 recordOutcome(StarsOutcomes.STALE_RETURNED)
                 recordCache(CacheState.STALE)
                 logStale(StarsOutcomes.OTHER, it)
-                return BotStarBalanceResult(it.balance.copy(stale = true), CacheState.STALE, cacheAgeSeconds = ageSeconds)
+                return BotStarBalanceResult(
+                    it.balance.copy(stale = true),
+                    CacheState.STALE,
+                    cacheAgeSeconds = ageSeconds
+                )
             }
             recordOutcome(StarsOutcomes.OTHER)
             throw e

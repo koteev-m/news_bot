@@ -84,7 +84,10 @@ class WebAppVerifyTest {
         val dataCheckString = parameters.entries
             .sortedBy { it.key }
             .joinToString("\n") { (key, value) -> "$key=$value" }
-        val secret = hmacSha256("WebAppData".toByteArray(StandardCharsets.UTF_8), botToken.toByteArray(StandardCharsets.UTF_8))
+        val secret = hmacSha256(
+            "WebAppData".toByteArray(StandardCharsets.UTF_8),
+            botToken.toByteArray(StandardCharsets.UTF_8)
+        )
         val hash = hmacSha256(secret, dataCheckString.toByteArray(StandardCharsets.UTF_8)).toHex()
 
         val withHash = LinkedHashMap(parameters)
