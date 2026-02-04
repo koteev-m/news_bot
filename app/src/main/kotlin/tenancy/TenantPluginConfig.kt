@@ -9,13 +9,13 @@ import repo.TenancyRepository
 import common.runCatchingNonFatal
 
 class TenantPluginConfig {
-    lateinit var repository: TenancyRepository
+    var repository: TenancyRepository? = null
     var userIdProvider: (ApplicationCall) -> Long? = { null }
     var scopesProvider: (ApplicationCall) -> Set<String> = { emptySet() }
 }
 
 val TenantPlugin = createApplicationPlugin(name = "TenantPlugin", createConfiguration = ::TenantPluginConfig) {
-    val repo = pluginConfig.repository
+    val repo = requireNotNull(pluginConfig.repository) { "Tenancy repository must be configured" }
     val resolver = TenantResolver(repo)
     onCall { call ->
         runCatchingNonFatal {
