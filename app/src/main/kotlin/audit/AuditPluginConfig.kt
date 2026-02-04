@@ -6,7 +6,6 @@ import io.ktor.server.request.header
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.server.response.ApplicationSendPipeline
-import io.ktor.server.response.*
 import io.ktor.server.plugins.callid.callId
 import io.ktor.util.AttributeKey
 import java.time.Instant
@@ -21,14 +20,14 @@ import tenancy.TenantContextKey
 import common.runCatchingNonFatal
 
 class AuditPluginConfig {
-    lateinit var auditService: AuditService
+    var auditService: AuditService? = null
     var coroutineScope: CoroutineScope? = null
 }
 
 private data class ActorContext(val type: AuditActorType, val id: String?)
 
 val AuditPlugin = createApplicationPlugin(name = "AuditPlugin", createConfiguration = ::AuditPluginConfig) {
-    val service = pluginConfig.auditService
+    val service = requireNotNull(pluginConfig.auditService) { "Audit service must be configured" }
     val scope = pluginConfig.coroutineScope
 
     onCall { call ->
@@ -92,11 +91,11 @@ private fun resolveActor(call: ApplicationCall): ActorContext {
 
 private fun statusBucket(status: Int?): String = when (status) {
     null -> "unhandled"
-    in 100..199 -> "1xx"
-    in 200..299 -> "2xx"
-    in 300..399 -> "3xx"
-    in 400..499 -> "4xx"
-    in 500..599 -> "5xx"
+    in STATUS_1XX_RANGE -> "1xx"
+    in STATUS_2XX_RANGE -> "2xx"
+    in STATUS_3XX_RANGE -> "3xx"
+    in STATUS_4XX_RANGE -> "4xx"
+    in STATUS_5XX_RANGE -> "5xx"
     else -> "other"
 }
 
@@ -113,3 +112,9 @@ private fun buildMeta(call: ApplicationCall, status: Int?): JsonObject = buildJs
 
 private fun <T : Any> io.ktor.util.Attributes.getOrNull(key: AttributeKey<T>): T? =
     if (contains(key)) get(key) else null
+
+private val STATUS_1XX_RANGE = 100..199
+private val STATUS_2XX_RANGE = 200..299
+private val STATUS_3XX_RANGE = 300..399
+private val STATUS_4XX_RANGE = 400..499
+private val STATUS_5XX_RANGE = 500..599

@@ -13,13 +13,13 @@ import common.runCatchingNonFatal
  * Ожидает заголовок X-Region-Served (регион текущего PoP) или env конфиг.
  */
 class ResidencyConfig {
-    lateinit var repo: ResidencyRepository
+    var repo: ResidencyRepository? = null
     var servedRegionProvider: (ApplicationCall) -> String = { System.getenv("APP_REGION") ?: "EU" }
     var dataClassProvider: (ApplicationCall) -> DataClass? = { null } // определить по маршруту
 }
 
 val ResidencyPlugin = createApplicationPlugin(name = "ResidencyPlugin", createConfiguration = ::ResidencyConfig) {
-    val repo = pluginConfig.repo
+    val repo = requireNotNull(pluginConfig.repo) { "Residency repository must be configured" }
     val regionOf = pluginConfig.servedRegionProvider
     val dataClassOf = pluginConfig.dataClassProvider
 
