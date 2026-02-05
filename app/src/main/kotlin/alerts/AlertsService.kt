@@ -2,19 +2,19 @@ package alerts
 
 import alerts.metrics.AlertMetrics
 import io.micrometer.core.instrument.MeterRegistry
+import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import kotlin.math.abs
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class MarketSnapshot(
     val tsEpochSec: Long,
     val userId: Long,
     val items: List<SignalItem>,
-    val portfolio: PortfolioSnapshot? = null
+    val portfolio: PortfolioSnapshot? = null,
 )
 
 @Serializable
@@ -26,13 +26,13 @@ data class SignalItem(
     val atr: Double? = null,
     val sigma: Double? = null,
     val volume: Double? = null,
-    val avgVolume: Double? = null
+    val avgVolume: Double? = null,
 )
 
 @Serializable
 data class PortfolioSnapshot(
     val totalChangePctDay: Double? = null,
-    val drawdownPct: Double? = null
+    val drawdownPct: Double? = null,
 )
 
 /**
@@ -42,7 +42,7 @@ data class PortfolioSnapshot(
 class AlertsService(
     private val repo: AlertsRepository,
     private val config: EngineConfig,
-    meterRegistry: MeterRegistry
+    meterRegistry: MeterRegistry,
 ) {
     companion object {
         private const val PORTFOLIO_SUMMARY_CLASS = "portfolio_summary"
@@ -51,7 +51,11 @@ class AlertsService(
     private val metrics = AlertMetrics(meterRegistry)
     private val volumeGate = VolumeGate(config.volumeGateK)
     private val portfolioSummaryByDay = java.util.concurrent.ConcurrentHashMap<Long, LocalDate>()
-    private val locks = Array(128) { java.util.concurrent.locks.ReentrantLock() }
+    private val locks =
+        Array(128) {
+            java.util.concurrent.locks
+                .ReentrantLock()
+        }
 
     fun getState(userId: Long): FsmState = repo.getState(userId)
 
@@ -66,7 +70,12 @@ class AlertsService(
         }
     }
 
-    private fun deliver(userId: Long, alert: PendingAlert, reason: String, date: LocalDate) {
+    private fun deliver(
+        userId: Long,
+        alert: PendingAlert,
+        reason: String,
+        date: LocalDate,
+    ) {
         metrics.fire(alert.classId, alert.ticker, alert.window)
         metrics.delivered(reason)
         repo.incDailyPushCount(userId, date)
@@ -77,30 +86,39 @@ class AlertsService(
         return locks[index]
     }
 
-    private fun cooldownEndsAt(state: FsmState): Long? = when (state) {
-        is FsmState.COOLDOWN -> state.untilEpochSec
-        is FsmState.PUSHED -> state.pushedAtEpochSec + config.cooldownT.min.inWholeSeconds
-        is FsmState.PORTFOLIO_SUMMARY -> state.deliveredAtEpochSec + config.cooldownT.min.inWholeSeconds
-        else -> null
-    }
+    private fun cooldownEndsAt(state: FsmState): Long? =
+        when (state) {
+            is FsmState.Cooldown -> state.untilEpochSec
+            is FsmState.Pushed -> state.pushedAtEpochSec + config.cooldownT.min.inWholeSeconds
+            is FsmState.PortfolioSummary -> state.deliveredAtEpochSec + config.cooldownT.min.inWholeSeconds
+            else -> null
+        }
 
-    private fun resolveCooldown(state: FsmState, nowEpochSec: Long): FsmState {
+    private fun resolveCooldown(
+        state: FsmState,
+        nowEpochSec: Long,
+    ): FsmState {
         val endsAt = cooldownEndsAt(state) ?: return state
-        return if (nowEpochSec >= endsAt) FsmState.IDLE else state
+        return if (nowEpochSec >= endsAt) FsmState.Idle else state
     }
 
-    private fun inCooldown(state: FsmState, nowEpochSec: Long): Boolean {
+    private fun inCooldown(
+        state: FsmState,
+        nowEpochSec: Long,
+    ): Boolean {
         val endsAt = cooldownEndsAt(state) ?: return false
         return nowEpochSec < endsAt
     }
 
-    private fun deliveredState(reason: String, nowEpochSec: Long): FsmState {
-        return if (reason == AlertDeliveryReasons.PORTFOLIO_SUMMARY) {
-            FsmState.PORTFOLIO_SUMMARY(nowEpochSec)
+    private fun deliveredState(
+        reason: String,
+        nowEpochSec: Long,
+    ): FsmState =
+        if (reason == AlertDeliveryReasons.PORTFOLIO_SUMMARY) {
+            FsmState.PortfolioSummary(nowEpochSec)
         } else {
-            FsmState.PUSHED(nowEpochSec)
+            FsmState.Pushed(nowEpochSec)
         }
-    }
 
     fun onSnapshot(snapshot: MarketSnapshot): TransitionResult {
         val lock = lockFor(snapshot.userId)
@@ -122,8 +140,8 @@ class AlertsService(
 
         state = resolveCooldown(state, snapshot.tsEpochSec)
         val budgetCount = repo.getDailyPushCount(userId, today)
-        if (state is FsmState.BUDGET_EXHAUSTED && budgetCount < config.dailyBudgetPushMax) {
-            state = FsmState.IDLE
+        if (state is FsmState.BudgetExhausted && budgetCount < config.dailyBudgetPushMax) {
+            state = FsmState.Idle
         }
 
         val quietNow = isQuiet(nowInstant)
@@ -134,7 +152,7 @@ class AlertsService(
             }
         }
 
-        if (state is FsmState.QUIET && !quietNow && state.buffer.isNotEmpty()) {
+        if (state is FsmState.Quiet && !quietNow && state.buffer.isNotEmpty()) {
             var deliveredAny = false
             var deliveredSummary = false
             var remainingBudget = config.dailyBudgetPushMax - repo.getDailyPushCount(userId, today)
@@ -154,34 +172,43 @@ class AlertsService(
             }
 
             val budgetExhausted = repo.getDailyPushCount(userId, today) >= config.dailyBudgetPushMax
-            state = when {
-                deliveredAny && !budgetExhausted -> {
-                    if (deliveredSummary) {
-                        FsmState.PORTFOLIO_SUMMARY(snapshot.tsEpochSec)
-                    } else {
-                        FsmState.PUSHED(snapshot.tsEpochSec)
+            state =
+                when {
+                    deliveredAny && !budgetExhausted -> {
+                        if (deliveredSummary) {
+                            FsmState.PortfolioSummary(snapshot.tsEpochSec)
+                        } else {
+                            FsmState.Pushed(snapshot.tsEpochSec)
+                        }
                     }
+                    deliveredAny -> FsmState.BudgetExhausted
+                    else -> FsmState.BudgetExhausted
                 }
-                deliveredAny -> FsmState.BUDGET_EXHAUSTED
-                else -> FsmState.BUDGET_EXHAUSTED
-            }
         }
 
         fun bufferAlert(alert: PendingAlert): FsmState {
-            val currentBuffer = (state as? FsmState.QUIET)?.buffer ?: emptyList()
-            val exists = currentBuffer.any { it.classId == alert.classId && it.ticker == alert.ticker && it.window == alert.window }
+            val currentBuffer = (state as? FsmState.Quiet)?.buffer ?: emptyList()
+            val exists =
+                currentBuffer.any {
+                    it.classId == alert.classId &&
+                        it.ticker == alert.ticker &&
+                        it.window == alert.window
+                }
             return if (exists) {
                 addSuppressed(AlertSuppressionReasons.DUPLICATE)
-                FsmState.QUIET(currentBuffer)
+                FsmState.Quiet(currentBuffer)
             } else {
-                FsmState.QUIET(currentBuffer + alert)
+                FsmState.Quiet(currentBuffer + alert)
             }
         }
 
-        fun attemptPush(alert: PendingAlert, deliveredReason: String = AlertDeliveryReasons.DIRECT): Boolean {
+        fun attemptPush(
+            alert: PendingAlert,
+            deliveredReason: String = AlertDeliveryReasons.DIRECT,
+        ): Boolean {
             val currentBudget = repo.getDailyPushCount(userId, today)
             if (currentBudget >= config.dailyBudgetPushMax) {
-                state = FsmState.BUDGET_EXHAUSTED
+                state = FsmState.BudgetExhausted
                 addSuppressed(AlertSuppressionReasons.BUDGET)
                 return false
             }
@@ -196,21 +223,24 @@ class AlertsService(
         }
 
         val portfolio = snapshot.portfolio
-        val summaryNeeded = portfolio != null && (
-            (portfolio.totalChangePctDay != null && abs(portfolio.totalChangePctDay) >= 2.0) ||
-                (portfolio.drawdownPct != null && portfolio.drawdownPct >= 5.0)
-            )
+        val summaryNeeded =
+            portfolio != null &&
+                (
+                    (portfolio.totalChangePctDay != null && abs(portfolio.totalChangePctDay) >= 2.0) ||
+                        (portfolio.drawdownPct != null && portfolio.drawdownPct >= 5.0)
+                    )
         if (summaryNeeded) {
             val last = portfolioSummaryByDay[userId]
             if (last != today) {
-                val alert = PendingAlert(
-                    classId = PORTFOLIO_SUMMARY_CLASS,
-                    ticker = "",
-                    window = "daily",
-                    score = 0.0,
-                    pctMove = portfolio.totalChangePctDay ?: portfolio.drawdownPct ?: 0.0,
-                    ts = snapshot.tsEpochSec
-                )
+                val alert =
+                    PendingAlert(
+                        classId = PORTFOLIO_SUMMARY_CLASS,
+                        ticker = "",
+                        window = "daily",
+                        score = 0.0,
+                        pctMove = portfolio.totalChangePctDay ?: portfolio.drawdownPct ?: 0.0,
+                        ts = snapshot.tsEpochSec,
+                    )
                 portfolioSummaryByDay[userId] = today
                 if (quietNow) {
                     addSuppressed(AlertSuppressionReasons.QUIET_HOURS)
@@ -226,59 +256,64 @@ class AlertsService(
             val threshold: Double,
             val hysteresisLevel: Double,
             val score: Double,
-            val meets: Boolean
+            val meets: Boolean,
         )
 
-        val checks = snapshot.items.mapNotNull { item ->
-            val thresholdBase = config.thresholds.getThreshold(item.classId, item.window) ?: return@mapNotNull null
-            val volumeAllowed = volumeGate.allows(item.volume, item.avgVolume)
-            if (!volumeAllowed) {
-                addSuppressed(AlertSuppressionReasons.NO_VOLUME)
-                return@mapNotNull null
+        val checks =
+            snapshot.items.mapNotNull { item ->
+                val thresholdBase = config.thresholds.getThreshold(item.classId, item.window) ?: return@mapNotNull null
+                val volumeAllowed = volumeGate.allows(item.volume, item.avgVolume)
+                if (!volumeAllowed) {
+                    addSuppressed(AlertSuppressionReasons.NO_VOLUME)
+                    return@mapNotNull null
+                }
+                val thr = thresholdBase * proMultiplier(item.atr, item.sigma)
+                val score = item.pctMove - thr
+                ItemCheck(item, thr, thr * config.hysteresisExitFactor, score, item.pctMove >= thr)
             }
-            val thr = thresholdBase * proMultiplier(item.atr, item.sigma)
-            val score = item.pctMove - thr
-            ItemCheck(item, thr, thr * config.hysteresisExitFactor, score, item.pctMove >= thr)
-        }
 
-        fun windowPriority(window: String): Int = when (window.lowercase()) {
-            "daily" -> 0
-            "fast" -> 1
-            else -> 2
-        }
+        fun windowPriority(window: String): Int =
+            when (window.lowercase()) {
+                "daily" -> 0
+                "fast" -> 1
+                else -> 2
+            }
 
-        val bestFirstComparator = compareByDescending<ItemCheck> { it.score }
-            .thenBy { windowPriority(it.item.window) }
-            .thenBy { it.item.classId }
-            .thenBy { it.item.ticker }
+        val bestFirstComparator =
+            compareByDescending<ItemCheck> { it.score }
+                .thenBy { windowPriority(it.item.window) }
+                .thenBy { it.item.classId }
+                .thenBy { it.item.ticker }
 
         // minWithOrNull picks the best candidate because the comparator orders from best to worst
-        val candidate = checks
-            .filter { it.meets }
-            .minWithOrNull(bestFirstComparator)
+        val candidate =
+            checks
+                .filter { it.meets }
+                .minWithOrNull(bestFirstComparator)
 
         if (candidate == null) {
             if (checks.isNotEmpty()) {
                 addSuppressed(AlertSuppressionReasons.BELOW_THRESHOLD)
             }
-            if (state is FsmState.ARMED) {
+            if (state is FsmState.Armed) {
                 val belowExit = checks.all { it.item.pctMove < it.hysteresisLevel }
                 if (belowExit) {
-                    state = FsmState.IDLE
+                    state = FsmState.Idle
                 }
             }
             repo.setState(userId, state)
             return TransitionResult(state, emitted, suppressedReasons.toList())
         }
 
-        val pendingAlert = PendingAlert(
-            classId = candidate.item.classId,
-            ticker = candidate.item.ticker,
-            window = candidate.item.window,
-            score = candidate.score,
-            pctMove = candidate.item.pctMove,
-            ts = snapshot.tsEpochSec
-        )
+        val pendingAlert =
+            PendingAlert(
+                classId = candidate.item.classId,
+                ticker = candidate.item.ticker,
+                window = candidate.item.window,
+                score = candidate.score,
+                pctMove = candidate.item.pctMove,
+                ts = snapshot.tsEpochSec,
+            )
 
         if (quietNow) {
             addSuppressed(AlertSuppressionReasons.QUIET_HOURS)
@@ -288,16 +323,17 @@ class AlertsService(
         }
 
         when (state) {
-            is FsmState.COOLDOWN, is FsmState.PUSHED, is FsmState.PORTFOLIO_SUMMARY -> {
+            is FsmState.Cooldown, is FsmState.Pushed, is FsmState.PortfolioSummary -> {
                 addSuppressed(AlertSuppressionReasons.COOLDOWN)
             }
-            is FsmState.BUDGET_EXHAUSTED -> {
+            is FsmState.BudgetExhausted -> {
                 addSuppressed(AlertSuppressionReasons.BUDGET)
             }
-            is FsmState.ARMED -> {
-                val armedState = state as FsmState.ARMED
+            is FsmState.Armed -> {
+                val armedState = state as FsmState.Armed
                 val elapsed = snapshot.tsEpochSec - armedState.armedAtEpochSec
-                val confirmed = candidate.item.window.lowercase() != "fast" || elapsed >= config.confirmT.min.inWholeSeconds
+                val confirmed =
+                    candidate.item.window.lowercase() != "fast" || elapsed >= config.confirmT.min.inWholeSeconds
                 if (confirmed) {
                     attemptPush(pendingAlert)
                 }
@@ -306,7 +342,7 @@ class AlertsService(
                 if (candidate.item.window.lowercase() == "daily") {
                     attemptPush(pendingAlert)
                 } else {
-                    state = FsmState.ARMED(snapshot.tsEpochSec)
+                    state = FsmState.Armed(snapshot.tsEpochSec)
                 }
             }
         }

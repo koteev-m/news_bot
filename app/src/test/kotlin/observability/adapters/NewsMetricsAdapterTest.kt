@@ -1,9 +1,9 @@
 package observability.adapters
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import observability.DomainMetrics
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import observability.DomainMetrics
 
 class NewsMetricsAdapterTest {
     @Test

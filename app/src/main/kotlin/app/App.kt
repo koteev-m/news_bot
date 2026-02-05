@@ -3,38 +3,17 @@ package app
 import ab.ExperimentsPort
 import ab.ExperimentsService
 import ab.ExperimentsServiceImpl
-import chaos.ChaosConfig
-import chaos.ChaosMetrics
-import chaos.maybeInjectChaos
-import db.DatabaseFactory
-import docs.apiDocsRoutes
-import news.config.NewsConfig
-import news.config.NewsDefaults
-import news.config.NewsMode
-import news.config.RssBackoffConfig
-import repo.ExperimentsRepository
-import repo.SupportRepository
-import repo.ReferralsRepository
-import referrals.ReferralsPort
-import routes.adminExperimentsRoutes
-import routes.adminSupportRoutes
-import routes.experimentsRoutes
-import pricing.PricingPortAdapter
-import pricing.PricingService
-import alerts.metrics.AlertMetricsPort
-import analytics.AnalyticsPort
 import alerts.AlertsRepository
 import alerts.AlertsRepositoryMemory
 import alerts.AlertsRepositoryPostgres
 import alerts.AlertsService
 import alerts.alertsRoutes
 import alerts.loadAlertsConfig
-import io.ktor.client.HttpClient
-import errors.installErrorPages
+import alerts.metrics.AlertMetricsPort
+import analytics.AnalyticsPort
 import billing.StarsGatewayFactory
 import billing.StarsWebhookHandler
 import billing.TgUpdate
-import growth.installGrowthRoutes
 import billing.bot.StarsBotCommands
 import billing.bot.StarsBotRouter
 import billing.bot.StarsBotRouter.BotRoute.Buy
@@ -45,7 +24,6 @@ import billing.bot.StarsBotRouter.BotRoute.Unknown
 import billing.service.BillingService
 import billing.service.BillingServiceImpl
 import billing.service.EntitlementsService
-import repo.BillingLedgerRepository
 import billing.service.applySuccessfulPaymentOutcome
 import billing.stars.BotBalanceRateLimiter
 import billing.stars.BotStarBalancePort
@@ -53,21 +31,29 @@ import billing.stars.StarsClient
 import billing.stars.StarsClientConfig
 import billing.stars.StarsService
 import billing.stars.ZeroStarBalancePort
+import chaos.ChaosConfig
+import chaos.ChaosMetrics
+import chaos.maybeInjectChaos
 import com.pengrad.telegrambot.utility.BotUtils
+import common.runCatchingNonFatal
+import db.DatabaseFactory
 import deeplink.DeepLinkStore
 import deeplink.createDeepLinkStore
 import deeplink.deepLinkTtl
 import deeplink.loadDeepLinkStoreSettings
+import demo.demoRoutes
 import di.FeatureFlagsModule
 import di.PrivacyModule
 import di.ensureTelegramBot
-import demo.demoRoutes
 import di.installPortfolioModule
-import io.lettuce.core.RedisClient
+import docs.apiDocsRoutes
+import errors.installErrorPages
+import features.FeatureFlagsService
+import growth.installGrowthRoutes
+import health.healthRoutes
 import integrations.integrationsModule
 import integrations.mtprotoViewsConfig
-import features.FeatureFlagsService
-import health.healthRoutes
+import io.ktor.client.HttpClient
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCallPipeline
@@ -75,16 +61,15 @@ import io.ktor.server.application.ApplicationEnvironment
 import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
+import io.ktor.server.config.ApplicationConfig
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.util.AttributeKey
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import io.lettuce.core.RedisClient
+import io.micrometer.core.instrument.Timer
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -93,15 +78,22 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
-import java.time.Clock
-import java.time.Instant
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicLong
-import news.metrics.NewsMetricsPort
+import mtproto.HttpMtprotoViewsClient
+import netflow2.Netflow2Loader
+import news.config.NewsConfig
+import news.config.NewsDefaults
+import news.config.NewsMode
+import news.config.RssBackoffConfig
 import news.dedup.Clusterer
+import news.metrics.NewsMetricsPort
+import news.moderation.ModerationBotConfig
+import news.moderation.ModerationBotHandler
+import news.moderation.ModerationQueue
+import news.moderation.ModerationQueueDatabase
+import news.moderation.ModerationRepository
 import news.pipeline.DbPublishJobRepository
 import news.pipeline.DigestPublishWorker
 import news.pipeline.DigestSlotScheduler
@@ -118,11 +110,6 @@ import news.rss.RedisFeedStateStore
 import news.rss.RssFetcher
 import news.sources.CbrSource
 import news.sources.MoexSource
-import news.moderation.ModerationBotConfig
-import news.moderation.ModerationBotHandler
-import news.moderation.ModerationQueue
-import news.moderation.ModerationQueueDatabase
-import news.moderation.ModerationRepository
 import observability.DomainMetrics
 import observability.EventsCounter
 import observability.Observability
@@ -135,44 +122,57 @@ import observability.feed.Netflow2Metrics
 import observability.installMdcTrace
 import observability.installSentry
 import observability.installTracing
+import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
-import io.ktor.server.config.ApplicationConfig
+import pricing.PricingPortAdapter
+import pricing.PricingService
+import referrals.ReferralsPort
 import repo.AnalyticsRepository
+import repo.BillingLedgerRepository
 import repo.BillingRepositoryImpl
-import repo.PricingRepository
+import repo.ExperimentsRepository
 import repo.PostgresNetflow2Repository
+import repo.PricingRepository
+import repo.ReferralsRepository
+import repo.SupportRepository
 import routes.BillingRouteServices
 import routes.BillingRouteServicesKey
 import routes.ChaosState
 import routes.adminChaosRoutes
+import routes.adminExperimentsRoutes
 import routes.adminFeaturesRoutes
-import routes.adminPrivacyRoutes
-import routes.authRoutes
 import routes.adminPricingRoutes
+import routes.adminPrivacyRoutes
+import routes.adminSupportRoutes
+import routes.authRoutes
 import routes.billingRoutes
+import routes.experimentsRoutes
 import routes.netflow2AdminRoutes
-import routes.postViewsRoutes
 import routes.portfolioImportRoutes
 import routes.portfolioPositionsTradesRoutes
 import routes.portfolioRoutes
 import routes.portfolioValuationReportRoutes
+import routes.postViewsRoutes
+import routes.pricingRoutes
 import routes.quotesRoutes
 import routes.redirectRoutes
 import routes.supportRoutes
-import routes.pricingRoutes
 import routes.webVitalsRoutes
-import security.installSecurity
-import security.installUploadGuard
 import security.RateLimitConfig
 import security.SupportRateLimit
-import io.micrometer.core.instrument.Timer
-import netflow2.Netflow2Loader
-import mtproto.HttpMtprotoViewsClient
+import security.installSecurity
+import security.installUploadGuard
+import views.PostViewsService
 import webhook.OverflowMode
 import webhook.WebhookQueue
-import common.runCatchingNonFatal
-import views.PostViewsService
-import org.jetbrains.exposed.sql.update
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 fun Application.module() {
     ensureCioWorkerThreadsConfigured()
@@ -201,19 +201,21 @@ fun Application.module() {
     val netflow2Loader = Netflow2Loader(integrations.netflow2Client, netflow2Repository, netflow2Metrics)
     val mtprotoConfig = environment.mtprotoViewsConfig()
     val mtprotoEnabled = mtprotoConfig.enabled
-    val postViewsService = if (mtprotoEnabled) {
-        val baseUrl = requireNotNull(mtprotoConfig.baseUrl) { "mtproto baseUrl must be set when enabled" }
-        PostViewsService(
-            client = HttpMtprotoViewsClient(
-                client = integrations.httpClient,
-                baseUrl = baseUrl,
-                apiKey = mtprotoConfig.apiKey
-            ),
-            registry = prometheusRegistry
-        )
-    } else {
-        null
-    }
+    val postViewsService =
+        if (mtprotoEnabled) {
+            val baseUrl = requireNotNull(mtprotoConfig.baseUrl) { "mtproto baseUrl must be set when enabled" }
+            PostViewsService(
+                client =
+                HttpMtprotoViewsClient(
+                    client = integrations.httpClient,
+                    baseUrl = baseUrl,
+                    apiKey = mtprotoConfig.apiKey,
+                ),
+                registry = prometheusRegistry,
+            )
+        } else {
+            null
+        }
 
     installSecurity()
     installUploadGuard()
@@ -225,97 +227,109 @@ fun Application.module() {
     val experimentsPort = ExperimentsRepository()
     val experimentsService = ExperimentsServiceImpl(experimentsPort)
     val featureFlags = FeatureFlagsModule.install(this)
-    val services = ensureBillingServices(
-        metrics = metrics,
-        featureFlagsService = featureFlags.service,
-        adminUserIds = featureFlags.adminUserIds,
-        analyticsPort = analytics,
-        referralsPort = referrals,
-        experimentsPort = experimentsPort,
-        experimentsService = experimentsService,
-        newsConfig = newsConfig,
-        deepLinkStore = deepLinkStore,
-        deepLinkTtl = deepLinkTtl,
-    )
-    val publishJobQueue = DbPublishJobRepository(metrics = services.newsMetrics ?: NewsMetricsPort.Noop)
-    val digestScheduler = DigestSlotScheduler(
-        slots = newsConfig.antiNoise.digestSlots,
-        fallbackIntervalSeconds = newsConfig.digestMinIntervalSeconds,
-    )
-    val moderationConfig = loadModerationBotConfig(newsConfig)
-    val moderationRepository = moderationConfig?.let {
-        ModerationRepository(metrics = services.newsMetrics ?: NewsMetricsPort.Noop)
-    }
-    val moderationQueue: ModerationQueue = if (moderationConfig != null && moderationRepository != null) {
-        ModerationQueueDatabase(
-            repository = moderationRepository,
-            bot = services.telegramBot,
-            config = moderationConfig
-        )
-    } else {
-        ModerationQueue.Noop
-    }
-    val moderationHandler = if (moderationConfig != null && moderationRepository != null) {
-        ModerationBotHandler(
-            bot = services.telegramBot,
-            repository = moderationRepository,
+    val services =
+        ensureBillingServices(
+            metrics = metrics,
+            featureFlagsService = featureFlags.service,
+            adminUserIds = featureFlags.adminUserIds,
+            analyticsPort = analytics,
+            referralsPort = referrals,
+            experimentsPort = experimentsPort,
+            experimentsService = experimentsService,
             newsConfig = newsConfig,
-            config = moderationConfig,
-            publishJobQueue = publishJobQueue,
-            digestScheduler = digestScheduler,
+            deepLinkStore = deepLinkStore,
+            deepLinkTtl = deepLinkTtl,
         )
-    } else {
-        null
-    }
-    val newsScheduler = startNewsPipelineScheduler(
-        newsConfig = newsConfig,
-        services = services,
-        metrics = metrics,
-        config = appConfig,
-        deepLinkStore = services.deepLinkStore,
-        deepLinkTtl = services.deepLinkTtl,
-        moderationQueue = moderationQueue,
-        publishJobQueue = publishJobQueue,
-    )
+    val publishJobQueue = DbPublishJobRepository(metrics = services.newsMetrics ?: NewsMetricsPort.Noop)
+    val digestScheduler =
+        DigestSlotScheduler(
+            slots = newsConfig.antiNoise.digestSlots,
+            fallbackIntervalSeconds = newsConfig.digestMinIntervalSeconds,
+        )
+    val moderationConfig = loadModerationBotConfig(newsConfig)
+    val moderationRepository =
+        moderationConfig?.let {
+            ModerationRepository(metrics = services.newsMetrics ?: NewsMetricsPort.Noop)
+        }
+    val moderationQueue: ModerationQueue =
+        if (moderationConfig != null && moderationRepository != null) {
+            ModerationQueueDatabase(
+                repository = moderationRepository,
+                bot = services.telegramBot,
+                config = moderationConfig,
+            )
+        } else {
+            ModerationQueue.Noop
+        }
+    val moderationHandler =
+        if (moderationConfig != null && moderationRepository != null) {
+            ModerationBotHandler(
+                bot = services.telegramBot,
+                repository = moderationRepository,
+                newsConfig = newsConfig,
+                config = moderationConfig,
+                publishJobQueue = publishJobQueue,
+                digestScheduler = digestScheduler,
+            )
+        } else {
+            null
+        }
+    val newsScheduler =
+        startNewsPipelineScheduler(
+            newsConfig = newsConfig,
+            services = services,
+            metrics = metrics,
+            config = appConfig,
+            deepLinkStore = services.deepLinkStore,
+            deepLinkTtl = services.deepLinkTtl,
+            moderationQueue = moderationQueue,
+            publishJobQueue = publishJobQueue,
+        )
     val privacy = PrivacyModule.install(this, services.adminUserIds)
     val supportRepository = SupportRepository()
     val pricingRepository = PricingRepository()
     val pricingService = PricingService(PricingPortAdapter(pricingRepository))
-    val supportRateLimitConfig = RateLimitConfig(
-        capacity = appConfig.propertyOrNull("support.rateLimit.capacity")?.getString()?.toIntOrNull() ?: 5,
-        refillPerMinute = appConfig.propertyOrNull("support.rateLimit.refillPerMinute")?.getString()?.toIntOrNull() ?: 5
-    )
+    val capacity = appConfig.propertyOrNull("support.rateLimit.capacity")?.getString()?.toIntOrNull() ?: 5
+    val refillPerMinute = appConfig.propertyOrNull("support.rateLimit.refillPerMinute")?.getString()?.toIntOrNull() ?: 5
+    val supportRateLimitConfig =
+        RateLimitConfig(
+            capacity = capacity,
+            refillPerMinute = refillPerMinute,
+        )
     val supportRateLimiter = SupportRateLimit.get(supportRateLimitConfig, Clock.systemUTC())
 
     val environmentAllowed = appProfile == "dev" || appProfile == "staging"
     val featuresChaos = appConfig.propertyOrNull("features.chaos")?.getString()?.toBoolean() ?: false
     val chaosEnabledConfig = appConfig.propertyOrNull("chaos.enabled")?.getString()?.toBoolean() ?: false
-    val chaosConfig = ChaosConfig(
-        enabled = chaosEnabledConfig,
-        latencyMs = appConfig.propertyOrNull("chaos.latencyMs")?.getString()?.toLongOrNull() ?: 0L,
-        jitterMs = appConfig.propertyOrNull("chaos.jitterMs")?.getString()?.toLongOrNull() ?: 0L,
-        errorRate = appConfig.propertyOrNull("chaos.errorRate")?.getString()?.toDoubleOrNull() ?: 0.0,
-        pathPrefix = appConfig.propertyOrNull("chaos.pathPrefix")?.getString() ?: "/api",
-        method = appConfig.propertyOrNull("chaos.method")?.getString()?.ifBlank { "ANY" } ?: "ANY",
-        percent = appConfig.propertyOrNull("chaos.percent")?.getString()?.toIntOrNull() ?: 100
-    )
-    val chaosState = ChaosState(
-        featuresEnabled = featuresChaos,
-        environmentAllowed = environmentAllowed,
-        initial = chaosConfig
-    )
+    val chaosConfig =
+        ChaosConfig(
+            enabled = chaosEnabledConfig,
+            latencyMs = appConfig.propertyOrNull("chaos.latencyMs")?.getString()?.toLongOrNull() ?: 0L,
+            jitterMs = appConfig.propertyOrNull("chaos.jitterMs")?.getString()?.toLongOrNull() ?: 0L,
+            errorRate = appConfig.propertyOrNull("chaos.errorRate")?.getString()?.toDoubleOrNull() ?: 0.0,
+            pathPrefix = appConfig.propertyOrNull("chaos.pathPrefix")?.getString() ?: "/api",
+            method = appConfig.propertyOrNull("chaos.method")?.getString()?.ifBlank { "ANY" } ?: "ANY",
+            percent = appConfig.propertyOrNull("chaos.percent")?.getString()?.toIntOrNull() ?: 100,
+        )
+    val chaosState =
+        ChaosState(
+            featuresEnabled = featuresChaos,
+            environmentAllowed = environmentAllowed,
+            initial = chaosConfig,
+        )
     val chaosMetrics = ChaosMetrics(prometheusRegistry)
 
     val queueConfig = webhookQueueConfig()
-    val webhookQueue = WebhookQueue(
-        capacity = queueConfig.capacity,
-        mode = queueConfig.mode,
-        workers = queueConfig.workers,
-        scope = this,
-        metrics = webhookMetrics
-    ) { update ->
-        processStarsPayment(update, services.billingService, metrics, analytics, eventsCounter)
-    }
+    val webhookQueue =
+        WebhookQueue(
+            capacity = queueConfig.capacity,
+            mode = queueConfig.mode,
+            workers = queueConfig.workers,
+            scope = this,
+            metrics = webhookMetrics,
+        ) { update ->
+            processStarsPayment(update, services.billingService, metrics, analytics, eventsCounter)
+        }
     webhookQueue.start()
 
     intercept(ApplicationCallPipeline.Plugins) {
@@ -377,19 +391,21 @@ fun Application.module() {
                 return@post
             }
 
-            val rawUpdate = runCatchingNonFatal { call.receiveText() }.getOrElse {
-                call.respond(HttpStatusCode.OK)
-                return@post
-            }
+            val rawUpdate =
+                runCatchingNonFatal { call.receiveText() }.getOrElse {
+                    call.respond(HttpStatusCode.OK)
+                    return@post
+                }
 
-            val tgUpdate = runCatchingNonFatal {
-                StarsWebhookHandler.json.decodeFromString<TgUpdate>(
-                    rawUpdate
-                )
-            }.getOrElse {
-                call.respond(HttpStatusCode.OK)
-                return@post
-            }
+            val tgUpdate =
+                runCatchingNonFatal {
+                    StarsWebhookHandler.json.decodeFromString<TgUpdate>(
+                        rawUpdate,
+                    )
+                }.getOrElse {
+                    call.respond(HttpStatusCode.OK)
+                    return@post
+                }
 
             webhookQueue.offer(tgUpdate)
             call.respond(HttpStatusCode.OK)
@@ -477,20 +493,22 @@ private fun Application.ensureBillingServices(
     if (attributes.contains(Services.Key)) {
         val existing = attributes[Services.Key]
         val enriched = existing.enrich(metrics, featureFlagsService, adminUserIds)
-        val updated = enriched.copy(
-            analytics = analyticsPort,
-            referrals = referralsPort,
-            experimentsPort = experimentsPort,
-            experimentsService = experimentsService,
-            newsConfig = newsConfig,
-            deepLinkStore = deepLinkStore,
-            deepLinkTtl = deepLinkTtl,
-        )
-        val currentRoutingServices = if (attributes.contains(BillingRouteServicesKey)) {
-            attributes[BillingRouteServicesKey]
-        } else {
-            null
-        }
+        val updated =
+            enriched.copy(
+                analytics = analyticsPort,
+                referrals = referralsPort,
+                experimentsPort = experimentsPort,
+                experimentsService = experimentsService,
+                newsConfig = newsConfig,
+                deepLinkStore = deepLinkStore,
+                deepLinkTtl = deepLinkTtl,
+            )
+        val currentRoutingServices =
+            if (attributes.contains(BillingRouteServicesKey)) {
+                attributes[BillingRouteServicesKey]
+            } else {
+                null
+            }
         attributes.put(Services.Key, updated)
         attributes.put(
             BillingRouteServicesKey,
@@ -509,52 +527,64 @@ private fun Application.ensureBillingServices(
 
     val telegramBot = ensureTelegramBot()
 
-    val billingService = BillingServiceImpl(
-        repo = BillingRepositoryImpl(),
-        stars = StarsGatewayFactory.fromConfig(environment),
-        ledger = BillingLedgerRepository(),
-        defaultDurationDays = billingDefaultDuration(),
-    )
+    val billingService =
+        BillingServiceImpl(
+            repo = BillingRepositoryImpl(),
+            stars = StarsGatewayFactory.fromConfig(environment),
+            ledger = BillingLedgerRepository(),
+            defaultDurationDays = billingDefaultDuration(),
+        )
     var starsClient: StarsClient? = null
-    val botToken = environment.config.propertyOrNull("telegram.botToken")?.getString()
-        ?: System.getenv("TELEGRAM_BOT_TOKEN")
-    val botStarBalancePort: BotStarBalancePort? = botToken?.let {
-        val starBalanceConfig = starsClientConfig()
-        starsClient = StarsClient(
-            botToken = it,
-            config = starBalanceConfig,
-        )
-        val ttl = environment.config.propertyOrNull("billing.stars.balanceTtlSeconds")?.getString()?.toLongOrNull()
-        val ttlSeconds = (ttl ?: 20L).coerceAtLeast(5L)
-        val maxStaleConfig = environment.config.propertyOrNull(
-            "billing.stars.maxStaleSeconds"
-        )?.getString()?.toLongOrNull()
-        val maxStale = maxOf(ttlSeconds, (maxStaleConfig ?: 300L))
-        StarsService(
-            client = starsClient!!,
-            ttlSeconds = ttlSeconds,
-            maxStaleSeconds = maxStale,
-            meterRegistry = metrics.meterRegistry,
-        )
-    }
+    val botToken =
+        environment.config.propertyOrNull("telegram.botToken")?.getString()
+            ?: System.getenv("TELEGRAM_BOT_TOKEN")
+    val botStarBalancePort: BotStarBalancePort? =
+        botToken?.let {
+            val starBalanceConfig = starsClientConfig()
+            starsClient =
+                StarsClient(
+                    botToken = it,
+                    config = starBalanceConfig,
+                )
+            val ttl =
+                environment.config
+                    .propertyOrNull("billing.stars.balanceTtlSeconds")
+                    ?.getString()
+                    ?.toLongOrNull()
+            val ttlSeconds = (ttl ?: 20L).coerceAtLeast(5L)
+            val maxStaleConfig =
+                environment.config
+                    .propertyOrNull(
+                        "billing.stars.maxStaleSeconds",
+                    )?.getString()
+                    ?.toLongOrNull()
+            val maxStale = maxOf(ttlSeconds, (maxStaleConfig ?: 300L))
+            StarsService(
+                client = starsClient!!,
+                ttlSeconds = ttlSeconds,
+                maxStaleSeconds = maxStale,
+                meterRegistry = metrics.meterRegistry,
+            )
+        }
     val starBalancePort = ZeroStarBalancePort()
     val entitlementsService = EntitlementsService(billingService)
-    val services = Services(
-        billingService = billingService,
-        telegramBot = telegramBot,
-        featureFlags = featureFlagsService,
-        adminUserIds = adminUserIds,
-        metrics = metrics,
-        alertMetrics = AlertMetricsAdapter(metrics),
-        newsMetrics = NewsMetricsAdapter(metrics),
-        analytics = analyticsPort,
-        referrals = referralsPort,
-        experimentsPort = experimentsPort,
-        experimentsService = experimentsService,
-        newsConfig = newsConfig,
-        deepLinkStore = deepLinkStore,
-        deepLinkTtl = deepLinkTtl,
-    )
+    val services =
+        Services(
+            billingService = billingService,
+            telegramBot = telegramBot,
+            featureFlags = featureFlagsService,
+            adminUserIds = adminUserIds,
+            metrics = metrics,
+            alertMetrics = AlertMetricsAdapter(metrics),
+            newsMetrics = NewsMetricsAdapter(metrics),
+            analytics = analyticsPort,
+            referrals = referralsPort,
+            experimentsPort = experimentsPort,
+            experimentsService = experimentsService,
+            newsConfig = newsConfig,
+            deepLinkStore = deepLinkStore,
+            deepLinkTtl = deepLinkTtl,
+        )
     attributes.put(Services.Key, services)
     attributes.put(
         BillingRouteServicesKey,
@@ -578,94 +608,150 @@ private fun Application.ensureBillingServices(
 private fun Services.enrich(
     metrics: DomainMetrics,
     featureFlagsService: FeatureFlagsService,
-    adminUserIds: Set<Long>
-): Services {
-    return copy(
+    adminUserIds: Set<Long>,
+): Services =
+    copy(
         featureFlags = featureFlagsService,
         adminUserIds = adminUserIds,
         metrics = metrics,
         alertMetrics = alertMetrics ?: AlertMetricsAdapter(metrics),
-        newsMetrics = newsMetrics ?: NewsMetricsAdapter(metrics)
+        newsMetrics = newsMetrics ?: NewsMetricsAdapter(metrics),
     )
-}
 
 private fun Application.loadNewsConfig(): NewsConfig {
     val defaults = NewsDefaults.defaultConfig
     val config = environment.config
     val baseFromConfig = config.propertyOrNull("news.botDeepLinkBase")?.getString()?.trim()
-    val baseFromTelegram = config.propertyOrNull("telegram.botUsername")?.getString()?.trim()?.takeIf {
-        it.isNotEmpty()
-    }?.let { "https://t.me/$it" }
+    val baseFromTelegram =
+        config
+            .propertyOrNull("telegram.botUsername")
+            ?.getString()
+            ?.trim()
+            ?.takeIf {
+                it.isNotEmpty()
+            }?.let { "https://t.me/$it" }
     val botBase = baseFromConfig?.takeIf { it.isNotEmpty() } ?: baseFromTelegram ?: defaults.botDeepLinkBase
     val maxBytes = config.propertyOrNull("news.maxPayloadBytes")?.getString()?.toIntOrNull() ?: defaults.maxPayloadBytes
-    val channelId = config.propertyOrNull("news.channelId")?.getString()?.toLongOrNull()
-        ?: config.propertyOrNull("telegram.channelId")?.getString()?.toLongOrNull()
-        ?: defaults.channelId
+    val channelId =
+        config.propertyOrNull("news.channelId")?.getString()?.toLongOrNull()
+            ?: config.propertyOrNull("telegram.channelId")?.getString()?.toLongOrNull()
+            ?: defaults.channelId
     val digestOnly = config.propertyOrNull("news.modeDigestOnly")?.getString()?.toBooleanStrictOrNull()
-    val autopublishBreaking = config.propertyOrNull(
-        "news.modeAutopublishBreaking"
-    )?.getString()?.toBooleanStrictOrNull()
+    val autopublishBreaking =
+        config
+            .propertyOrNull(
+                "news.modeAutopublishBreaking",
+            )?.getString()
+            ?.toBooleanStrictOrNull()
     val explicitMode = NewsMode.parse(config.propertyOrNull("news.mode")?.getString())
-    val mode = explicitMode ?: when {
-        digestOnly == true -> NewsMode.DIGEST_ONLY
-        autopublishBreaking == true -> NewsMode.AUTOPUBLISH
-        else -> defaults.mode
-    }
-    val digestMinIntervalSeconds = config.propertyOrNull("news.digestMinIntervalSeconds")?.getString()?.toLongOrNull()
-        ?.coerceAtLeast(0L) ?: defaults.digestMinIntervalSeconds
-    val maxPostsPerDay = config.propertyOrNull("news.antiNoise.maxPostsPerDay")?.getString()?.toIntOrNull()
-        ?.coerceAtLeast(0) ?: defaults.antiNoise.maxPostsPerDay
-    val minIntervalBreakingMinutes = config.propertyOrNull("news.antiNoise.minIntervalBreakingMinutes")
-        ?.getString()?.toLongOrNull()?.coerceAtLeast(0L) ?: defaults.antiNoise.minIntervalBreakingMinutes
-    val digestSlots = parseDigestSlots(
-        config.propertyOrNull("news.antiNoise.digestSlots")?.getString(),
-        defaults.antiNoise.digestSlots,
-    )
-    val breakingThreshold = config.propertyOrNull("news.scoring.breakingThreshold")?.getString()?.toDoubleOrNull()
-        ?: defaults.scoring.breakingThreshold
-    val digestMinScore = config.propertyOrNull("news.scoring.digestMinScore")?.getString()?.toDoubleOrNull()
-        ?: defaults.scoring.digestMinScore
-    val minConfidenceAutopublish = config.propertyOrNull("news.scoring.minConfidenceAutopublish")?.getString()
-        ?.toDoubleOrNull() ?: defaults.scoring.minConfidenceAutopublish
-    val primaryTickers = parseTickers(
-        config.propertyOrNull("news.scoring.primaryTickers")?.getString(),
-        defaults.eventScoring.primaryTickers,
-    )
-    val primaryTickerBoost = config.propertyOrNull("news.scoring.primaryTickerBoost")?.getString()?.toDoubleOrNull()
-        ?.coerceAtLeast(1.0) ?: defaults.eventScoring.primaryTickerBoost
-    val moderationEnabled = config.propertyOrNull("news.moderation.enabled")?.getString()?.toBooleanStrictOrNull()
-        ?: defaults.moderationEnabled
-    val moderationTier0Weight = config.propertyOrNull("news.moderation.tier0Weight")?.getString()?.toIntOrNull()
-        ?: defaults.moderationTier0Weight
-    val moderationConfidenceThreshold = config.propertyOrNull("news.moderation.confidenceThreshold")?.getString()
-        ?.toDoubleOrNull() ?: defaults.moderationConfidenceThreshold
-    val moderationBreakingAgeMinutes = config.propertyOrNull("news.moderation.breakingAgeMinutes")?.getString()
-        ?.toLongOrNull() ?: defaults.moderationBreakingAgeMinutes
-    val rssBackoff = RssBackoffConfig(
-        minFailures = config.propertyOrNull("news.rssBackoff.minFailures")?.getString()?.toIntOrNull()
-            ?.coerceAtLeast(1) ?: defaults.rssBackoff.minFailures,
-        baseCooldownSeconds = config.propertyOrNull("news.rssBackoff.baseCooldownSeconds")?.getString()?.toLongOrNull()
-            ?.coerceAtLeast(1) ?: defaults.rssBackoff.baseCooldownSeconds,
-        maxCooldownSeconds = config.propertyOrNull("news.rssBackoff.maxCooldownSeconds")?.getString()?.toLongOrNull()
-            ?.coerceAtLeast(1) ?: defaults.rssBackoff.maxCooldownSeconds,
-    )
+    val mode =
+        explicitMode ?: when {
+            digestOnly == true -> NewsMode.DIGEST_ONLY
+            autopublishBreaking == true -> NewsMode.AUTOPUBLISH
+            else -> defaults.mode
+        }
+    val digestMinIntervalSeconds =
+        config
+            .propertyOrNull("news.digestMinIntervalSeconds")
+            ?.getString()
+            ?.toLongOrNull()
+            ?.coerceAtLeast(0L) ?: defaults.digestMinIntervalSeconds
+    val maxPostsPerDay =
+        config
+            .propertyOrNull("news.antiNoise.maxPostsPerDay")
+            ?.getString()
+            ?.toIntOrNull()
+            ?.coerceAtLeast(0) ?: defaults.antiNoise.maxPostsPerDay
+    val minIntervalBreakingMinutes =
+        config
+            .propertyOrNull("news.antiNoise.minIntervalBreakingMinutes")
+            ?.getString()
+            ?.toLongOrNull()
+            ?.coerceAtLeast(0L) ?: defaults.antiNoise.minIntervalBreakingMinutes
+    val digestSlots =
+        parseDigestSlots(
+            config.propertyOrNull("news.antiNoise.digestSlots")?.getString(),
+            defaults.antiNoise.digestSlots,
+        )
+    val breakingThreshold =
+        config.propertyOrNull("news.scoring.breakingThreshold")?.getString()?.toDoubleOrNull()
+            ?: defaults.scoring.breakingThreshold
+    val digestMinScore =
+        config.propertyOrNull("news.scoring.digestMinScore")?.getString()?.toDoubleOrNull()
+            ?: defaults.scoring.digestMinScore
+    val minConfidenceAutopublish =
+        config
+            .propertyOrNull("news.scoring.minConfidenceAutopublish")
+            ?.getString()
+            ?.toDoubleOrNull() ?: defaults.scoring.minConfidenceAutopublish
+    val primaryTickers =
+        parseTickers(
+            config.propertyOrNull("news.scoring.primaryTickers")?.getString(),
+            defaults.eventScoring.primaryTickers,
+        )
+    val primaryTickerBoost =
+        config
+            .propertyOrNull("news.scoring.primaryTickerBoost")
+            ?.getString()
+            ?.toDoubleOrNull()
+            ?.coerceAtLeast(1.0) ?: defaults.eventScoring.primaryTickerBoost
+    val moderationEnabled =
+        config.propertyOrNull("news.moderation.enabled")?.getString()?.toBooleanStrictOrNull()
+            ?: defaults.moderationEnabled
+    val moderationTier0Weight =
+        config.propertyOrNull("news.moderation.tier0Weight")?.getString()?.toIntOrNull()
+            ?: defaults.moderationTier0Weight
+    val moderationConfidenceThreshold =
+        config
+            .propertyOrNull("news.moderation.confidenceThreshold")
+            ?.getString()
+            ?.toDoubleOrNull() ?: defaults.moderationConfidenceThreshold
+    val moderationBreakingAgeMinutes =
+        config
+            .propertyOrNull("news.moderation.breakingAgeMinutes")
+            ?.getString()
+            ?.toLongOrNull() ?: defaults.moderationBreakingAgeMinutes
+    val rssBackoff =
+        RssBackoffConfig(
+            minFailures =
+            config
+                .propertyOrNull("news.rssBackoff.minFailures")
+                ?.getString()
+                ?.toIntOrNull()
+                ?.coerceAtLeast(1) ?: defaults.rssBackoff.minFailures,
+            baseCooldownSeconds =
+            config
+                .propertyOrNull("news.rssBackoff.baseCooldownSeconds")
+                ?.getString()
+                ?.toLongOrNull()
+                ?.coerceAtLeast(1) ?: defaults.rssBackoff.baseCooldownSeconds,
+            maxCooldownSeconds =
+            config
+                .propertyOrNull("news.rssBackoff.maxCooldownSeconds")
+                ?.getString()
+                ?.toLongOrNull()
+                ?.coerceAtLeast(1) ?: defaults.rssBackoff.maxCooldownSeconds,
+        )
     return defaults.copy(
         botDeepLinkBase = botBase,
         maxPayloadBytes = maxBytes,
         channelId = channelId,
         mode = mode,
         digestMinIntervalSeconds = digestMinIntervalSeconds,
-        antiNoise = defaults.antiNoise.copy(
+        antiNoise =
+        defaults.antiNoise.copy(
             maxPostsPerDay = maxPostsPerDay,
             minIntervalBreakingMinutes = minIntervalBreakingMinutes,
             digestSlots = digestSlots,
         ),
-        scoring = defaults.scoring.copy(
+        scoring =
+        defaults.scoring.copy(
             breakingThreshold = breakingThreshold,
             digestMinScore = digestMinScore,
             minConfidenceAutopublish = minConfidenceAutopublish,
         ),
-        eventScoring = defaults.eventScoring.copy(
+        eventScoring =
+        defaults.eventScoring.copy(
             primaryTickers = primaryTickers,
             primaryTickerBoost = primaryTickerBoost,
         ),
@@ -673,31 +759,37 @@ private fun Application.loadNewsConfig(): NewsConfig {
         moderationEnabled = moderationEnabled,
         moderationTier0Weight = moderationTier0Weight,
         moderationConfidenceThreshold = moderationConfidenceThreshold,
-        moderationBreakingAgeMinutes = moderationBreakingAgeMinutes
+        moderationBreakingAgeMinutes = moderationBreakingAgeMinutes,
     )
 }
 
-private fun parseDigestSlots(raw: String?, fallback: List<LocalTime>): List<LocalTime> {
+private fun parseDigestSlots(
+    raw: String?,
+    fallback: List<LocalTime>,
+): List<LocalTime> {
     if (raw.isNullOrBlank()) return fallback
     val formatter = DateTimeFormatter.ofPattern("H:mm")
-    return raw.split(",")
+    return raw
+        .split(",")
         .mapNotNull { value ->
             val trimmed = value.trim()
             if (trimmed.isEmpty()) return@mapNotNull null
             runCatching { LocalTime.parse(trimmed, formatter) }.getOrNull()
-        }
-        .ifEmpty { fallback }
+        }.ifEmpty { fallback }
 }
 
-private fun parseTickers(raw: String?, fallback: Set<String>): Set<String> {
+private fun parseTickers(
+    raw: String?,
+    fallback: Set<String>,
+): Set<String> {
     if (raw.isNullOrBlank()) return fallback
-    return raw.split(",")
+    return raw
+        .split(",")
         .mapNotNull { value ->
             val trimmed = value.trim()
             if (trimmed.isEmpty()) return@mapNotNull null
             trimmed.uppercase()
-        }
-        .toSet()
+        }.toSet()
         .ifEmpty { fallback }
 }
 
@@ -721,7 +813,7 @@ private fun Application.loadModerationBotConfig(newsConfig: NewsConfig): Moderat
 private class NewsPipelineScheduler(
     private val scope: CoroutineScope,
     private val job: Job,
-    private val httpClient: HttpClient
+    private val httpClient: HttpClient,
 ) {
     suspend fun stop() {
         job.cancelAndJoin()
@@ -744,15 +836,16 @@ private fun Application.startNewsPipelineScheduler(
         logger.warn("News mode HYBRID with moderation disabled; Tier1/2 items will not reach review")
     }
     val intervalRaw = config.propertyOrNull("news.pipelineIntervalSeconds")?.getString()?.toLongOrNull()
-    val intervalSeconds = if (intervalRaw == null || intervalRaw <= 0L) {
-        logger.warn(
-            "Invalid news.pipelineIntervalSeconds={}, using safe default of 60s",
-            intervalRaw ?: "null"
-        )
-        60L
-    } else {
-        intervalRaw
-    }
+    val intervalSeconds =
+        if (intervalRaw == null || intervalRaw <= 0L) {
+            logger.warn(
+                "Invalid news.pipelineIntervalSeconds={}, using safe default of 60s",
+                intervalRaw ?: "null",
+            )
+            60L
+        } else {
+            intervalRaw
+        }
     val httpClient = RssFetcher.defaultClient(newsConfig)
     val feedStateStore = createFeedStateStore(config)
     if (feedStateStore is RedisFeedStateStore) {
@@ -761,41 +854,46 @@ private fun Application.startNewsPipelineScheduler(
         }
     }
     val rssMetrics = RssFetchMetricsAdapter(metrics)
-    val fetcher = RssFetcher(
-        config = newsConfig,
-        client = httpClient,
-        stateStore = feedStateStore,
-        metrics = rssMetrics,
-    )
-    val sources = listOf(
-        CbrSource(fetcher),
-        MoexSource(fetcher)
-    )
+    val fetcher =
+        RssFetcher(
+            config = newsConfig,
+            client = httpClient,
+            stateStore = feedStateStore,
+            metrics = rssMetrics,
+        )
+    val sources =
+        listOf(
+            CbrSource(fetcher),
+            MoexSource(fetcher),
+        )
     val idempotencyStore = DbIdempotencyStore()
     val postStatsStore = DbPostStatsStore()
-    val telegramPublisher = TelegramPublisher(
-        client = PengradTelegramClient(services.telegramBot),
-        config = newsConfig,
-        postStatsStore = postStatsStore,
-        idempotencyStore = idempotencyStore,
-        metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
-    )
-    val pipeline = NewsPipeline(
-        config = newsConfig,
-        sources = sources,
-        clusterer = Clusterer(newsConfig),
-        telegramPublisher = telegramPublisher,
-        deepLinkStore = deepLinkStore,
-        deepLinkTtl = deepLinkTtl,
-        moderationQueue = moderationQueue,
-        publishJobQueue = publishJobQueue,
-        metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
-    )
-    val digestWorker = DigestPublishWorker(
-        queue = publishJobQueue,
-        publisher = telegramPublisher,
-        instanceId = UUID.randomUUID().toString(),
-    )
+    val telegramPublisher =
+        TelegramPublisher(
+            client = PengradTelegramClient(services.telegramBot),
+            config = newsConfig,
+            postStatsStore = postStatsStore,
+            idempotencyStore = idempotencyStore,
+            metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
+        )
+    val pipeline =
+        NewsPipeline(
+            config = newsConfig,
+            sources = sources,
+            clusterer = Clusterer(newsConfig),
+            telegramPublisher = telegramPublisher,
+            deepLinkStore = deepLinkStore,
+            deepLinkTtl = deepLinkTtl,
+            moderationQueue = moderationQueue,
+            publishJobQueue = publishJobQueue,
+            metrics = services.newsMetrics ?: NewsMetricsPort.Noop,
+        )
+    val digestWorker =
+        DigestPublishWorker(
+            queue = publishJobQueue,
+            publisher = telegramPublisher,
+            instanceId = UUID.randomUUID().toString(),
+        )
 
     val meterRegistry = metrics.meterRegistry
     val timer = meterRegistry.timer("news_pipeline_run_seconds")
@@ -816,34 +914,36 @@ private fun Application.startNewsPipelineScheduler(
             val sample = Timer.start(meterRegistry)
             val result = runCatchingNonFatal { pipeline.runOnce() }
             sample.stop(timer)
-            result.onSuccess { published ->
-                lastSuccess.set(Instant.now().epochSecond)
-                if (published > 0) {
-                    counterOk.increment()
-                } else {
-                    counterEmpty.increment()
+            result
+                .onSuccess { published ->
+                    lastSuccess.set(Instant.now().epochSecond)
+                    if (published > 0) {
+                        counterOk.increment()
+                    } else {
+                        counterEmpty.increment()
+                    }
+                }.onFailure { ex ->
+                    counterError.increment()
+                    logger.error("News pipeline run failed", ex)
                 }
-            }.onFailure { ex ->
-                counterError.increment()
-                logger.error("News pipeline run failed", ex)
-            }
             delay(intervalSeconds.seconds)
         }
     }
     scope.launch {
         while (isActive) {
             val result = runCatchingNonFatal { digestWorker.runOnce() }
-            result.onSuccess { published ->
-                if (published > 0) {
-                    digestPublished.increment(published.toDouble())
-                    digestRunOk.increment()
-                } else {
-                    digestRunEmpty.increment()
+            result
+                .onSuccess { published ->
+                    if (published > 0) {
+                        digestPublished.increment(published.toDouble())
+                        digestRunOk.increment()
+                    } else {
+                        digestRunEmpty.increment()
+                    }
+                }.onFailure { ex ->
+                    digestRunError.increment()
+                    logger.error("Digest worker failed", ex)
                 }
-            }.onFailure { ex ->
-                digestRunError.increment()
-                logger.error("Digest worker failed", ex)
-            }
             delay(intervalSeconds.seconds)
         }
     }
@@ -852,8 +952,9 @@ private fun Application.startNewsPipelineScheduler(
 
 private fun Application.createFeedStateStore(config: ApplicationConfig): FeedStateStore {
     val logger = LoggerFactory.getLogger("FeedStateStore")
-    val settings = readRedisSettings(config, "news.rss.redis")
-        ?: readRedisSettings(config, "deeplink.redis")
+    val settings =
+        readRedisSettings(config, "news.rss.redis")
+            ?: readRedisSettings(config, "deeplink.redis")
     if (settings == null) {
         logger.info("Feed state store: using database")
         return DbFeedStateStore()
@@ -863,8 +964,16 @@ private fun Application.createFeedStateStore(config: ApplicationConfig): FeedSta
     return client
 }
 
-private fun readRedisSettings(config: ApplicationConfig, prefix: String): RedisFeedStateSettings? {
-    val host = config.propertyOrNull("$prefix.host")?.getString()?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+private fun readRedisSettings(
+    config: ApplicationConfig,
+    prefix: String,
+): RedisFeedStateSettings? {
+    val host =
+        config
+            .propertyOrNull("$prefix.host")
+            ?.getString()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() } ?: return null
     val port = config.propertyOrNull("$prefix.port")?.getString()?.toIntOrNull() ?: 6379
     val db = config.propertyOrNull("$prefix.db")?.getString()?.toIntOrNull() ?: 0
     val password = config.propertyOrNull("$prefix.password")?.getString()?.takeIf { it.isNotBlank() }
@@ -887,9 +996,12 @@ private fun Application.starsClientConfig(): StarsClientConfig {
 }
 
 private fun Application.botBalanceRateLimiter(environment: ApplicationEnvironment): BotBalanceRateLimiter? {
-    val perMinute = environment.config.propertyOrNull(
-        "billing.stars.adminRateLimitPerMinute"
-    )?.getString()?.toIntOrNull()
+    val perMinute =
+        environment.config
+            .propertyOrNull(
+                "billing.stars.adminRateLimitPerMinute",
+            )?.getString()
+            ?.toIntOrNull()
     val capacity = (perMinute ?: 30).coerceAtLeast(1)
     return BotBalanceRateLimiter(capacity = capacity, refillPerMinute = capacity)
 }
@@ -898,7 +1010,7 @@ private data class WebhookQueueConfig(
     val capacity: Int,
     val workers: Int,
     val mode: OverflowMode,
-    val shutdownTimeout: Duration
+    val shutdownTimeout: Duration,
 )
 
 private fun Application.validateTelegramWebhookConfig(config: TelegramWebhookConfig) {
@@ -920,13 +1032,14 @@ private fun Application.webhookQueueConfig(): WebhookQueueConfig {
     val capacity = config.propertyOrNull("webhook.queue.capacity")?.getString()?.toIntOrNull() ?: 1000
     val workers = config.propertyOrNull("webhook.queue.workers")?.getString()?.toIntOrNull() ?: 4
     val overflowRaw = config.propertyOrNull("webhook.queue.overflow")?.getString().orEmpty()
-    val mode = OverflowMode.entries.firstOrNull { it.name.equals(overflowRaw, ignoreCase = true) }
-        ?: OverflowMode.DROP_OLDEST
+    val mode =
+        OverflowMode.entries.firstOrNull { it.name.equals(overflowRaw, ignoreCase = true) }
+            ?: OverflowMode.DROP_OLDEST
     return WebhookQueueConfig(
         capacity = capacity,
         workers = workers,
         mode = mode,
-        shutdownTimeout = 5.seconds
+        shutdownTimeout = 5.seconds,
     )
 }
 
@@ -937,7 +1050,7 @@ private suspend fun processStarsPayment(
     billing: BillingService,
     metrics: DomainMetrics,
     analytics: AnalyticsPort,
-    eventsCounter: EventsCounter
+    eventsCounter: EventsCounter,
 ) {
     val successfulPayment = update.message?.successful_payment ?: return
     if (!successfulPayment.currency.equals("XTR", ignoreCase = true)) {
@@ -951,13 +1064,14 @@ private suspend fun processStarsPayment(
         return
     }
 
-    val outcomeResult = billing.applySuccessfulPaymentOutcome(
-        userId = userId,
-        tier = tier,
-        amountXtr = successfulPayment.total_amount,
-        providerPaymentId = successfulPayment.provider_payment_charge_id,
-        payload = successfulPayment.invoice_payload
-    )
+    val outcomeResult =
+        billing.applySuccessfulPaymentOutcome(
+            userId = userId,
+            tier = tier,
+            amountXtr = successfulPayment.total_amount,
+            providerPaymentId = successfulPayment.provider_payment_charge_id,
+            payload = successfulPayment.invoice_payload,
+        )
 
     outcomeResult.fold(
         onSuccess = { outcome ->
@@ -966,7 +1080,7 @@ private suspend fun processStarsPayment(
                     type = "stars_payment_duplicate",
                     userId = userId,
                     source = "webhook",
-                    props = mapOf("tier" to tier.name)
+                    props = mapOf("tier" to tier.name),
                 )
                 metrics.webhookStarsDuplicate.increment()
                 webhookLogger.info("webhook-queue reason=duplicate")
@@ -975,7 +1089,7 @@ private suspend fun processStarsPayment(
                     type = "stars_payment_succeeded",
                     userId = userId,
                     source = "webhook",
-                    props = mapOf("tier" to tier.name)
+                    props = mapOf("tier" to tier.name),
                 )
                 eventsCounter.inc("stars_payment_succeeded")
                 metrics.webhookStarsSuccess.increment()
@@ -984,7 +1098,7 @@ private suspend fun processStarsPayment(
         },
         onFailure = { error ->
             webhookLogger.error("webhook-queue reason=apply_failed", error)
-        }
+        },
     )
 }
 

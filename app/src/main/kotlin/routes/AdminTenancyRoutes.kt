@@ -11,15 +11,25 @@ import kotlinx.serialization.Serializable
 import repo.TenancyRepository
 
 @Serializable
-data class CreateOrgReq(val name: String)
+data class CreateOrgReq(
+    val name: String,
+)
 
 @Serializable
-data class CreateTenantReq(val orgId: Long, val slug: String, val displayName: String)
+data class CreateTenantReq(
+    val orgId: Long,
+    val slug: String,
+    val displayName: String,
+)
 
 @Serializable
-data class AddMemberReq(val tenantId: Long, val userId: Long, val role: String)
+data class AddMemberReq(
+    val tenantId: Long,
+    val userId: Long,
+    val role: String,
+)
 
-fun Route.adminTenancyRoutes(repo: TenancyRepository) {
+fun Route.adminTenancyRoutes(@Suppress("UNUSED_PARAMETER") repo: TenancyRepository) {
     route("/api/admin/tenancy") {
         post("/org") {
             call.receive<CreateOrgReq>()

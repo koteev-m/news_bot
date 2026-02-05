@@ -1,7 +1,7 @@
 package observability
 
-import http.TraceContext as HttpTraceContext
 import kotlin.coroutines.CoroutineContext
+import http.TraceContext as HttpTraceContext
 
 typealias TraceContext = HttpTraceContext
 

@@ -11,14 +11,14 @@ import billing.model.toDomain
 import billing.model.toDto
 import billing.model.toInstantUnsafe
 import billing.model.toIsoString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 class BillingModelsTest {
     private val json = Json
@@ -82,12 +82,13 @@ class BillingModelsTest {
 
     @Test
     fun `billing plan dto serialization round trip`() {
-        val dto = BillingPlanDto(
-            tier = "PRO",
-            title = "Pro Plan",
-            priceXtr = 1999,
-            isActive = true
-        )
+        val dto =
+            BillingPlanDto(
+                tier = "PRO",
+                title = "Pro Plan",
+                priceXtr = 1999,
+                isActive = true,
+            )
         val serialized = json.encodeToString(dto)
         val deserialized = json.decodeFromString(BillingPlanDto.serializer(), serialized)
         assertEquals(dto, deserialized)
@@ -95,13 +96,14 @@ class BillingModelsTest {
 
     @Test
     fun `user subscription dto serialization round trip`() {
-        val dto = UserSubscriptionDto(
-            userId = 42L,
-            tier = "VIP",
-            status = "ACTIVE",
-            startedAt = "2024-01-01T00:00:00Z",
-            expiresAt = "2024-02-01T00:00:00Z"
-        )
+        val dto =
+            UserSubscriptionDto(
+                userId = 42L,
+                tier = "VIP",
+                status = "ACTIVE",
+                startedAt = "2024-01-01T00:00:00Z",
+                expiresAt = "2024-02-01T00:00:00Z",
+            )
         val serialized = json.encodeToString(dto)
         val deserialized = json.decodeFromString(UserSubscriptionDto.serializer(), serialized)
         assertEquals(dto, deserialized)
@@ -109,19 +111,21 @@ class BillingModelsTest {
 
     @Test
     fun `domain to dto and back`() {
-        val subscription = UserSubscription(
-            userId = 1L,
-            tier = Tier.PRO_PLUS,
-            status = SubStatus.PENDING,
-            startedAt = Instant.parse("2024-01-10T10:15:30Z"),
-            expiresAt = Instant.parse("2024-02-10T10:15:30Z")
-        )
-        val plan = BillingPlan(
-            tier = Tier.PRO_PLUS,
-            title = "Pro Plus",
-            priceXtr = Xtr(5000),
-            isActive = true
-        )
+        val subscription =
+            UserSubscription(
+                userId = 1L,
+                tier = Tier.PRO_PLUS,
+                status = SubStatus.PENDING,
+                startedAt = Instant.parse("2024-01-10T10:15:30Z"),
+                expiresAt = Instant.parse("2024-02-10T10:15:30Z"),
+            )
+        val plan =
+            BillingPlan(
+                tier = Tier.PRO_PLUS,
+                title = "Pro Plus",
+                priceXtr = Xtr(5000),
+                isActive = true,
+            )
 
         val planDto = plan.toDto()
         val planDomain = planDto.toDomain()

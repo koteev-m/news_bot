@@ -11,10 +11,11 @@ import kotlin.test.assertTrue
 class MetricsCalculationsTest {
     @Test
     fun `irr with single year cashflow equals ten percent`() {
-        val cashflows = listOf(
-            CashflowEntry(LocalDate.of(2023, 1, 1), BigDecimal("-1000")),
-            CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("1100")),
-        )
+        val cashflows =
+            listOf(
+                CashflowEntry(LocalDate.of(2023, 1, 1), BigDecimal("-1000")),
+                CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("1100")),
+            )
 
         val result = computeIrr(cashflows, LocalDate.of(2024, 1, 1), BigDecimal.ZERO)
 
@@ -25,10 +26,11 @@ class MetricsCalculationsTest {
 
     @Test
     fun `irr returns no root for same sign cashflows`() {
-        val cashflows = listOf(
-            CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("-1000")),
-            CashflowEntry(LocalDate.of(2024, 6, 1), BigDecimal("-200")),
-        )
+        val cashflows =
+            listOf(
+                CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("-1000")),
+                CashflowEntry(LocalDate.of(2024, 6, 1), BigDecimal("-200")),
+            )
 
         val result = computeIrr(cashflows, LocalDate.of(2024, 6, 1), BigDecimal.ZERO)
 
@@ -38,9 +40,10 @@ class MetricsCalculationsTest {
 
     @Test
     fun `irr returns invalid input for single cashflow`() {
-        val cashflows = listOf(
-            CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("-1000")),
-        )
+        val cashflows =
+            listOf(
+                CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("-1000")),
+            )
 
         val result = computeIrr(cashflows, LocalDate.of(2024, 1, 1), BigDecimal.ZERO)
 
@@ -50,10 +53,11 @@ class MetricsCalculationsTest {
 
     @Test
     fun `irr guard handles strange data`() {
-        val cashflows = listOf(
-            CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("-1000")),
-            CashflowEntry(LocalDate.of(2024, 1, 2), BigDecimal("1")),
-        )
+        val cashflows =
+            listOf(
+                CashflowEntry(LocalDate.of(2024, 1, 1), BigDecimal("-1000")),
+                CashflowEntry(LocalDate.of(2024, 1, 2), BigDecimal("1")),
+            )
 
         val result = computeIrr(cashflows, LocalDate.of(2024, 1, 2), BigDecimal.ZERO)
 
@@ -63,10 +67,11 @@ class MetricsCalculationsTest {
 
     @Test
     fun `twr without cashflows equals valuation growth`() {
-        val valuations = listOf(
-            ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
-            ValuationEntry(LocalDate.of(2024, 1, 2), BigDecimal("110")),
-        )
+        val valuations =
+            listOf(
+                ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
+                ValuationEntry(LocalDate.of(2024, 1, 2), BigDecimal("110")),
+            )
 
         val result = computeTwr(valuations, emptyList())
 
@@ -77,10 +82,11 @@ class MetricsCalculationsTest {
 
     @Test
     fun `twr accounts for cashflow during day`() {
-        val valuations = listOf(
-            ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
-            ValuationEntry(LocalDate.of(2024, 1, 2), BigDecimal("160")),
-        )
+        val valuations =
+            listOf(
+                ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
+                ValuationEntry(LocalDate.of(2024, 1, 2), BigDecimal("160")),
+            )
         val cashflows = listOf(CashflowEntry(LocalDate.of(2024, 1, 2), BigDecimal("-50")))
 
         val result = computeTwr(valuations, cashflows)
@@ -92,9 +98,10 @@ class MetricsCalculationsTest {
 
     @Test
     fun `twr returns insufficient data for single valuation`() {
-        val valuations = listOf(
-            ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
-        )
+        val valuations =
+            listOf(
+                ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
+            )
 
         val result = computeTwr(valuations, emptyList())
 
@@ -104,13 +111,15 @@ class MetricsCalculationsTest {
 
     @Test
     fun `twr and pnl include cashflow between valuations`() {
-        val valuations = listOf(
-            ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
-            ValuationEntry(LocalDate.of(2024, 1, 3), BigDecimal("160")),
-        )
-        val cashflows = listOf(
-            CashflowEntry(LocalDate.of(2024, 1, 2), BigDecimal("-50")),
-        )
+        val valuations =
+            listOf(
+                ValuationEntry(LocalDate.of(2024, 1, 1), BigDecimal("100")),
+                ValuationEntry(LocalDate.of(2024, 1, 3), BigDecimal("160")),
+            )
+        val cashflows =
+            listOf(
+                CashflowEntry(LocalDate.of(2024, 1, 2), BigDecimal("-50")),
+            )
 
         val twrResult = computeTwr(valuations, cashflows)
         val pnlSeries = computePnlSeries(valuations, cashflows)

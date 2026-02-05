@@ -1,11 +1,11 @@
 package portfolio.service
 
-import java.time.LocalDate
-import java.util.Locale
 import portfolio.errors.DomainResult
 import portfolio.errors.PortfolioError
 import portfolio.errors.PortfolioException
 import portfolio.model.Money
+import java.time.LocalDate
+import java.util.Locale
 
 class PricingService(
     private val moexProvider: MoexPriceProvider,
@@ -13,7 +13,10 @@ class PricingService(
     private val fxRateService: FxRateService,
     private val config: Config = Config(),
 ) {
-    suspend fun closeOrLast(instrumentId: Long, on: LocalDate): DomainResult<Money> {
+    suspend fun closeOrLast(
+        instrumentId: Long,
+        on: LocalDate,
+    ): DomainResult<Money> {
         for (priceType in priceTypes()) {
             for (provider in providers) {
                 when (val outcome = fetch(provider, priceType, instrumentId, on)) {
@@ -43,10 +46,11 @@ class PricingService(
         instrumentId: Long,
         on: LocalDate,
     ): FetchOutcome {
-        val rawResult = when (type) {
-            PriceType.CLOSE -> provider.closePrice(instrumentId, on)
-            PriceType.LAST -> provider.lastPrice(instrumentId, on)
-        }
+        val rawResult =
+            when (type) {
+                PriceType.CLOSE -> provider.closePrice(instrumentId, on)
+                PriceType.LAST -> provider.lastPrice(instrumentId, on)
+            }
 
         rawResult.exceptionOrNull()?.let { throwable ->
             val domainError = (throwable as? PortfolioException)?.error
@@ -66,7 +70,10 @@ class PricingService(
         }
     }
 
-    private suspend fun convertToBase(price: Money, on: LocalDate): DomainResult<Money> {
+    private suspend fun convertToBase(
+        price: Money,
+        on: LocalDate,
+    ): DomainResult<Money> {
         val baseCurrency = config.baseCurrency
         if (price.ccy == baseCurrency) {
             return DomainResult.success(price)
@@ -82,8 +89,7 @@ class PricingService(
         )
     }
 
-    private fun <T> failure(error: PortfolioError): DomainResult<T> =
-        DomainResult.failure(PortfolioException(error))
+    private fun <T> failure(error: PortfolioError): DomainResult<T> = DomainResult.failure(PortfolioException(error))
 
     class Config(
         val preferClosePrice: Boolean = true,
@@ -105,8 +111,14 @@ class PricingService(
     private enum class PriceType { CLOSE, LAST }
 
     private sealed interface FetchOutcome {
-        data class Success(val value: Money) : FetchOutcome
-        data class Failure(val cause: Throwable) : FetchOutcome
+        data class Success(
+            val value: Money,
+        ) : FetchOutcome
+
+        data class Failure(
+            val cause: Throwable,
+        ) : FetchOutcome
+
         object Missing : FetchOutcome
     }
 
@@ -114,8 +126,15 @@ class PricingService(
 }
 
 interface PriceProvider {
-    suspend fun closePrice(instrumentId: Long, on: LocalDate): DomainResult<Money?>
-    suspend fun lastPrice(instrumentId: Long, on: LocalDate): DomainResult<Money?>
+    suspend fun closePrice(
+        instrumentId: Long,
+        on: LocalDate,
+    ): DomainResult<Money?>
+
+    suspend fun lastPrice(
+        instrumentId: Long,
+        on: LocalDate,
+    ): DomainResult<Money?>
 }
 
 interface MoexPriceProvider : PriceProvider

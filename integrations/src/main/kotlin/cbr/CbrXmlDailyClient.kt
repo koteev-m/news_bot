@@ -35,10 +35,16 @@ class CbrXmlDailyClient(
         if (rates.isEmpty()) {
             throw HttpClientError.DeserializationError("Empty CBR XML_daily response")
         }
-        val effectiveDate = rates.first().asOf.atZone(zoneId).toLocalDate()
+        val effectiveDate =
+            rates
+                .first()
+                .asOf
+                .atZone(zoneId)
+                .toLocalDate()
         val delayed = date == null || effectiveDate != date
-        val mapped = rates.associate { rate -> rate.currencyCode.uppercase(Locale.ROOT) to rate.rateRub } +
-            (RUB to BigDecimal.ONE)
+        val mapped =
+            rates.associate { rate -> rate.currencyCode.uppercase(Locale.ROOT) to rate.rateRub } +
+                (RUB to BigDecimal.ONE)
         return CbrRatesResult(
             effectiveDate = effectiveDate,
             ratesToRub = mapped,
@@ -49,15 +55,19 @@ class CbrXmlDailyClient(
     private class LruCache<K : Any, V : Any>(
         private val maxSize: Int,
     ) {
-        private val store = object : LinkedHashMap<K, V>(16, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean = size > maxSize
-        }
+        private val store =
+            object : LinkedHashMap<K, V>(16, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean = size > maxSize
+            }
 
         @Synchronized
         fun get(key: K): V? = store[key]
 
         @Synchronized
-        fun put(key: K, value: V) {
+        fun put(
+            key: K,
+            value: V,
+        ) {
             store[key] = value
         }
     }

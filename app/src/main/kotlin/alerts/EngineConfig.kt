@@ -13,13 +13,14 @@ data class EngineConfig(
     val dailyBudgetPushMax: Int = 6,
     val hysteresisExitFactor: Double = 0.75,
     val volumeGateK: Double = 1.0,
-    val thresholds: ThresholdMatrix = ThresholdMatrix(
-        mapOf(
-            "breakout" to Thresholds(fast = 1.2, daily = 2.5),
-            "mean_revert" to Thresholds(fast = 0.8, daily = 1.8)
-        )
-    ),
-    val zoneId: java.time.ZoneId = java.time.ZoneId.systemDefault()
+    val thresholds: ThresholdMatrix =
+        ThresholdMatrix(
+            mapOf(
+                "breakout" to Thresholds(fast = 1.2, daily = 2.5),
+                "mean_revert" to Thresholds(fast = 0.8, daily = 1.8),
+            ),
+        ),
+    val zoneId: java.time.ZoneId = java.time.ZoneId.systemDefault(),
 ) {
     init {
         require(hysteresisExitFactor > 0.0 && hysteresisExitFactor < 1.0) {
@@ -39,10 +40,16 @@ data class EngineConfig(
 /**
  * Simple duration range helper.
  */
-data class DurationRange(val min: Duration, val max: Duration)
+data class DurationRange(
+    val min: Duration,
+    val max: Duration,
+)
 
 /** Quiet hours expressed as start/end hours in local time (24h clock). */
-data class QuietHours(val startHour: Int, val endHour: Int) {
+data class QuietHours(
+    val startHour: Int,
+    val endHour: Int,
+) {
     init {
         require(startHour in 0..23 && endHour in 0..23) { "hours must be within 0-23" }
         require(startHour != endHour) { "quiet hours start and end must differ" }

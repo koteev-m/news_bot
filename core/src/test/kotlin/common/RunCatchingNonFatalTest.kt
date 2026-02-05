@@ -1,12 +1,12 @@
 package common
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.runTest
 
 class RunCatchingNonFatalTest {
     @Test
@@ -32,33 +32,37 @@ class RunCatchingNonFatalTest {
     }
 
     @Test
-    fun `suspend version captures regular exceptions`() = runTest {
-        val result = runCatchingNonFatal {
-            delay(1)
-            error("boom")
-        }
+    fun `suspend version captures regular exceptions`() =
+        runTest {
+            val result =
+                runCatchingNonFatal {
+                    delay(1)
+                    error("boom")
+                }
 
-        assertTrue(result.isFailure)
-        assertEquals("boom", result.exceptionOrNull()?.message)
-    }
+            assertTrue(result.isFailure)
+            assertEquals("boom", result.exceptionOrNull()?.message)
+        }
 
     @Test
-    fun `suspend version rethrows cancellation exceptions`() = runTest {
-        assertFailsWith<CancellationException> {
-            runCatchingNonFatal {
-                delay(1)
-                throw CancellationException("cancelled")
+    fun `suspend version rethrows cancellation exceptions`() =
+        runTest {
+            assertFailsWith<CancellationException> {
+                runCatchingNonFatal {
+                    delay(1)
+                    throw CancellationException("cancelled")
+                }
             }
         }
-    }
 
     @Test
-    fun `suspend version rethrows errors`() = runTest {
-        assertFailsWith<AssertionError> {
-            runCatchingNonFatal {
-                delay(1)
-                throw AssertionError("boom")
+    fun `suspend version rethrows errors`() =
+        runTest {
+            assertFailsWith<AssertionError> {
+                runCatchingNonFatal {
+                    delay(1)
+                    throw AssertionError("boom")
+                }
             }
         }
-    }
 }

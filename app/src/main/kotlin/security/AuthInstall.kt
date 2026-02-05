@@ -30,7 +30,9 @@ fun Application.installSecurity() {
             realm = jwtConfig.realm
             verifier(verifier)
             validate { credentials ->
-                credentials.payload.subject?.takeIf { it.isNotBlank() }?.let { JWTPrincipal(credentials.payload) }
+                credentials.payload.subject
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { JWTPrincipal(credentials.payload) }
             }
         }
     }

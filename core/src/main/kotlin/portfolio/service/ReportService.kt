@@ -1,10 +1,5 @@
 package portfolio.service
 
-import java.math.BigDecimal
-import java.math.MathContext
-import java.time.Clock
-import java.time.LocalDate
-import java.util.UUID
 import portfolio.errors.DomainResult
 import portfolio.model.ContributionBreakdown
 import portfolio.model.DateRange
@@ -15,6 +10,11 @@ import portfolio.model.ReportTotals
 import portfolio.model.TopPosition
 import portfolio.model.ValuationDaily
 import portfolio.model.ValuationMethod
+import java.math.BigDecimal
+import java.math.MathContext
+import java.time.Clock
+import java.time.LocalDate
+import java.util.UUID
 
 class ReportService(
     private val storage: Storage,
@@ -25,30 +25,35 @@ class ReportService(
         portfolioId: UUID,
         range: DateRange,
     ): DomainResult<PortfolioReport> {
-        val method = storage.valuationMethod(portfolioId).fold(
-            onSuccess = { it },
-            onFailure = { return DomainResult.failure(it) },
-        )
+        val method =
+            storage.valuationMethod(portfolioId).fold(
+                onSuccess = { it },
+                onFailure = { return DomainResult.failure(it) },
+            )
 
-        val valuationRecords = storage.listValuations(portfolioId, range).fold(
-            onSuccess = { records -> records.sortedBy { it.date } },
-            onFailure = { return DomainResult.failure(it) },
-        )
+        val valuationRecords =
+            storage.listValuations(portfolioId, range).fold(
+                onSuccess = { records -> records.sortedBy { it.date } },
+                onFailure = { return DomainResult.failure(it) },
+            )
 
-        val baseline = storage.latestValuationBefore(portfolioId, range.from).fold(
-            onSuccess = { it },
-            onFailure = { return DomainResult.failure(it) },
-        )
+        val baseline =
+            storage.latestValuationBefore(portfolioId, range.from).fold(
+                onSuccess = { it },
+                onFailure = { return DomainResult.failure(it) },
+            )
 
-        val realizedTrades = storage.listRealizedPnl(portfolioId, range).fold(
-            onSuccess = { trades -> trades.sortedBy { it.tradeDate } },
-            onFailure = { return DomainResult.failure(it) },
-        )
+        val realizedTrades =
+            storage.listRealizedPnl(portfolioId, range).fold(
+                onSuccess = { trades -> trades.sortedBy { it.tradeDate } },
+                onFailure = { return DomainResult.failure(it) },
+            )
 
-        val holdings = storage.listHoldings(portfolioId, range.to).fold(
-            onSuccess = { it },
-            onFailure = { return DomainResult.failure(it) },
-        )
+        val holdings =
+            storage.listHoldings(portfolioId, range.to).fold(
+                onSuccess = { it },
+                onFailure = { return DomainResult.failure(it) },
+            )
 
         val valuations = valuationRecords.map { it.toValuationDaily() }
         val realizedEntries = realizedTrades.map { it.toEntry() }
@@ -58,18 +63,19 @@ class ReportService(
         val sectorContribution = computeContribution(holdings) { holding -> holding.sector }
         val topPositions = computeTopPositions(holdings)
 
-        val report = PortfolioReport(
-            portfolioId = portfolioId,
-            period = range,
-            valuationMethod = method,
-            valuations = valuations,
-            realized = realizedEntries,
-            totals = totals,
-            assetClassContribution = assetClassContribution,
-            sectorContribution = sectorContribution,
-            topPositions = topPositions,
-            generatedAt = clock.instant(),
-        )
+        val report =
+            PortfolioReport(
+                portfolioId = portfolioId,
+                period = range,
+                valuationMethod = method,
+                valuations = valuations,
+                realized = realizedEntries,
+                totals = totals,
+                assetClassContribution = assetClassContribution,
+                sectorContribution = sectorContribution,
+                topPositions = topPositions,
+                generatedAt = clock.instant(),
+            )
 
         return DomainResult.success(report)
     }
@@ -88,17 +94,19 @@ class ReportService(
         val total = realizedTotal + unrealizedChange
 
         val divisor = BigDecimal.valueOf(range.lengthInDays)
-        val averageAmount = if (divisor.compareTo(BigDecimal.ZERO) == 0) {
-            BigDecimal.ZERO
-        } else {
-            total.amount.divide(divisor, MATH_CONTEXT)
-        }
+        val averageAmount =
+            if (divisor.compareTo(BigDecimal.ZERO) == 0) {
+                BigDecimal.ZERO
+            } else {
+                total.amount.divide(divisor, MATH_CONTEXT)
+            }
         val average = Money.of(averageAmount, baseCurrency)
 
-        val drawdowns = buildList {
-            baseline?.let { add(it.drawdown) }
-            valuations.forEach { add(it.drawdown) }
-        }
+        val drawdowns =
+            buildList {
+                baseline?.let { add(it.drawdown) }
+                valuations.forEach { add(it.drawdown) }
+            }
         val maxDrawdown = drawdowns.minOrNull()?.let { normalize(it) } ?: BigDecimal.ZERO
 
         return ReportTotals(
@@ -126,8 +134,7 @@ class ReportService(
                 .map { (key, items) ->
                     val combined = items.fold(zero()) { acc, item -> acc + item.amount }
                     ContributionBreakdown(key, combined, null)
-                }
-                .sortedByDescending { it.amount.amount }
+                }.sortedByDescending { it.amount.amount }
         }
 
         val grouped = holdings.groupBy(selector)
@@ -138,8 +145,7 @@ class ReportService(
                     val weight = normalize(amount.amount.divide(totalValueAmount, MATH_CONTEXT))
                     ContributionBreakdown(it, amount, weight)
                 }
-            }
-            .sortedByDescending { it.amount.amount }
+            }.sortedByDescending { it.amount.amount }
     }
 
     private fun computeTopPositions(holdings: List<Storage.Holding>): List<TopPosition> {
@@ -153,11 +159,12 @@ class ReportService(
         return sorted
             .take(TOP_POSITIONS_LIMIT)
             .map { holding ->
-                val weight = if (denominator.compareTo(BigDecimal.ZERO) == 0) {
-                    null
-                } else {
-                    normalize(holding.valuation.amount.divide(denominator, MATH_CONTEXT))
-                }
+                val weight =
+                    if (denominator.compareTo(BigDecimal.ZERO) == 0) {
+                        null
+                    } else {
+                        normalize(holding.valuation.amount.divide(denominator, MATH_CONTEXT))
+                    }
                 TopPosition(
                     instrumentId = holding.instrumentId,
                     instrumentName = holding.instrumentName,
@@ -177,22 +184,24 @@ class ReportService(
         return if (stripped.scale() < 0) stripped.setScale(0) else stripped
     }
 
-    private fun Storage.ValuationRecord.toValuationDaily(): ValuationDaily = ValuationDaily(
-        date = date,
-        valueRub = value,
-        pnlDay = pnlDay,
-        pnlTotal = pnlTotal,
-        drawdown = normalize(drawdown),
-    )
+    private fun Storage.ValuationRecord.toValuationDaily(): ValuationDaily =
+        ValuationDaily(
+            date = date,
+            valueRub = value,
+            pnlDay = pnlDay,
+            pnlTotal = pnlTotal,
+            drawdown = normalize(drawdown),
+        )
 
-    private fun Storage.RealizedTrade.toEntry(): RealizedPnlEntry = RealizedPnlEntry(
-        instrumentId = instrumentId,
-        instrumentName = instrumentName,
-        tradeDate = tradeDate,
-        amount = amount,
-        assetClass = assetClass,
-        sector = sector,
-    )
+    private fun Storage.RealizedTrade.toEntry(): RealizedPnlEntry =
+        RealizedPnlEntry(
+            instrumentId = instrumentId,
+            instrumentName = instrumentName,
+            tradeDate = tradeDate,
+            amount = amount,
+            assetClass = assetClass,
+            sector = sector,
+        )
 
     interface Storage {
         suspend fun valuationMethod(portfolioId: UUID): DomainResult<ValuationMethod>

@@ -21,7 +21,9 @@ class DeepLinkRegistry(
     private val startRegex = Regex("^[A-Za-z0-9_-]{1,$startLimitSafe}$")
     private val startAppRegex = Regex("^[A-Za-z0-9_-]{1,$startAppLimitSafe}$")
 
-    sealed class Parsed(open val raw: String) {
+    sealed class Parsed(
+        open val raw: String,
+    ) {
         data class Start(
             override val raw: String,
         ) : Parsed(raw)

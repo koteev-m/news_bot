@@ -1,10 +1,10 @@
 package portfolio
 
+import portfolio.model.Money
 import java.math.BigDecimal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import portfolio.model.Money
 
 class MoneyTest {
     @Test

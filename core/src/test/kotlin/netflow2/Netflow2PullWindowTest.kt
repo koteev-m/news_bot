@@ -91,10 +91,11 @@ class Netflow2PullWindowTest {
 
     @Test
     fun `converts to Moex inclusive parameters`() {
-        val window = Netflow2PullWindow(
-            fromInclusive = LocalDate.of(2024, 1, 1),
-            tillExclusive = LocalDate.of(2024, 2, 1),
-        )
+        val window =
+            Netflow2PullWindow(
+                fromInclusive = LocalDate.of(2024, 1, 1),
+                tillExclusive = LocalDate.of(2024, 2, 1),
+            )
 
         val (fromParam, tillParam) = window.toMoexQueryParams()
 

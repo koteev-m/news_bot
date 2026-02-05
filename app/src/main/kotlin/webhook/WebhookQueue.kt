@@ -1,9 +1,6 @@
 package webhook
 
 import billing.TgUpdate
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.max
-import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -12,6 +9,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import observability.WebhookMetrics
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.max
+import kotlin.time.Duration
 
 enum class OverflowMode { DROP_OLDEST, DROP_LATEST }
 
@@ -21,7 +21,7 @@ class WebhookQueue(
     private val workers: Int,
     private val scope: CoroutineScope,
     private val metrics: WebhookMetrics,
-    private val handler: suspend (TgUpdate) -> Unit
+    private val handler: suspend (TgUpdate) -> Unit,
 ) {
     private val logger = LoggerFactory.getLogger(WebhookQueue::class.java)
     private val channel: Channel<TgUpdate> = Channel(capacity)
@@ -57,34 +57,36 @@ class WebhookQueue(
             return
         }
         repeat(workers) {
-            val job = scope.launch {
-                for (update in channel) {
-                    decrementQueueSize()
-                    val sample = metrics.startSample()
-                    try {
-                        handler(update)
-                    } catch (ce: CancellationException) {
-                        throw ce
-                    } catch (err: Error) {
-                        throw err
-                    } catch (t: Throwable) {
-                        logger.error("webhook-queue worker failed", t)
-                    } finally {
-                        metrics.processed.increment()
-                        sample.stop(metrics.handleTimer)
+            val job =
+                scope.launch {
+                    for (update in channel) {
+                        decrementQueueSize()
+                        val sample = metrics.startSample()
+                        try {
+                            handler(update)
+                        } catch (ce: CancellationException) {
+                            throw ce
+                        } catch (err: Error) {
+                            throw err
+                        } catch (t: Throwable) {
+                            logger.error("webhook-queue worker failed", t)
+                        } finally {
+                            metrics.processed.increment()
+                            sample.stop(metrics.handleTimer)
+                        }
                     }
                 }
-            }
             jobs += job
         }
     }
 
     suspend fun shutdown(timeout: Duration) {
         channel.close()
-        val completed = withTimeoutOrNull(timeout) {
-            jobs.forEach { it.join() }
-            true
-        }
+        val completed =
+            withTimeoutOrNull(timeout) {
+                jobs.forEach { it.join() }
+                true
+            }
         if (completed != true) {
             jobs.forEach { it.cancel() }
         }

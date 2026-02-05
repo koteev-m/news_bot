@@ -1,32 +1,33 @@
 package repo.mapper
 
+import repo.model.InstrumentUpdate
+import repo.model.NewInstrument
+import repo.model.NewInstrumentAlias
+import repo.tables.InstrumentAliasesTable
+import repo.tables.InstrumentsTable
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import repo.model.InstrumentUpdate
-import repo.model.NewInstrument
-import repo.model.NewInstrumentAlias
-import repo.tables.InstrumentAliasesTable
-import repo.tables.InstrumentsTable
 
 class InstrumentMapperTest {
     @Test
     fun `maps result row to instrument entity`() {
         val createdAt = Instant.parse("2024-05-15T09:00:00Z")
-        val row = testResultRow(
-            InstrumentsTable.instrumentId to 10L,
-            InstrumentsTable.clazz to "stock",
-            InstrumentsTable.exchange to "MOEX",
-            InstrumentsTable.board to "TQBR",
-            InstrumentsTable.symbol to "SBER",
-            InstrumentsTable.isin to "RU0009029540",
-            InstrumentsTable.cgId to "cg-123",
-            InstrumentsTable.currency to "RUB",
-            InstrumentsTable.createdAt to OffsetDateTime.ofInstant(createdAt, ZoneOffset.UTC),
-        )
+        val row =
+            testResultRow(
+                InstrumentsTable.instrumentId to 10L,
+                InstrumentsTable.clazz to "stock",
+                InstrumentsTable.exchange to "MOEX",
+                InstrumentsTable.board to "TQBR",
+                InstrumentsTable.symbol to "SBER",
+                InstrumentsTable.isin to "RU0009029540",
+                InstrumentsTable.cgId to "cg-123",
+                InstrumentsTable.currency to "RUB",
+                InstrumentsTable.createdAt to OffsetDateTime.ofInstant(createdAt, ZoneOffset.UTC),
+            )
 
         val entity = row.toInstrumentEntity()
 
@@ -44,16 +45,17 @@ class InstrumentMapperTest {
     @Test
     fun `maps new instrument to column values`() {
         val createdAt = Instant.parse("2024-05-15T09:00:00Z")
-        val payload = NewInstrument(
-            clazz = "bond",
-            exchange = "NYSE",
-            board = null,
-            symbol = "TSLA",
-            isin = null,
-            cgId = null,
-            currency = "USD",
-            createdAt = createdAt,
-        )
+        val payload =
+            NewInstrument(
+                clazz = "bond",
+                exchange = "NYSE",
+                board = null,
+                symbol = "TSLA",
+                isin = null,
+                cgId = null,
+                currency = "USD",
+                createdAt = createdAt,
+            )
 
         val values = payload.toColumnValues()
 
@@ -80,12 +82,13 @@ class InstrumentMapperTest {
 
     @Test
     fun `maps instrument alias`() {
-        val row = testResultRow(
-            InstrumentAliasesTable.aliasId to 5L,
-            InstrumentAliasesTable.instrumentId to 10L,
-            InstrumentAliasesTable.alias to "SBERP",
-            InstrumentAliasesTable.sourceCol to "manual",
-        )
+        val row =
+            testResultRow(
+                InstrumentAliasesTable.aliasId to 5L,
+                InstrumentAliasesTable.instrumentId to 10L,
+                InstrumentAliasesTable.alias to "SBERP",
+                InstrumentAliasesTable.sourceCol to "manual",
+            )
 
         val alias = row.toInstrumentAliasEntity()
 

@@ -1,8 +1,8 @@
 package portfolio.model
 
-import java.math.BigDecimal
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
+import java.math.BigDecimal
 
 @Serializable
 data class PositionView(

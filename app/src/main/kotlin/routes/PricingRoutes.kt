@@ -2,6 +2,7 @@ package routes
 
 import ab.ExperimentsService
 import analytics.AnalyticsPort
+import common.runCatchingNonFatal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.request.receive
@@ -17,7 +18,6 @@ import repo.PaywallCopy
 import repo.PriceOverride
 import repo.PricingRepository
 import security.userIdOrNull
-import common.runCatchingNonFatal
 
 @Serializable
 data class OverrideUpsertRequest(
@@ -38,7 +38,10 @@ data class CopyUpsertRequest(
 )
 
 @Serializable
-data class CtaClickRequest(val plan: String, val variant: String)
+data class CtaClickRequest(
+    val plan: String,
+    val variant: String,
+)
 
 fun Route.pricingRoutes(
     experiments: ExperimentsService,
@@ -56,7 +59,8 @@ fun Route.pricingRoutes(
             type = "paywall_view",
             userId = userId,
             source = "api",
-            props = mapOf(
+            props =
+            mapOf(
                 "copy_variant" to copyVariant,
                 "price_variant" to priceVariant,
             ),
@@ -72,7 +76,8 @@ fun Route.pricingRoutes(
             type = "paywall_cta_click",
             userId = userId,
             source = "api",
-            props = mapOf(
+            props =
+            mapOf(
                 "plan" to body.plan,
                 "variant" to body.variant,
             ),
@@ -82,7 +87,10 @@ fun Route.pricingRoutes(
     }
 }
 
-fun Route.adminPricingRoutes(repository: PricingRepository, adminUserIds: Set<Long>) {
+fun Route.adminPricingRoutes(
+    repository: PricingRepository,
+    adminUserIds: Set<Long>,
+) {
     route("/api/admin/pricing") {
         post("/override") {
             val userId = call.userIdOrNull?.toLongOrNull() ?: return@post call.respondUnauthorized()
@@ -109,13 +117,14 @@ fun Route.adminPricingRoutes(repository: PricingRepository, adminUserIds: Set<Lo
                 call.respondBadRequest(listOf("priceXtr must be non-negative"))
                 return@post
             }
-            val override = PriceOverride(
-                key = request.key,
-                variant = normalizedVariant,
-                tier = normalizedTier,
-                priceXtr = request.priceXtr,
-                starsPackage = request.starsPackage,
-            )
+            val override =
+                PriceOverride(
+                    key = request.key,
+                    variant = normalizedVariant,
+                    tier = normalizedTier,
+                    priceXtr = request.priceXtr,
+                    starsPackage = request.starsPackage,
+                )
             repository.upsertOverride(override)
             call.respond(HttpStatusCode.NoContent)
         }
@@ -136,13 +145,14 @@ fun Route.adminPricingRoutes(repository: PricingRepository, adminUserIds: Set<Lo
                 call.respondBadRequest(listOf("variant must be one of ${COPY_VARIANTS.joinToString()}"))
                 return@post
             }
-            val copy = PaywallCopy(
-                key = request.key,
-                variant = normalizedVariant,
-                headingEn = request.headingEn.trim(),
-                subEn = request.subEn.trim(),
-                ctaEn = request.ctaEn.trim(),
-            )
+            val copy =
+                PaywallCopy(
+                    key = request.key,
+                    variant = normalizedVariant,
+                    headingEn = request.headingEn.trim(),
+                    subEn = request.subEn.trim(),
+                    ctaEn = request.ctaEn.trim(),
+                )
             repository.upsertCopy(copy)
             call.respond(HttpStatusCode.NoContent)
         }

@@ -1,21 +1,28 @@
 package billing
 
-import io.ktor.server.application.*
-import io.ktor.server.request.*
-import io.ktor.server.response.*
-import io.ktor.http.*
-import io.ktor.server.routing.*
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.call
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
+import kotlinx.serialization.Serializable
 import tenancy.TenantContextKey
 import java.time.Instant
-import kotlinx.serialization.Serializable
 
-@Serializable data class UsageIngestReq(val metric: String, val quantity: Double, val occurredAt: String? = null, val dedupKey: String? = null)
+@Serializable data class UsageIngestReq(
+    val metric: String,
+    val quantity: Double,
+    val occurredAt: String? = null,
+    val dedupKey: String? = null,
+)
 
 @Serializable data class InvoiceRequest(
     val tenantId: Long? = null,
     val from: String,
     val to: String,
-    val taxRate: Double = 0.0
+    val taxRate: Double = 0.0,
 )
 
 fun Route.usageRoutes(service: UsageService) {
@@ -23,15 +30,16 @@ fun Route.usageRoutes(service: UsageService) {
         post("/ingest") {
             val ctx = call.attributes[TenantContextKey]
             val req = call.receive<UsageIngestReq>()
-            val id = service.recordEvent(
-                UsageEvent(
-                    tenantId = ctx.tenant.tenantId,
-                    metric = req.metric,
-                    quantity = req.quantity,
-                    occurredAt = req.occurredAt?.let { Instant.parse(it) } ?: Instant.now(),
-                    dedupKey = req.dedupKey
+            val id =
+                service.recordEvent(
+                    UsageEvent(
+                        tenantId = ctx.tenant.tenantId,
+                        metric = req.metric,
+                        quantity = req.quantity,
+                        occurredAt = req.occurredAt?.let { Instant.parse(it) } ?: Instant.now(),
+                        dedupKey = req.dedupKey,
+                    ),
                 )
-            )
             call.respond(HttpStatusCode.Accepted, mapOf("eventId" to id))
         }
     }

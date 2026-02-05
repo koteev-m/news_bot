@@ -26,12 +26,16 @@ import org.slf4j.LoggerFactory
 class HttpMtprotoViewsClient(
     private val client: HttpClient,
     baseUrl: String,
-    private val apiKey: String? = null
+    private val apiKey: String? = null,
 ) : ChannelViewsClient {
     private val endpoint: String = buildEndpoint(baseUrl)
     private val logger = LoggerFactory.getLogger(HttpMtprotoViewsClient::class.java)
 
-    override suspend fun getViews(channel: String, ids: List<Int>, increment: Boolean): Map<Int, Long> {
+    override suspend fun getViews(
+        channel: String,
+        ids: List<Int>,
+        increment: Boolean,
+    ): Map<Int, Long> {
         val normalizedChannel = normalizeChannel(channel)
         val normalizedIds = normalizeIds(ids)
         if (normalizedIds.isEmpty()) {
@@ -39,24 +43,26 @@ class HttpMtprotoViewsClient(
         }
 
         val startedAt = System.nanoTime()
-        val request = MtprotoViewsRequest(
-            channel = normalizedChannel,
-            ids = normalizedIds,
-            increment = increment
-        )
+        val request =
+            MtprotoViewsRequest(
+                channel = normalizedChannel,
+                ids = normalizedIds,
+                increment = increment,
+            )
 
-        val response = try {
-            client.post(endpoint) {
-                header(HttpHeaders.ContentType, ContentType.Application.Json)
-                apiKey?.takeIf { it.isNotBlank() }?.let { header(API_KEY_HEADER, it) }
-                setBody(request)
+        val response =
+            try {
+                client.post(endpoint) {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json)
+                    apiKey?.takeIf { it.isNotBlank() }?.let { header(API_KEY_HEADER, it) }
+                    setBody(request)
+                }
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                val durationMs = elapsedMs(startedAt)
+                val mapped = mapError(normalizedChannel, normalizedIds.size, durationMs, t)
+                throw mapped
             }
-        } catch (t: Throwable) {
-            rethrowIfFatal(t)
-            val durationMs = elapsedMs(startedAt)
-            val mapped = mapError(normalizedChannel, normalizedIds.size, durationMs, t)
-            throw mapped
-        }
 
         val durationMs = elapsedMs(startedAt)
         if (!response.status.isSuccess()) {
@@ -65,12 +71,12 @@ class HttpMtprotoViewsClient(
                 normalizedChannel,
                 normalizedIds.size,
                 response.status.value,
-                durationMs
+                durationMs,
             )
             throw MtprotoViewsClientError.HttpStatusError(
                 status = response.status,
                 message = "HTTP ${response.status.value} from MTProto gateway",
-                bodySnippet = runCatchingNonFatal { response.bodyAsText() }.getOrNull()
+                bodySnippet = runCatchingNonFatal { response.bodyAsText() }.getOrNull(),
             )
         }
 
@@ -81,7 +87,7 @@ class HttpMtprotoViewsClient(
             normalizedChannel,
             normalizedIds.size,
             response.status.value,
-            durationMs
+            durationMs,
         )
         return views
     }
@@ -94,72 +100,86 @@ class HttpMtprotoViewsClient(
         return if (trimmed.startsWith("@")) trimmed else "@$trimmed"
     }
 
-    private fun normalizeIds(ids: List<Int>): List<Int> {
-        return ids.asSequence()
+    private fun normalizeIds(ids: List<Int>): List<Int> =
+        ids
+            .asSequence()
             .filter { it > 0 }
             .distinct()
             .take(MAX_IDS)
             .toList()
-    }
 
     private fun parseViews(payload: JsonElement): Map<Int, Long> {
-        val root = payload as? JsonObject
-            ?: throw MtprotoViewsClientError.DeserializationError("Expected JSON object for MTProto views")
-        val viewsObject = when (val views = root["views"]) {
-            null -> root
-            is JsonObject -> views
-            else -> throw MtprotoViewsClientError.DeserializationError("Expected 'views' to be a JSON object")
-        }
-
-        return viewsObject.entries.mapNotNull { (key, value) ->
-            val id = key.toIntOrNull()
-            val count = (value as? JsonPrimitive)?.longOrNull
-            if (id == null || count == null) {
-                null
-            } else {
-                id to count
+        val root =
+            payload as? JsonObject
+                ?: throw MtprotoViewsClientError.DeserializationError("Expected JSON object for MTProto views")
+        val viewsObject =
+            when (val views = root["views"]) {
+                null -> root
+                is JsonObject -> views
+                else -> throw MtprotoViewsClientError.DeserializationError("Expected 'views' to be a JSON object")
             }
-        }.toMap()
+
+        return viewsObject.entries
+            .mapNotNull { (key, value) ->
+                val id = key.toIntOrNull()
+                val count = (value as? JsonPrimitive)?.longOrNull
+                if (id == null || count == null) {
+                    null
+                } else {
+                    id to count
+                }
+            }.toMap()
     }
 
     private suspend fun mapError(
         channel: String,
         idsCount: Int,
         durationMs: Long,
-        t: Throwable
+        t: Throwable,
     ): MtprotoViewsClientError {
-        val error = when (t) {
-            is ResponseException -> {
-                val snippet = runCatchingNonFatal { t.response.bodyAsText() }.getOrNull()
-                HttpClientError.httpStatusError(t.response.status, endpoint, snippet, t)
+        val error =
+            when (t) {
+                is ResponseException -> {
+                    val snippet = runCatchingNonFatal { t.response.bodyAsText() }.getOrNull()
+                    HttpClientError.httpStatusError(t.response.status, endpoint, snippet, t)
+                }
+                else -> t.toHttpClientError()
             }
-            else -> t.toHttpClientError()
-        }
         val status = (error as? HttpClientError.HttpStatusError)?.status?.value
         logger.warn(
             "MTProto views request failed channel={}, ids={}, status={}, latencyMs={}",
             channel,
             idsCount,
             status,
-            durationMs
+            durationMs,
         )
         return when (error) {
-            is HttpClientError.HttpStatusError -> MtprotoViewsClientError.HttpStatusError(
-                status = error.status,
-                message = error.message ?: "HTTP ${error.status.value} from MTProto gateway",
-                bodySnippet = error.bodySnippet
-            )
+            is HttpClientError.HttpStatusError ->
+                MtprotoViewsClientError.HttpStatusError(
+                    status = error.status,
+                    message = error.message ?: "HTTP ${error.status.value} from MTProto gateway",
+                    bodySnippet = error.bodySnippet,
+                )
             is HttpClientError.TimeoutError -> MtprotoViewsClientError.TimeoutError(error.message ?: "timeout", error)
-            is HttpClientError.NetworkError -> MtprotoViewsClientError.NetworkError(error.message ?: "network error", error)
-            is HttpClientError.DeserializationError -> MtprotoViewsClientError.DeserializationError(
-                error.message ?: "deserialization error",
-                error
-            )
-            is HttpClientError.ValidationError -> MtprotoViewsClientError.ValidationError(error.message ?: "validation error")
-            is HttpClientError.UnexpectedError -> MtprotoViewsClientError.UnexpectedError(
-                error.message ?: "unexpected error",
-                error
-            )
+            is HttpClientError.NetworkError ->
+                MtprotoViewsClientError.NetworkError(
+                    error.message ?: "network error",
+                    error,
+                )
+            is HttpClientError.DeserializationError ->
+                MtprotoViewsClientError.DeserializationError(
+                    error.message ?: "deserialization error",
+                    error,
+                )
+            is HttpClientError.ValidationError ->
+                MtprotoViewsClientError.ValidationError(
+                    error.message ?: "validation error",
+                )
+            is HttpClientError.UnexpectedError ->
+                MtprotoViewsClientError.UnexpectedError(
+                    error.message ?: "unexpected error",
+                    error,
+                )
         }
     }
 
@@ -177,7 +197,7 @@ class HttpMtprotoViewsClient(
     private data class MtprotoViewsRequest(
         val channel: String,
         val ids: List<Int>,
-        val increment: Boolean
+        val increment: Boolean,
     )
 
     private companion object {
@@ -188,15 +208,37 @@ class HttpMtprotoViewsClient(
     }
 }
 
-sealed class MtprotoViewsClientError(message: String, cause: Throwable? = null) : RuntimeException(message, cause) {
-    class ValidationError(message: String) : MtprotoViewsClientError(message)
-    class TimeoutError(message: String, cause: Throwable) : MtprotoViewsClientError(message, cause)
-    class NetworkError(message: String, cause: Throwable) : MtprotoViewsClientError(message, cause)
-    class DeserializationError(message: String, cause: Throwable? = null) : MtprotoViewsClientError(message, cause)
-    class UnexpectedError(message: String, cause: Throwable) : MtprotoViewsClientError(message, cause)
+sealed class MtprotoViewsClientError(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
+    class ValidationError(
+        message: String,
+    ) : MtprotoViewsClientError(message)
+
+    class TimeoutError(
+        message: String,
+        cause: Throwable,
+    ) : MtprotoViewsClientError(message, cause)
+
+    class NetworkError(
+        message: String,
+        cause: Throwable,
+    ) : MtprotoViewsClientError(message, cause)
+
+    class DeserializationError(
+        message: String,
+        cause: Throwable? = null,
+    ) : MtprotoViewsClientError(message, cause)
+
+    class UnexpectedError(
+        message: String,
+        cause: Throwable,
+    ) : MtprotoViewsClientError(message, cause)
+
     class HttpStatusError(
         val status: HttpStatusCode,
         message: String,
-        val bodySnippet: String? = null
+        val bodySnippet: String? = null,
     ) : MtprotoViewsClientError(message)
 }

@@ -1,13 +1,15 @@
 package alerts.settings
 
+import kotlinx.serialization.Serializable
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import kotlinx.serialization.Serializable
 
 @JvmInline
 @Serializable
-value class Percent(val value: Double) {
+value class Percent(
+    val value: Double,
+) {
     init {
         require(value.isFinite()) { "Percent value must be finite" }
     }
@@ -16,39 +18,39 @@ value class Percent(val value: Double) {
 @Serializable
 data class QuietHours(
     val start: String,
-    val end: String
+    val end: String,
 )
 
 @Serializable
 data class Budget(
-    val maxPushesPerDay: Int
+    val maxPushesPerDay: Int,
 )
 
 @Serializable
 data class Hysteresis(
     val enterPct: Percent,
-    val exitPct: Percent
+    val exitPct: Percent,
 )
 
 @Serializable
 data class Thresholds(
     val pctFast: Percent,
     val pctDay: Percent,
-    val volMultFast: Double? = null
+    val volMultFast: Double? = null,
 )
 
 @Serializable
 data class MatrixV11(
     val portfolioDayPct: Percent,
     val portfolioDrawdown: Percent,
-    val perClass: Map<String, Thresholds>
+    val perClass: Map<String, Thresholds>,
 )
 
 @Serializable
 data class DynamicScale(
     val enabled: Boolean,
     val min: Double,
-    val max: Double
+    val max: Double,
 )
 
 @Serializable
@@ -58,33 +60,33 @@ data class AlertsConfig(
     val hysteresis: Hysteresis,
     val cooldownMinutes: Int,
     val dynamic: DynamicScale,
-    val matrix: MatrixV11
+    val matrix: MatrixV11,
 )
 
 @Serializable
 data class QuietHoursPatch(
     val start: String? = null,
-    val end: String? = null
+    val end: String? = null,
 )
 
 @Serializable
 data class HysteresisPatch(
     val enterPct: Double? = null,
-    val exitPct: Double? = null
+    val exitPct: Double? = null,
 )
 
 @Serializable
 data class DynamicPatch(
     val enabled: Boolean? = null,
     val min: Double? = null,
-    val max: Double? = null
+    val max: Double? = null,
 )
 
 @Serializable
 data class ThresholdsPatch(
     val pctFast: Double? = null,
     val pctDay: Double? = null,
-    val volMultFast: Double? = null
+    val volMultFast: Double? = null,
 )
 
 @Serializable
@@ -94,35 +96,39 @@ data class AlertsOverridePatch(
     val quietHours: QuietHoursPatch? = null,
     val hysteresis: HysteresisPatch? = null,
     val dynamic: DynamicPatch? = null,
-    val thresholds: Map<String, ThresholdsPatch>? = null
+    val thresholds: Map<String, ThresholdsPatch>? = null,
 )
 
 fun AlertsConfig.merge(patch: AlertsOverridePatch): AlertsConfig {
-    val mergedQuiet = patch.quietHours?.let { overrides ->
-        QuietHours(
-            start = overrides.start ?: quiet.start,
-            end = overrides.end ?: quiet.end
-        )
-    } ?: quiet
+    val mergedQuiet =
+        patch.quietHours?.let { overrides ->
+            QuietHours(
+                start = overrides.start ?: quiet.start,
+                end = overrides.end ?: quiet.end,
+            )
+        } ?: quiet
 
-    val mergedBudget = patch.budgetPerDay?.let { value ->
-        Budget(maxPushesPerDay = value)
-    } ?: budget
+    val mergedBudget =
+        patch.budgetPerDay?.let { value ->
+            Budget(maxPushesPerDay = value)
+        } ?: budget
 
-    val mergedHysteresis = patch.hysteresis?.let { overrides ->
-        Hysteresis(
-            enterPct = overrides.enterPct?.let(::Percent) ?: hysteresis.enterPct,
-            exitPct = overrides.exitPct?.let(::Percent) ?: hysteresis.exitPct
-        )
-    } ?: hysteresis
+    val mergedHysteresis =
+        patch.hysteresis?.let { overrides ->
+            Hysteresis(
+                enterPct = overrides.enterPct?.let(::Percent) ?: hysteresis.enterPct,
+                exitPct = overrides.exitPct?.let(::Percent) ?: hysteresis.exitPct,
+            )
+        } ?: hysteresis
 
-    val mergedDynamic = patch.dynamic?.let { overrides ->
-        DynamicScale(
-            enabled = overrides.enabled ?: dynamic.enabled,
-            min = overrides.min ?: dynamic.min,
-            max = overrides.max ?: dynamic.max
-        )
-    } ?: dynamic
+    val mergedDynamic =
+        patch.dynamic?.let { overrides ->
+            DynamicScale(
+                enabled = overrides.enabled ?: dynamic.enabled,
+                min = overrides.min ?: dynamic.min,
+                max = overrides.max ?: dynamic.max,
+            )
+        } ?: dynamic
 
     val mergedThresholds = mergeThresholds(matrix.perClass, patch.thresholds)
 
@@ -134,11 +140,12 @@ fun AlertsConfig.merge(patch: AlertsOverridePatch): AlertsConfig {
         hysteresis = mergedHysteresis,
         cooldownMinutes = mergedCooldown,
         dynamic = mergedDynamic,
-        matrix = MatrixV11(
+        matrix =
+        MatrixV11(
             portfolioDayPct = matrix.portfolioDayPct,
             portfolioDrawdown = matrix.portfolioDrawdown,
-            perClass = mergedThresholds
-        )
+            perClass = mergedThresholds,
+        ),
     )
 }
 
@@ -225,7 +232,7 @@ fun AlertsOverridePatch.validate(): List<String> {
 
 private fun mergeThresholds(
     defaults: Map<String, Thresholds>,
-    overrides: Map<String, ThresholdsPatch>?
+    overrides: Map<String, ThresholdsPatch>?,
 ): Map<String, Thresholds> {
     if (overrides.isNullOrEmpty()) {
         return defaults
@@ -237,23 +244,23 @@ private fun mergeThresholds(
         val pctDay = patch.pctDay?.let(::Percent) ?: base?.pctDay
         val volMult = patch.volMultFast ?: base?.volMultFast
         if (pctFast != null && pctDay != null) {
-            result[key] = Thresholds(
-                pctFast = pctFast,
-                pctDay = pctDay,
-                volMultFast = volMult
-            )
+            result[key] =
+                Thresholds(
+                    pctFast = pctFast,
+                    pctDay = pctDay,
+                    volMultFast = volMult,
+                )
         }
     }
     return result
 }
 
-private fun String.isValidTime(): Boolean {
-    return try {
+private fun String.isValidTime(): Boolean =
+    try {
         LocalTime.parse(this, TIME_FORMATTER)
         true
     } catch (_: DateTimeParseException) {
         false
     }
-}
 
 private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")

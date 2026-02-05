@@ -13,7 +13,6 @@ class StarsService(
     private val maxStaleSeconds: Long? = null,
     meterRegistry: MeterRegistry? = null,
 ) : BotStarBalancePort {
-
     private val logger = LoggerFactory.getLogger(StarsService::class.java)
 
     @Volatile
@@ -27,28 +26,31 @@ class StarsService(
     private val legacyTimer: Timer? = registry?.let { Timer.builder(StarsMetrics.TIMER_LEGACY).register(it) }
 
     @Suppress("unused")
-    private val rateLimitWindowGauge = registry?.gauge(
-        StarsMetrics.GAUGE_RATE_LIMIT_REMAINING,
-        this,
-    ) { svc ->
-        val remaining = svc.rateLimitedUntilEpochSeconds - svc.nowEpochSeconds()
-        remaining.coerceAtLeast(0).toDouble()
-    }
+    private val rateLimitWindowGauge =
+        registry?.gauge(
+            StarsMetrics.GAUGE_RATE_LIMIT_REMAINING,
+            this,
+        ) { svc ->
+            val remaining = svc.rateLimitedUntilEpochSeconds - svc.nowEpochSeconds()
+            remaining.coerceAtLeast(0).toDouble()
+        }
 
     @Suppress("unused")
-    private val cacheAgeGauge = registry?.gauge(
-        StarsMetrics.GAUGE_CACHE_AGE,
-        this,
-    ) { svc ->
-        val cached = svc.cache ?: return@gauge 0.0
-        cached.ageSeconds().toDouble()
-    }
+    private val cacheAgeGauge =
+        registry?.gauge(
+            StarsMetrics.GAUGE_CACHE_AGE,
+            this,
+        ) { svc ->
+            val cached = svc.cache ?: return@gauge 0.0
+            cached.ageSeconds().toDouble()
+        }
 
     @Suppress("unused")
-    private val cacheTtlGauge = registry?.gauge(
-        StarsMetrics.GAUGE_CACHE_TTL,
-        this,
-    ) { _ -> ttlSeconds.toDouble() }
+    private val cacheTtlGauge =
+        registry?.gauge(
+            StarsMetrics.GAUGE_CACHE_TTL,
+            this,
+        ) { _ -> ttlSeconds.toDouble() }
 
     override suspend fun getBotStarBalance(): BotStarBalanceResult {
         cache?.takeIf { !it.isExpired(ttlSeconds) }?.let {
@@ -65,6 +67,7 @@ class StarsService(
         }
     }
 
+    @Suppress("ThrowsCount")
     private suspend fun fetchWithMetricsAndFallback(): BotStarBalanceResult {
         val sample = registry?.let { Timer.start(it) }
         val cached = cache
@@ -85,7 +88,7 @@ class StarsService(
                 return BotStarBalanceResult(
                     it.balance.copy(stale = true),
                     CacheState.STALE,
-                    cacheAgeSeconds = ageSeconds
+                    cacheAgeSeconds = ageSeconds,
                 )
             }
             recordOutcome(StarsOutcomes.RATE_LIMITED)
@@ -126,7 +129,7 @@ class StarsService(
                 return BotStarBalanceResult(
                     it.balance.copy(stale = true),
                     CacheState.STALE,
-                    cacheAgeSeconds = ageSeconds
+                    cacheAgeSeconds = ageSeconds,
                 )
             }
             recordOutcome(StarsOutcomes.RATE_LIMITED)
@@ -146,7 +149,7 @@ class StarsService(
                 return BotStarBalanceResult(
                     it.balance.copy(stale = true),
                     CacheState.STALE,
-                    cacheAgeSeconds = ageSeconds
+                    cacheAgeSeconds = ageSeconds,
                 )
             }
             recordOutcome(StarsOutcomes.SERVER)
@@ -166,7 +169,7 @@ class StarsService(
                 return BotStarBalanceResult(
                     it.balance.copy(stale = true),
                     CacheState.STALE,
-                    cacheAgeSeconds = ageSeconds
+                    cacheAgeSeconds = ageSeconds,
                 )
             }
             recordOutcome(StarsOutcomes.BAD_REQUEST)
@@ -186,7 +189,7 @@ class StarsService(
                 return BotStarBalanceResult(
                     it.balance.copy(stale = true),
                     CacheState.STALE,
-                    cacheAgeSeconds = ageSeconds
+                    cacheAgeSeconds = ageSeconds,
                 )
             }
             recordOutcome(StarsOutcomes.DECODE_ERROR)
@@ -206,7 +209,7 @@ class StarsService(
                 return BotStarBalanceResult(
                     it.balance.copy(stale = true),
                     CacheState.STALE,
-                    cacheAgeSeconds = ageSeconds
+                    cacheAgeSeconds = ageSeconds,
                 )
             }
             recordOutcome(StarsOutcomes.OTHER)
@@ -230,31 +233,43 @@ class StarsService(
         registry?.counter(StarsMetrics.CNT_BOUNDED_STALE, StarsMetrics.LABEL_REASON, reason)?.increment()
     }
 
-    private fun logStale(reason: String, cached: CachedBalance) {
+    private fun logStale(
+        @Suppress("UNUSED_PARAMETER") reason: String,
+        cached: CachedBalance,
+    ) {
         logger.debug(
-            "stars: serving STALE cache (reason={}, age_s={})",
-            reason,
-            (System.currentTimeMillis() - cached.storedAtMs) / 1000,
+            (System.currentTimeMillis() - cached.storedAtMs) / MILLIS_IN_SECOND,
         )
     }
 
-    private fun logStaleCutoff(reason: String, cached: CachedBalance, maxAgeSeconds: Long) {
+    private fun logStaleCutoff(
+        reason: String,
+        cached: CachedBalance,
+        maxAgeSeconds: Long,
+    ) {
         logger.warn(
             "stars: cache too old for stale fallback (reason={}, age_s={}, max_s={})",
             reason,
-            (System.currentTimeMillis() - cached.storedAtMs) / 1000,
+            (System.currentTimeMillis() - cached.storedAtMs) / MILLIS_IN_SECOND,
             maxAgeSeconds,
         )
     }
 
-    private fun nowEpochSeconds(): Long = System.currentTimeMillis() / 1000
+    private fun nowEpochSeconds(): Long = System.currentTimeMillis() / MILLIS_IN_SECOND
 
-    private data class CachedBalance(val balance: BotStarBalance, val storedAtMs: Long) {
+    private data class CachedBalance(
+        val balance: BotStarBalance,
+        val storedAtMs: Long,
+    ) {
         fun isExpired(ttlSeconds: Long): Boolean {
             val now = System.currentTimeMillis()
             return now - storedAtMs >= TimeUnit.SECONDS.toMillis(ttlSeconds)
         }
 
-        fun ageSeconds(): Long = ((System.currentTimeMillis() - storedAtMs) / 1000).coerceAtLeast(0)
+        fun ageSeconds(): Long = ((System.currentTimeMillis() - storedAtMs) / MILLIS_IN_SECOND).coerceAtLeast(0)
+    }
+
+    companion object {
+        private const val MILLIS_IN_SECOND = 1000L
     }
 }

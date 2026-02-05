@@ -1,10 +1,10 @@
 package model
 
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
-import kotlinx.serialization.Contextual
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class TradeDto(
@@ -23,5 +23,5 @@ data class TradeDto(
     val broker: String?,
     val note: String?,
     val extId: String?,
-    @Contextual val createdAt: Instant
+    @Contextual val createdAt: Instant,
 )

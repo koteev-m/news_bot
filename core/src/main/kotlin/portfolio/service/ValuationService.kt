@@ -1,12 +1,12 @@
 package portfolio.service
 
+import portfolio.errors.DomainResult
+import portfolio.model.Money
+import portfolio.model.ValuationDaily
 import java.math.BigDecimal
 import java.math.MathContext
 import java.time.LocalDate
 import java.util.UUID
-import portfolio.errors.DomainResult
-import portfolio.model.Money
-import portfolio.model.ValuationDaily
 
 class ValuationService(
     private val storage: Storage,
@@ -14,7 +14,10 @@ class ValuationService(
     private val fxRateService: FxRateService,
     private val baseCurrency: String = BASE_CURRENCY,
 ) {
-    suspend fun revaluePortfolioOn(portfolioId: UUID, date: LocalDate): DomainResult<ValuationDaily> {
+    suspend fun revaluePortfolioOn(
+        portfolioId: UUID,
+        date: LocalDate,
+    ): DomainResult<ValuationDaily> {
         val positionsResult = storage.listPositions(portfolioId)
         if (positionsResult.isFailure) {
             return DomainResult.failure(positionsResult.exceptionOrNull()!!)
@@ -38,11 +41,12 @@ class ValuationService(
             totalValue = totalValue + valuation.amount
 
             val average = position.averagePrice ?: continue
-            val convertedAverageResult = convertToCurrency(
-                average,
-                date,
-                valuation.currency,
-            )
+            val convertedAverageResult =
+                convertToCurrency(
+                    average,
+                    date,
+                    valuation.currency,
+                )
             if (convertedAverageResult.isFailure) {
                 return DomainResult.failure(convertedAverageResult.exceptionOrNull()!!)
             }
@@ -69,25 +73,28 @@ class ValuationService(
         val pnlDayAmount = totalValueAmount - baseForDay
 
         val previousPeak = previous?.let { computePeakValue(it) }
-        val peakValue = when {
-            previousPeak == null -> totalValueAmount
-            previousPeak < totalValueAmount -> totalValueAmount
-            else -> previousPeak
-        }
-        val drawdownAmount = if (peakValue.compareTo(BigDecimal.ZERO) == 0) {
-            BigDecimal.ZERO
-        } else {
-            totalValueAmount.divide(peakValue, MATH_CONTEXT).subtract(BigDecimal.ONE)
-        }
+        val peakValue =
+            when {
+                previousPeak == null -> totalValueAmount
+                previousPeak < totalValueAmount -> totalValueAmount
+                else -> previousPeak
+            }
+        val drawdownAmount =
+            if (peakValue.compareTo(BigDecimal.ZERO) == 0) {
+                BigDecimal.ZERO
+            } else {
+                totalValueAmount.divide(peakValue, MATH_CONTEXT).subtract(BigDecimal.ONE)
+            }
 
-        val record = Storage.ValuationRecord(
-            portfolioId = portfolioId,
-            date = date,
-            valueRub = totalValueAmount,
-            pnlDay = pnlDayAmount,
-            pnlTotal = pnlTotalAmount,
-            drawdown = normalize(drawdownAmount),
-        )
+        val record =
+            Storage.ValuationRecord(
+                portfolioId = portfolioId,
+                date = date,
+                valueRub = totalValueAmount,
+                pnlDay = pnlDayAmount,
+                pnlTotal = pnlTotalAmount,
+                drawdown = normalize(drawdownAmount),
+            )
 
         val persistedResult = storage.upsertValuation(record)
         if (persistedResult.isFailure) {
@@ -143,7 +150,12 @@ class ValuationService(
 
     interface Storage {
         suspend fun listPositions(portfolioId: UUID): DomainResult<List<PositionSnapshot>>
-        suspend fun latestValuationBefore(portfolioId: UUID, date: LocalDate): DomainResult<ValuationRecord?>
+
+        suspend fun latestValuationBefore(
+            portfolioId: UUID,
+            date: LocalDate,
+        ): DomainResult<ValuationRecord?>
+
         suspend fun upsertValuation(record: ValuationRecord): DomainResult<ValuationRecord>
 
         data class PositionSnapshot(

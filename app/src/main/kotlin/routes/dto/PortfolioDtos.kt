@@ -32,7 +32,9 @@ sealed class ValidatedCreate {
         val valuationMethod: String,
     ) : ValidatedCreate()
 
-    data class Invalid(val errors: List<ValidationError>) : ValidatedCreate()
+    data class Invalid(
+        val errors: List<ValidationError>,
+    ) : ValidatedCreate()
 }
 
 fun CreatePortfolioRequest.validate(defaultMethod: String): ValidatedCreate {
@@ -49,16 +51,18 @@ fun CreatePortfolioRequest.validate(defaultMethod: String): ValidatedCreate {
     }
 
     val normalizedDefault = defaultMethod.trim().uppercase()
-    val normalizedMethod = valuationMethod
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
-        ?.uppercase()
-        ?: normalizedDefault
+    val normalizedMethod =
+        valuationMethod
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.uppercase()
+            ?: normalizedDefault
     if (normalizedMethod !in ALLOWED_METHODS) {
-        errors += ValidationError(
-            field = "valuationMethod",
-            message = "Valuation method must be one of: ${ALLOWED_METHODS.joinToString(",")}"
-        )
+        errors +=
+            ValidationError(
+                field = "valuationMethod",
+                message = "Valuation method must be one of: ${ALLOWED_METHODS.joinToString(",")}",
+            )
     }
 
     return if (errors.isEmpty()) {

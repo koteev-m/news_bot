@@ -7,12 +7,13 @@ import kotlin.test.assertTrue
 class RbacServiceTest {
     private val service = DefaultRbacService()
 
-    private fun ctx(vararg roles: Role) = TenantContext(
-        tenant = Tenant(tenantId = 1, orgId = 1, slug = "t1", displayName = "Tenant"),
-        userId = 42L,
-        roles = roles.toSet(),
-        scopes = emptySet()
-    )
+    private fun ctx(vararg roles: Role) =
+        TenantContext(
+            tenant = Tenant(tenantId = 1, orgId = 1, slug = "t1", displayName = "Tenant"),
+            userId = 42L,
+            roles = roles.toSet(),
+            scopes = emptySet(),
+        )
 
     @Test
     fun admin_can_manage() {

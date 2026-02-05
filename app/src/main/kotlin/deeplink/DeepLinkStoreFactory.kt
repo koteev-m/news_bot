@@ -14,26 +14,35 @@ import kotlin.time.Duration.Companion.days
 data class DeepLinkStoreSettings(
     val enabled: Boolean,
     val ttlDays: Long,
-    val redis: RedisSettings?
+    val redis: RedisSettings?,
 )
 
 data class RedisSettings(
     val host: String,
     val port: Int,
     val db: Int,
-    val password: String?
+    val password: String?,
 )
 
-fun loadDeepLinkStoreSettings(config: ApplicationConfig, log: Logger): DeepLinkStoreSettings {
+fun loadDeepLinkStoreSettings(
+    config: ApplicationConfig,
+    log: Logger,
+): DeepLinkStoreSettings {
     val enabled = config.propertyOrNull("deeplink.store.enabled")?.getString()?.toBooleanStrictOrNull() ?: true
-    val ttlRaw = config.propertyOrNull("deeplink.ttlDays")?.getString()?.toLongOrNull() ?: 14L
-    val ttlDays = ttlRaw.coerceIn(7L, 30L).also {
-        if (it != ttlRaw) {
-            log.warn("deeplink.ttlDays={} out of range, using {}", ttlRaw, it)
+    val ttlRaw = config.propertyOrNull("deeplink.ttlDays")?.getString()?.toLongOrNull() ?: DEFAULT_TTL_DAYS
+    val ttlDays =
+        ttlRaw.coerceIn(MIN_TTL_DAYS, MAX_TTL_DAYS).also {
+            if (it != ttlRaw) {
+                log.warn("deeplink.ttlDays={} out of range, using {}", ttlRaw, it)
+            }
         }
-    }
-    val host = config.propertyOrNull("deeplink.redis.host")?.getString()?.trim()?.takeIf { it.isNotEmpty() }
-    val port = config.propertyOrNull("deeplink.redis.port")?.getString()?.toIntOrNull() ?: 6379
+    val host =
+        config
+            .propertyOrNull("deeplink.redis.host")
+            ?.getString()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    val port = config.propertyOrNull("deeplink.redis.port")?.getString()?.toIntOrNull() ?: DEFAULT_REDIS_PORT
     val db = config.propertyOrNull("deeplink.redis.db")?.getString()?.toIntOrNull() ?: 0
     val password = config.propertyOrNull("deeplink.redis.password")?.getString()?.takeIf { it.isNotBlank() }
     val redis = if (host == null) null else RedisSettings(host = host, port = port, db = db, password = password)
@@ -54,16 +63,15 @@ fun createDeepLinkStore(
         val normalizedProfile = appProfile.lowercase()
         val allowFallback = normalizedProfile == "dev" || normalizedProfile == "staging"
         if (!allowFallback) {
-            throw IllegalStateException(
-                "deeplink.redis.host must be set when deeplink.store.enabled=true for APP_PROFILE=$appProfile"
-            )
+            error("deeplink.redis.host must be set when deeplink.store.enabled=true for APP_PROFILE=$appProfile")
         }
         log.warn("deeplink.redis host not configured; using in-memory store for APP_PROFILE={}", appProfile)
         return InMemoryDeepLinkStore()
     }
     return RedisDeepLinkStore(
         client = RedisClient.create(buildRedisUri(redis)),
-        json = Json {
+        json =
+        Json {
             encodeDefaults = true
             ignoreUnknownKeys = true
         },
@@ -81,12 +89,16 @@ private fun buildRedisUri(redis: RedisSettings): RedisURI {
 class RedisDeepLinkStore(
     private val client: RedisClient,
     private val json: Json,
-    private val maxAttempts: Int = 5,
-    private val keyPrefix: String = "deeplink:"
-) : DeepLinkStore, AutoCloseable {
+    private val maxAttempts: Int = MAX_ATTEMPTS,
+    private val keyPrefix: String = "deeplink:",
+) : DeepLinkStore,
+    AutoCloseable {
     private val connection: StatefulRedisConnection<String, String> = client.connect()
 
-    override fun put(payload: DeepLinkPayload, ttl: Duration): String {
+    override fun put(
+        payload: DeepLinkPayload,
+        ttl: Duration,
+    ): String {
         require(ttl.isPositive()) { "ttl must be positive" }
         val ttlSeconds = ttl.inWholeSeconds.coerceAtLeast(1)
         val value = json.encodeToString(DeepLinkPayload.serializer(), payload)
@@ -116,3 +128,9 @@ class RedisDeepLinkStore(
         client.shutdown()
     }
 }
+
+private const val DEFAULT_TTL_DAYS = 14L
+private const val MIN_TTL_DAYS = 7L
+private const val MAX_TTL_DAYS = 30L
+private const val DEFAULT_REDIS_PORT = 6379
+private const val MAX_ATTEMPTS = 5

@@ -1,5 +1,6 @@
 package coingecko
 
+import common.runCatchingNonFatal
 import http.CircuitBreaker
 import http.HttpClientError
 import http.HttpClients
@@ -10,10 +11,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
-import java.math.BigDecimal
-import java.time.Clock
-import java.time.Instant
-import java.time.Duration as JavaDuration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,12 +19,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.math.BigDecimal
+import java.time.Clock
+import java.time.Instant
+import kotlin.jvm.Volatile
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlin.jvm.Volatile
-import common.runCatchingNonFatal
+import java.time.Duration as JavaDuration
 
 class CoinGeckoClient(
     private val client: HttpClient,
@@ -36,7 +35,7 @@ class CoinGeckoClient(
     private val clock: Clock = Clock.systemUTC(),
     private val minRequestInterval: Duration = 1.seconds,
     private val priceCacheTtlMs: Long = DEFAULT_PRICE_CACHE_TTL_MS,
-    private val chartCacheTtlMs: Long = DEFAULT_CHART_CACHE_TTL_MS
+    private val chartCacheTtlMs: Long = DEFAULT_CHART_CACHE_TTL_MS,
 ) {
     @Volatile
     private var baseUrl: String = DEFAULT_BASE_URL
@@ -54,7 +53,10 @@ class CoinGeckoClient(
         baseUrl = normalizeBaseUrl(url)
     }
 
-    suspend fun getSimplePrice(ids: List<String>, vs: List<String>): HttpResult<Map<String, Map<String, BigDecimal>>> {
+    suspend fun getSimplePrice(
+        ids: List<String>,
+        vs: List<String>,
+    ): HttpResult<Map<String, Map<String, BigDecimal>>> {
         if (ids.isEmpty()) {
             return Result.failure(HttpClientError.ValidationError("ids must not be empty"))
         }
@@ -65,7 +67,9 @@ class CoinGeckoClient(
             return Result.failure(HttpClientError.ValidationError("vs currencies must not be empty"))
         }
         if (vs.size > MAX_SIMPLE_PRICE_CURRENCIES) {
-            return Result.failure(HttpClientError.ValidationError("vs currencies limit is $MAX_SIMPLE_PRICE_CURRENCIES"))
+            return Result.failure(
+                HttpClientError.ValidationError("vs currencies limit is $MAX_SIMPLE_PRICE_CURRENCIES"),
+            )
         }
         val normalizedIds = ids.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
         if (normalizedIds.isEmpty()) {
@@ -87,7 +91,11 @@ class CoinGeckoClient(
         }
     }
 
-    suspend fun getMarketChart(id: String, vs: String, days: Int): HttpResult<MarketChart> {
+    suspend fun getMarketChart(
+        id: String,
+        vs: String,
+        days: Int,
+    ): HttpResult<MarketChart> {
         if (id.isBlank()) {
             return Result.failure(HttpClientError.ValidationError("id must not be blank"))
         }
@@ -109,52 +117,69 @@ class CoinGeckoClient(
         }
     }
 
-    private suspend fun requestSimplePrice(ids: String, vs: String): Map<String, Map<String, BigDecimal>> =
+    private suspend fun requestSimplePrice(
+        ids: String,
+        vs: String,
+    ): Map<String, Map<String, BigDecimal>> =
         cb.withPermit {
             HttpClients.measure(SERVICE) {
-                val payloadElement: JsonElement = client.get("${baseUrl}$SIMPLE_PRICE_PATH") {
-                    parameter("ids", ids)
-                    parameter("vs_currencies", vs)
-                }.body()
-                val payload = payloadElement.asJsonObjectOrNull()
-                    ?: throw HttpClientError.DeserializationError("Expected JSON object for simple price response")
+                val payloadElement: JsonElement =
+                    client
+                        .get("${baseUrl}$SIMPLE_PRICE_PATH") {
+                            parameter("ids", ids)
+                            parameter("vs_currencies", vs)
+                        }.body()
+                val payload =
+                    payloadElement.asJsonObjectOrNull()
+                        ?: throw HttpClientError.DeserializationError("Expected JSON object for simple price response")
                 payload.entries.associate { (asset, value) ->
-                    val priceObject = value as? JsonObject
-                        ?: throw HttpClientError.DeserializationError("Expected JSON object for $asset simple price response")
-                    val prices = priceObject.entries.associate { (currency, priceElement) ->
-                        currency to priceElement.toBigDecimalOrThrow("$asset:$currency")
-                    }
+                    val priceObject =
+                        value as? JsonObject
+                            ?: throw HttpClientError.DeserializationError(
+                                "Expected JSON object for $asset simple price response",
+                            )
+                    val prices =
+                        priceObject.entries.associate { (currency, priceElement) ->
+                            currency to priceElement.toBigDecimalOrThrow("$asset:$currency")
+                        }
                     asset to prices
                 }
             }
         }
 
-    private suspend fun requestMarketChart(id: String, vs: String, days: Int): MarketChart =
+    private suspend fun requestMarketChart(
+        id: String,
+        vs: String,
+        days: Int,
+    ): MarketChart =
         cb.withPermit {
             HttpClients.measure(SERVICE) {
-                val raw: CoinGeckoMarketChartRaw = client.get("${baseUrl}$MARKET_CHART_PREFIX$id$MARKET_CHART_SUFFIX") {
-                    parameter("vs_currency", vs)
-                    parameter("days", days)
-                }.body()
+                val raw: CoinGeckoMarketChartRaw =
+                    client
+                        .get("${baseUrl}$MARKET_CHART_PREFIX$id$MARKET_CHART_SUFFIX") {
+                            parameter("vs_currency", vs)
+                            parameter("days", days)
+                        }.body()
                 raw.toDomain()
             }
         }
 
-    private suspend fun <T> rateLimited(block: suspend () -> T): T = rateMutex.withLock {
-        val now = clock.instant()
-        val last = lastRequestAt
-        val minMillis = minRequestInterval.inWholeMilliseconds
-        if (last != null && minMillis > 0) {
-            val elapsed = JavaDuration.between(last, now).toMillis()
-            val waitMillis = minMillis - elapsed
-            if (waitMillis > 0) {
-                delay(waitMillis)
+    private suspend fun <T> rateLimited(block: suspend () -> T): T =
+        rateMutex.withLock {
+            val now = clock.instant()
+            val last = lastRequestAt
+            val minMillis = minRequestInterval.inWholeMilliseconds
+            if (last != null && minMillis > 0) {
+                val elapsed = JavaDuration.between(last, now).toMillis()
+                val waitMillis = minMillis - elapsed
+                if (waitMillis > 0) {
+                    delay(waitMillis)
+                }
             }
+            val result = block()
+            lastRequestAt = clock.instant()
+            result
         }
-        val result = block()
-        lastRequestAt = clock.instant()
-        result
-    }
 
     private fun normalizeBaseUrl(raw: String): String {
         val trimmed = raw.trim()
@@ -182,22 +207,25 @@ class CoinGeckoClient(
 private data class CoinGeckoMarketChartRaw(
     val prices: List<List<JsonElement>> = emptyList(),
     @SerialName("market_caps") val marketCaps: List<List<JsonElement>> = emptyList(),
-    @SerialName("total_volumes") val totalVolumes: List<List<JsonElement>> = emptyList()
+    @SerialName("total_volumes") val totalVolumes: List<List<JsonElement>> = emptyList(),
 ) {
-    fun toDomain(): MarketChart = MarketChart(
-        prices = prices.map { it.toChartPoint("prices") },
-        marketCaps = marketCaps.map { it.toChartPoint("market_caps") },
-        totalVolumes = totalVolumes.map { it.toChartPoint("total_volumes") }
-    )
+    fun toDomain(): MarketChart =
+        MarketChart(
+            prices = prices.map { it.toChartPoint("prices") },
+            marketCaps = marketCaps.map { it.toChartPoint("market_caps") },
+            totalVolumes = totalVolumes.map { it.toChartPoint("total_volumes") },
+        )
 
     private fun List<JsonElement>.toChartPoint(section: String): ChartPoint {
         if (size < 2) {
             throw HttpClientError.DeserializationError("Invalid entry in $section section")
         }
-        val timestampValue = this[0].jsonPrimitive.contentOrNull?.trim()
-            ?: throw HttpClientError.DeserializationError("Missing timestamp in $section section")
-        val timestamp = timestampValue.toLongOrNull()
-            ?: throw HttpClientError.DeserializationError("Invalid timestamp '$timestampValue' in $section section")
+        val timestampValue =
+            this[0].jsonPrimitive.contentOrNull?.trim()
+                ?: throw HttpClientError.DeserializationError("Missing timestamp in $section section")
+        val timestamp =
+            timestampValue.toLongOrNull()
+                ?: throw HttpClientError.DeserializationError("Invalid timestamp '$timestampValue' in $section section")
         val price = this[1].toBigDecimalOrThrow(section)
         return ChartPoint(Instant.ofEpochMilli(timestamp), price)
     }
@@ -206,15 +234,19 @@ private data class CoinGeckoMarketChartRaw(
 data class MarketChart(
     val prices: List<ChartPoint>,
     val marketCaps: List<ChartPoint>,
-    val totalVolumes: List<ChartPoint>
+    val totalVolumes: List<ChartPoint>,
 )
 
-data class ChartPoint(val timestamp: Instant, val value: BigDecimal)
+data class ChartPoint(
+    val timestamp: Instant,
+    val value: BigDecimal,
+)
 
 private fun JsonElement.toBigDecimalOrThrow(label: String): BigDecimal {
     val primitive = jsonPrimitive
-    val raw = primitive.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
-        ?: throw HttpClientError.DeserializationError("Missing numeric value for $label")
+    val raw =
+        primitive.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw HttpClientError.DeserializationError("Missing numeric value for $label")
     val normalized = raw.replace(',', '.')
     return normalized.toBigDecimalOrNull()
         ?: throw HttpClientError.DeserializationError("Invalid numeric value '$raw' for $label")

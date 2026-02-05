@@ -11,7 +11,7 @@ class WebhookMetrics private constructor(
     val queueSize: AtomicInteger,
     val dropped: Counter,
     val processed: Counter,
-    val handleTimer: Timer
+    val handleTimer: Timer,
 ) {
     fun startSample(): Timer.Sample = Timer.start(registry)
 

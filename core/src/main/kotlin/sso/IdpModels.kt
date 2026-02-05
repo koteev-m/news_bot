@@ -12,19 +12,19 @@ enum class IdpKind { oidc, saml }
     val clientId: String? = null,
     val jwksUri: String? = null,
     val ssoUrl: String? = null,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
 )
 
 @Serializable data class GroupRoleMapping(
     val tenantId: Long,
     val idpId: Long,
     val extGroup: String,
-    val role: String
+    val role: String,
 )
 
 @Serializable data class SsoProfile(
     val subject: String,
     val email: String?,
     val name: String?,
-    val groups: Set<String>
+    val groups: Set<String>,
 )

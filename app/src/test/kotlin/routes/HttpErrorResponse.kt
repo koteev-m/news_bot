@@ -25,7 +25,10 @@ data class HttpErrorResponse(
     val limit: Long? = null,
 )
 
-/** Старые тесты часто вызывали конструктор как HttpErrorResponse(json[, path]) — реализуем фабричную функцию с такой сигнатурой. */
+/**
+ * Старые тесты часто вызывали конструктор как HttpErrorResponse(json[, path]) —
+ * реализуем фабричную функцию с такой сигнатурой.
+ */
 @Suppress("FunctionName")
 fun HttpErrorResponse(
     json: String,

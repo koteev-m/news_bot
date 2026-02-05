@@ -1,10 +1,9 @@
 package routes
 
+import common.runCatchingNonFatal
 import db.DatabaseFactory
 import di.portfolioModule
 import io.ktor.http.HttpStatusCode
-import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.Serializable
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
@@ -15,13 +14,14 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.util.AttributeKey
-import java.sql.SQLException
-import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
+import portfolio.errors.PortfolioError
+import portfolio.errors.PortfolioException
 import repo.model.NewPortfolio
 import repo.tables.UsersTable
 import routes.dto.CreatePortfolioRequest
@@ -30,48 +30,57 @@ import routes.dto.ValidatedCreate
 import routes.dto.ValidationError
 import routes.dto.validate
 import security.userIdOrNull
-import portfolio.errors.PortfolioError
-import portfolio.errors.PortfolioException
-import common.runCatchingNonFatal
+import java.sql.SQLException
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 @Serializable
 data class ApiErrorResponse(
     val error: String,
     val message: String,
-    val details: List<ValidationError> = emptyList()
+    val details: List<ValidationError> = emptyList(),
 )
 
 fun Route.portfolioRoutes() {
     route("/api/portfolio") {
         get {
             val deps = call.portfolioDependencies()
-            val result = processPortfolioList(
-                subject = call.userIdOrNull,
-                deps = deps,
-                onError = { throwable -> call.application.environment.log.error("Unhandled error", throwable) },
-            )
+            val result =
+                processPortfolioList(
+                    subject = call.userIdOrNull,
+                    deps = deps,
+                    onError = { throwable ->
+                        call.application.environment.log
+                            .error("Unhandled error", throwable)
+                    },
+                )
             call.respondResult(result)
         }
 
         post {
-            val request = try {
-                call.receive<CreatePortfolioRequest>()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (err: Error) {
-                throw err
-            } catch (_: Throwable) {
-                call.respondBadRequest(listOf("Invalid JSON payload"))
-                return@post
-            }
+            val request =
+                try {
+                    call.receive<CreatePortfolioRequest>()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (err: Error) {
+                    throw err
+                } catch (_: Throwable) {
+                    call.respondBadRequest(listOf("Invalid JSON payload"))
+                    return@post
+                }
 
             val deps = call.portfolioDependencies()
-            val result = processPortfolioCreate(
-                subject = call.userIdOrNull,
-                request = request,
-                deps = deps,
-                onError = { throwable -> call.application.environment.log.error("Unhandled error", throwable) },
-            )
+            val result =
+                processPortfolioCreate(
+                    subject = call.userIdOrNull,
+                    request = request,
+                    deps = deps,
+                    onError = { throwable ->
+                        call.application.environment.log
+                            .error("Unhandled error", throwable)
+                    },
+                )
             call.respondResult(result)
         }
     }
@@ -100,14 +109,15 @@ internal data class PortfolioRouteResult(
     val payload: Any? = null,
 )
 
-private fun PortfolioRecord.toResponse(): PortfolioItemResponse = PortfolioItemResponse(
-    id = id,
-    name = name,
-    baseCurrency = baseCurrency,
-    valuationMethod = valuationMethod,
-    isActive = isActive,
-    createdAt = createdAt.toString(),
-)
+private fun PortfolioRecord.toResponse(): PortfolioItemResponse =
+    PortfolioItemResponse(
+        id = id,
+        name = name,
+        baseCurrency = baseCurrency,
+        valuationMethod = valuationMethod,
+        isActive = isActive,
+        createdAt = createdAt.toString(),
+    )
 
 private fun ApplicationCall.portfolioDependencies(): PortfolioRouteDeps {
     val attributes = application.attributes
@@ -139,14 +149,15 @@ private fun ApplicationCall.buildDefaultDependencies(): PortfolioRouteDeps {
             }
         },
         createPortfolio = { userId, payload ->
-            val created = repository.create(
-                NewPortfolio(
-                    userId = userId,
-                    name = payload.name,
-                    baseCurrency = payload.baseCurrency,
-                    createdAt = Instant.now(),
-                ),
-            )
+            val created =
+                repository.create(
+                    NewPortfolio(
+                        userId = userId,
+                        name = payload.name,
+                        baseCurrency = payload.baseCurrency,
+                        createdAt = Instant.now(),
+                    ),
+                )
             val portfolioId = created.portfolioId.toString()
             cache[portfolioId] = payload.valuationMethod
             PortfolioRecord(
@@ -174,10 +185,12 @@ internal suspend fun processPortfolioList(
     onError: (Throwable) -> Unit = {},
 ): PortfolioRouteResult {
     val tgUserId = subject?.toLongOrNull() ?: return unauthorizedResult()
-    val userId = runCatchingNonFatal { deps.resolveUser(tgUserId) }
-        .getOrElse { return mapException(it, onError) }
-    val records = runCatchingNonFatal { deps.listPortfolios(userId) }
-        .getOrElse { return mapException(it, onError) }
+    val userId =
+        runCatchingNonFatal { deps.resolveUser(tgUserId) }
+            .getOrElse { return mapException(it, onError) }
+    val records =
+        runCatchingNonFatal { deps.listPortfolios(userId) }
+            .getOrElse { return mapException(it, onError) }
     return PortfolioRouteResult(HttpStatusCode.OK, records.map { it.toResponse() })
 }
 
@@ -189,35 +202,38 @@ internal suspend fun processPortfolioCreate(
 ): PortfolioRouteResult {
     val tgUserId = subject?.toLongOrNull() ?: return unauthorizedResult()
     val validation = request.validate(deps.defaultValuationMethod)
-    val validated = when (validation) {
-        is ValidatedCreate.Valid -> validation
-        is ValidatedCreate.Invalid -> {
-            return PortfolioRouteResult(
-                HttpStatusCode.BadRequest,
-                ApiErrorResponse(
-                    error = "bad_request",
-                    message = "Invalid request payload",
-                    details = validation.errors,
-                ),
-            )
-        }
-    }
-
-    val userId = runCatchingNonFatal { deps.resolveUser(tgUserId) }
-        .getOrElse { return mapException(it, onError) }
-    val record = runCatchingNonFatal { deps.createPortfolio(userId, validated) }
-        .getOrElse { throwable ->
-            if (isUniqueViolation(throwable)) {
+    val validated =
+        when (validation) {
+            is ValidatedCreate.Valid -> validation
+            is ValidatedCreate.Invalid -> {
                 return PortfolioRouteResult(
-                    HttpStatusCode.Conflict,
+                    HttpStatusCode.BadRequest,
                     ApiErrorResponse(
-                        error = "conflict",
-                        message = "Portfolio with the same name already exists",
+                        error = "bad_request",
+                        message = "Invalid request payload",
+                        details = validation.errors,
                     ),
                 )
             }
-            return mapException(throwable, onError)
         }
+
+    val userId =
+        runCatchingNonFatal { deps.resolveUser(tgUserId) }
+            .getOrElse { return mapException(it, onError) }
+    val record =
+        runCatchingNonFatal { deps.createPortfolio(userId, validated) }
+            .getOrElse { throwable ->
+                if (isUniqueViolation(throwable)) {
+                    return PortfolioRouteResult(
+                        HttpStatusCode.Conflict,
+                        ApiErrorResponse(
+                            error = "conflict",
+                            message = "Portfolio with the same name already exists",
+                        ),
+                    )
+                }
+                return mapException(throwable, onError)
+            }
 
     return PortfolioRouteResult(HttpStatusCode.Created, record.toResponse())
 }
@@ -228,23 +244,29 @@ private fun unauthorizedResult(): PortfolioRouteResult =
         ApiErrorResponse(error = "unauthorized", message = "Authentication required"),
     )
 
-private fun mapException(throwable: Throwable, onError: (Throwable) -> Unit): PortfolioRouteResult {
+private fun mapException(
+    throwable: Throwable,
+    onError: (Throwable) -> Unit,
+): PortfolioRouteResult {
     val domain = (throwable as? PortfolioException)?.error
     return when (domain) {
-        is PortfolioError.Validation -> PortfolioRouteResult(
-            HttpStatusCode.BadRequest,
-            ApiErrorResponse(
-                error = "bad_request",
-                message = domain.message,
-                details = listOf(ValidationError(field = "general", message = domain.message)),
-            ),
-        )
-        is PortfolioError.NotFound -> PortfolioRouteResult(
-            HttpStatusCode.NotFound,
-            ApiErrorResponse(error = "not_found", message = domain.message),
-        )
+        is PortfolioError.Validation ->
+            PortfolioRouteResult(
+                HttpStatusCode.BadRequest,
+                ApiErrorResponse(
+                    error = "bad_request",
+                    message = domain.message,
+                    details = listOf(ValidationError(field = "general", message = domain.message)),
+                ),
+            )
+        is PortfolioError.NotFound ->
+            PortfolioRouteResult(
+                HttpStatusCode.NotFound,
+                ApiErrorResponse(error = "not_found", message = domain.message),
+            )
         is PortfolioError.FxRateNotFound,
-        is PortfolioError.FxRateUnavailable -> {
+        is PortfolioError.FxRateUnavailable,
+        -> {
             onError(throwable)
             PortfolioRouteResult(
                 HttpStatusCode.BadGateway,
@@ -285,14 +307,15 @@ private suspend fun ApplicationCall.respondResult(result: PortfolioRouteResult) 
 }
 
 private suspend fun ensureUser(tgUserId: Long): Long {
-    val existing = DatabaseFactory.dbQuery {
-        UsersTable
-            .selectAll()
-            .where { UsersTable.tgUserId eq tgUserId }
-            .limit(1)
-            .singleOrNull()
-            ?.get(UsersTable.userId)
-    }
+    val existing =
+        DatabaseFactory.dbQuery {
+            UsersTable
+                .selectAll()
+                .where { UsersTable.tgUserId eq tgUserId }
+                .limit(1)
+                .singleOrNull()
+                ?.get(UsersTable.userId)
+        }
     if (existing != null) {
         return existing
     }

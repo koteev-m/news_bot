@@ -1,6 +1,5 @@
 package routes
 
-import app.Services
 import alerts.settings.AlertsConfig
 import alerts.settings.AlertsOverridePatch
 import alerts.settings.AlertsSettingsService
@@ -13,10 +12,12 @@ import alerts.settings.Percent
 import alerts.settings.QuietHours
 import alerts.settings.Thresholds
 import alerts.settings.validate
+import app.Services
 import billing.model.Tier
 import billing.service.BillingService
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
+import common.runCatchingNonFatal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
@@ -34,7 +35,6 @@ import kotlinx.coroutines.CoroutineScope
 import repo.AlertsSettingsRepositoryImpl
 import security.requireTierAtLeast
 import security.userIdOrNull
-import common.runCatchingNonFatal
 
 private const val ALERTS_CONFIG_PATH = "alerts"
 
@@ -47,14 +47,15 @@ fun Route.alertsSettingsRoutes() {
                 call.respondUnauthorized()
                 return@get
             }
-            val result = runCatchingNonFatal { deps.settingsService.effectiveFor(subject) }
-                .onFailure { throwable ->
-                    call.application.environment.log.error("alerts.settings.fetch_failed", throwable)
-                }
-                .getOrElse { throwable ->
-                    call.handleDomainError(throwable)
-                    return@get
-                }
+            val result =
+                runCatchingNonFatal { deps.settingsService.effectiveFor(subject) }
+                    .onFailure { throwable ->
+                        call.application.environment.log
+                            .error("alerts.settings.fetch_failed", throwable)
+                    }.getOrElse { throwable ->
+                        call.handleDomainError(throwable)
+                        return@get
+                    }
             call.respond(result)
         }
 
@@ -76,17 +77,18 @@ private suspend fun ApplicationCall.handleOverrideUpdate(isPatch: Boolean) {
         return
     }
 
-    val patch = try {
-        receive<AlertsOverridePatch>()
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (err: Error) {
-        throw err
-    } catch (exception: Throwable) {
-        application.environment.log.warn("alerts.settings.invalid_payload", exception)
-        respondBadRequest(listOf("Invalid JSON payload"))
-        return
-    }
+    val patch =
+        try {
+            receive<AlertsOverridePatch>()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (err: Error) {
+            throw err
+        } catch (exception: Throwable) {
+            application.environment.log.warn("alerts.settings.invalid_payload", exception)
+            respondBadRequest(listOf("Invalid JSON payload"))
+            return
+        }
 
     val validationErrors = patch.validate()
     if (validationErrors.isNotEmpty()) {
@@ -98,11 +100,11 @@ private suspend fun ApplicationCall.handleOverrideUpdate(isPatch: Boolean) {
         return
     }
 
-    val updateSucceeded = runCatchingNonFatal { deps.settingsService.upsert(subject, patch) }
-        .onFailure { throwable ->
-            application.environment.log.error("alerts.settings.update_failed", throwable)
-        }
-        .isSuccess
+    val updateSucceeded =
+        runCatchingNonFatal { deps.settingsService.upsert(subject, patch) }
+            .onFailure { throwable ->
+                application.environment.log.error("alerts.settings.update_failed", throwable)
+            }.isSuccess
 
     if (!updateSucceeded) {
         return
@@ -116,7 +118,7 @@ private suspend fun ApplicationCall.handleOverrideUpdate(isPatch: Boolean) {
 
 internal data class AlertsSettingsRouteDeps(
     val billingService: BillingService,
-    val settingsService: AlertsSettingsService
+    val settingsService: AlertsSettingsService,
 )
 
 internal val AlertsSettingsDepsKey = AttributeKey<AlertsSettingsRouteDeps>("AlertsSettingsDeps")
@@ -149,33 +151,38 @@ private fun Application.loadAlertsDefaults(): AlertsConfig {
     val matrixCfg = alertsCfg.getConfig("matrix")
 
     val perClassCfg = matrixCfg.getConfig("perClass")
-    val perClass = perClassCfg.root().entries.associate { entry ->
-        val key = entry.key
-        val cfg = perClassCfg.getConfig(key)
-        key to cfg.toThresholds()
-    }
+    val perClass =
+        perClassCfg.root().entries.associate { entry ->
+            val key = entry.key
+            val cfg = perClassCfg.getConfig(key)
+            key to cfg.toThresholds()
+        }
 
     return AlertsConfig(
-        quiet = QuietHours(
+        quiet =
+        QuietHours(
             start = quietCfg.getString("start"),
-            end = quietCfg.getString("end")
+            end = quietCfg.getString("end"),
         ),
         budget = Budget(maxPushesPerDay = budgetCfg.getInt("maxPushesPerDay")),
-        hysteresis = Hysteresis(
+        hysteresis =
+        Hysteresis(
             enterPct = Percent(hysteresisCfg.getDouble("enterPct")),
-            exitPct = Percent(hysteresisCfg.getDouble("exitPct"))
+            exitPct = Percent(hysteresisCfg.getDouble("exitPct")),
         ),
         cooldownMinutes = alertsCfg.getInt("cooldownMinutes"),
-        dynamic = DynamicScale(
+        dynamic =
+        DynamicScale(
             enabled = dynamicCfg.getBoolean("enabled"),
             min = dynamicCfg.getDouble("min"),
-            max = dynamicCfg.getDouble("max")
+            max = dynamicCfg.getDouble("max"),
         ),
-        matrix = MatrixV11(
+        matrix =
+        MatrixV11(
             portfolioDayPct = Percent(matrixCfg.getDouble("portfolioDayPct")),
             portfolioDrawdown = Percent(matrixCfg.getDouble("portfolioDrawdown")),
-            perClass = perClass
-        )
+            perClass = perClass,
+        ),
     )
 }
 

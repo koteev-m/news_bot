@@ -1,10 +1,10 @@
 package portfolio.model
 
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Locale
-import kotlinx.serialization.Contextual
-import kotlinx.serialization.Serializable
 
 private const val SCALE = 8
 
@@ -13,9 +13,8 @@ private fun BigDecimal.norm(): BigDecimal = this.setScale(SCALE, RoundingMode.HA
 @Serializable
 data class Money(
     @Contextual val amount: BigDecimal,
-    val ccy: String
+    val ccy: String,
 ) : Comparable<Money> {
-
     val currency: String
         get() = ccy
 
@@ -37,8 +36,7 @@ data class Money(
         return Money(amount.subtract(other.amount).norm(), ccy)
     }
 
-    operator fun times(multiplier: BigDecimal): Money =
-        Money(amount.multiply(multiplier).norm(), ccy)
+    operator fun times(multiplier: BigDecimal): Money = Money(amount.multiply(multiplier).norm(), ccy)
 
     operator fun times(multiplier: Long): Money = times(BigDecimal.valueOf(multiplier))
 
@@ -52,12 +50,15 @@ data class Money(
     }
 
     companion object {
-        fun zero(ccy: String): Money = Money(
-            BigDecimal.ZERO.setScale(SCALE, RoundingMode.HALF_UP),
-            ccy.trim().uppercase(Locale.ROOT)
-        )
+        fun zero(ccy: String): Money =
+            Money(
+                BigDecimal.ZERO.setScale(SCALE, RoundingMode.HALF_UP),
+                ccy.trim().uppercase(Locale.ROOT),
+            )
 
-        fun of(amount: BigDecimal, ccy: String): Money =
-            Money(amount.norm(), ccy.trim().uppercase(Locale.ROOT))
+        fun of(
+            amount: BigDecimal,
+            ccy: String,
+        ): Money = Money(amount.norm(), ccy.trim().uppercase(Locale.ROOT))
     }
 }

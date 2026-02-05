@@ -6,7 +6,9 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
 
-class TraceContext(val traceId: String) : AbstractCoroutineContextElement(Key) {
+class TraceContext(
+    val traceId: String,
+) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<TraceContext>
 }
 
@@ -17,11 +19,12 @@ private fun HttpRequestBuilder.setTraceHeaders(trace: String) {
     headers.append("Trace-Id", trace)
 }
 
-val TracePropagation = createClientPlugin("TracePropagation") {
-    onRequest { request, _ ->
-        val trace = coroutineContext[TraceContext]?.traceId
-        if (!trace.isNullOrBlank()) {
-            request.setTraceHeaders(trace)
+val TracePropagation =
+    createClientPlugin("TracePropagation") {
+        onRequest { request, _ ->
+            val trace = coroutineContext[TraceContext]?.traceId
+            if (!trace.isNullOrBlank()) {
+                request.setTraceHeaders(trace)
+            }
         }
     }
-}

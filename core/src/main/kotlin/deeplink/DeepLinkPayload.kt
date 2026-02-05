@@ -15,15 +15,17 @@ data class DeepLinkPayload(
     val utmCampaign: String? = null,
     val ref: String? = null,
 ) {
-    fun canonicalLabel(): String {
-        return when (type) {
+    fun canonicalLabel(): String =
+        when (type) {
             DeepLinkType.TICKER -> canonicalToken(prefix = "TICKER", value = id) ?: "TICKER_UNKNOWN"
             DeepLinkType.TOPIC -> canonicalToken(prefix = "TOPIC", value = id) ?: "TOPIC_UNKNOWN"
             DeepLinkType.PORTFOLIO -> "PORTFOLIO"
         }
-    }
 
-    private fun canonicalToken(prefix: String, value: String?): String? {
+    private fun canonicalToken(
+        prefix: String,
+        value: String?,
+    ): String? {
         val sanitized = sanitizeToken(value) ?: return null
         return "${prefix}_${sanitized.uppercase(Locale.ROOT)}"
     }
@@ -40,14 +42,14 @@ data class DeepLinkPayload(
         }
         return value
     }
-    private fun Char.isAllowedTokenChar(): Boolean {
-        return this in 'a'..'z' ||
+
+    private fun Char.isAllowedTokenChar(): Boolean =
+        this in 'a'..'z' ||
             this in 'A'..'Z' ||
             this in '0'..'9' ||
             this == '.' ||
             this == '_' ||
             this == '-'
-    }
 }
 
 private const val TOKEN_MAX_LEN = 32

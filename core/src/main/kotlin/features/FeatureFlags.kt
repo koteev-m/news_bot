@@ -33,47 +33,57 @@ data class FeatureFlagsPatch(
     val miniApp: Boolean? = null,
 )
 
-fun FeatureFlags.merge(patch: FeatureFlagsPatch): FeatureFlags = FeatureFlags(
-    importByUrl = patch.importByUrl ?: importByUrl,
-    webhookQueue = patch.webhookQueue ?: webhookQueue,
-    newsPublish = patch.newsPublish ?: newsPublish,
-    alertsEngine = patch.alertsEngine ?: alertsEngine,
-    billingStars = patch.billingStars ?: billingStars,
-    miniApp = patch.miniApp ?: miniApp,
-)
+fun FeatureFlags.merge(patch: FeatureFlagsPatch): FeatureFlags =
+    FeatureFlags(
+        importByUrl = patch.importByUrl ?: importByUrl,
+        webhookQueue = patch.webhookQueue ?: webhookQueue,
+        newsPublish = patch.newsPublish ?: newsPublish,
+        alertsEngine = patch.alertsEngine ?: alertsEngine,
+        billingStars = patch.billingStars ?: billingStars,
+        miniApp = patch.miniApp ?: miniApp,
+    )
 
 fun FeatureFlagsPatch.validate(): List<String> = emptyList()
 
 interface FeatureOverridesRepository {
     suspend fun upsertGlobal(json: String)
+
     suspend fun findGlobal(): String?
 }
 
 interface FeatureFlagsService {
     val updatesFlow: StateFlow<Long>
+
     suspend fun defaults(): FeatureFlags
+
     suspend fun effective(): FeatureFlags
+
     suspend fun upsertGlobal(patch: FeatureFlagsPatch)
 }
 
-class FeatureFlagsValidationException(val errors: List<String>) : IllegalArgumentException(
-    "Invalid feature flags patch"
+class FeatureFlagsValidationException(
+    val errors: List<String>,
+) : IllegalArgumentException(
+    "Invalid feature flags patch",
 )
 
 @OptIn(ExperimentalSerializationApi::class)
 class FeatureFlagsServiceImpl(
     private val defaults: FeatureFlags,
     private val repository: FeatureOverridesRepository,
-    private val json: Json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = false
-        explicitNulls = false
-    }
+    private val json: Json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = false
+            explicitNulls = false
+        },
 ) : FeatureFlagsService {
     private val mutex = Mutex()
     private val _updatesFlow = MutableStateFlow(0L)
+
     @Volatile
     private var loaded = false
+
     @Volatile
     private var globalPatch: FeatureFlagsPatch = FeatureFlagsPatch()
 
@@ -116,19 +126,18 @@ class FeatureFlagsServiceImpl(
         return globalPatch
     }
 
-    private fun decodePatch(raw: String): FeatureFlagsPatch {
-        return try {
+    private fun decodePatch(raw: String): FeatureFlagsPatch =
+        try {
             json.decodeFromString<FeatureFlagsPatch>(raw).normalized()
         } catch (exception: SerializationException) {
             throw IllegalStateException("Failed to decode feature overrides", exception)
         }
-    }
 
     private fun mergePatches(
         base: FeatureFlagsPatch,
-        incoming: FeatureFlagsPatch
-    ): FeatureFlagsPatch {
-        return FeatureFlagsPatch(
+        incoming: FeatureFlagsPatch,
+    ): FeatureFlagsPatch =
+        FeatureFlagsPatch(
             importByUrl = incoming.importByUrl ?: base.importByUrl,
             webhookQueue = incoming.webhookQueue ?: base.webhookQueue,
             newsPublish = incoming.newsPublish ?: base.newsPublish,
@@ -136,10 +145,9 @@ class FeatureFlagsServiceImpl(
             billingStars = incoming.billingStars ?: base.billingStars,
             miniApp = incoming.miniApp ?: base.miniApp,
         )
-    }
 
-    private fun FeatureFlagsPatch.normalized(): FeatureFlagsPatch {
-        return FeatureFlagsPatch(
+    private fun FeatureFlagsPatch.normalized(): FeatureFlagsPatch =
+        FeatureFlagsPatch(
             importByUrl = importByUrl,
             webhookQueue = webhookQueue,
             newsPublish = newsPublish,
@@ -147,5 +155,4 @@ class FeatureFlagsServiceImpl(
             billingStars = billingStars,
             miniApp = miniApp,
         )
-    }
 }

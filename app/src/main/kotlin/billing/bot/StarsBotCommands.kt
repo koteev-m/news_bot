@@ -5,20 +5,20 @@ import billing.model.Tier
 import billing.model.UserSubscription
 import billing.service.BillingService
 import com.pengrad.telegrambot.TelegramBot
+import com.pengrad.telegrambot.model.LinkPreviewOptions
 import com.pengrad.telegrambot.model.Update
 import com.pengrad.telegrambot.model.request.InlineKeyboardButton
 import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup
-import com.pengrad.telegrambot.model.LinkPreviewOptions
 import com.pengrad.telegrambot.model.request.ParseMode
 import com.pengrad.telegrambot.request.AnswerCallbackQuery
 import com.pengrad.telegrambot.request.SendMessage
-import java.time.Instant
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
+import common.runCatchingNonFatal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
-import common.runCatchingNonFatal
+import java.time.Instant
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 object StarsBotCommands {
     private val logger = LoggerFactory.getLogger(StarsBotCommands::class.java)
@@ -48,45 +48,63 @@ object StarsBotCommands {
         }
     }
 
-    suspend fun handlePlans(update: Update, bot: TelegramBot, svc: BillingService) {
+    suspend fun handlePlans(
+        update: Update,
+        bot: TelegramBot,
+        svc: BillingService,
+    ) {
         if (!UpdateGuard.tryAcquire(update)) {
             return
         }
         val message = update.message() ?: return
         val chatId = message.chat()?.id() ?: return
         val response = withContext(Dispatchers.IO) { svc.listPlans() }
-        val text = response.fold(
-            onSuccess = { plans -> formatPlans(plans) },
-            onFailure = { _ -> "Try later" }
-        )
+        val text =
+            response.fold(
+                onSuccess = { plans -> formatPlans(plans) },
+                onFailure = { _ -> "Try later" },
+            )
         bot.execute(
             SendMessage(chatId, text)
                 .parseMode(ParseMode.Markdown)
-                .linkPreviewOptions(com.pengrad.telegrambot.model.LinkPreviewOptions().isDisabled(true))
+                .linkPreviewOptions(
+                    com.pengrad.telegrambot.model
+                        .LinkPreviewOptions()
+                        .isDisabled(true),
+                ),
         )
     }
 
     @Suppress("UNUSED_PARAMETER")
-    suspend fun handleBuy(update: Update, bot: TelegramBot, svc: BillingService) {
+    suspend fun handleBuy(
+        update: Update,
+        bot: TelegramBot,
+        svc: BillingService,
+    ) {
         if (!UpdateGuard.tryAcquire(update)) {
             return
         }
         val message = update.message() ?: return
         val chatId = message.chat()?.id() ?: return
-        val keyboard = InlineKeyboardMarkup(
-            arrayOf(
-                InlineKeyboardButton("Buy PRO").callbackData("buy:PRO"),
-                InlineKeyboardButton("Buy PRO+").callbackData("buy:PRO_PLUS"),
-                InlineKeyboardButton("Buy VIP").callbackData("buy:VIP")
+        val keyboard =
+            InlineKeyboardMarkup(
+                arrayOf(
+                    InlineKeyboardButton("Buy PRO").callbackData("buy:PRO"),
+                    InlineKeyboardButton("Buy PRO+").callbackData("buy:PRO_PLUS"),
+                    InlineKeyboardButton("Buy VIP").callbackData("buy:VIP"),
+                ),
             )
-        )
         bot.execute(
             SendMessage(chatId, "Choose your plan:")
-                .replyMarkup(keyboard)
+                .replyMarkup(keyboard),
         )
     }
 
-    suspend fun handleStatus(update: Update, bot: TelegramBot, svc: BillingService) {
+    suspend fun handleStatus(
+        update: Update,
+        bot: TelegramBot,
+        svc: BillingService,
+    ) {
         if (!UpdateGuard.tryAcquire(update)) {
             return
         }
@@ -94,18 +112,27 @@ object StarsBotCommands {
         val chatId = message.chat()?.id() ?: return
         val userId = message.from()?.id() ?: return
         val result = withContext(Dispatchers.IO) { svc.getMySubscription(userId) }
-        val text = result.fold(
-            onSuccess = { subscription -> formatStatus(subscription) },
-            onFailure = { _ -> "Try later" }
-        )
+        val text =
+            result.fold(
+                onSuccess = { subscription -> formatStatus(subscription) },
+                onFailure = { _ -> "Try later" },
+            )
         bot.execute(
             SendMessage(chatId, text)
                 .parseMode(ParseMode.Markdown)
-                .linkPreviewOptions(com.pengrad.telegrambot.model.LinkPreviewOptions().isDisabled(true))
+                .linkPreviewOptions(
+                    com.pengrad.telegrambot.model
+                        .LinkPreviewOptions()
+                        .isDisabled(true),
+                ),
         )
     }
 
-    suspend fun handleCallback(update: Update, bot: TelegramBot, svc: BillingService) {
+    suspend fun handleCallback(
+        update: Update,
+        bot: TelegramBot,
+        svc: BillingService,
+    ) {
         val callback = update.callbackQuery() ?: return
         val queryId = callback.id()
         val chatId = callback.message()?.chat()?.id()
@@ -127,18 +154,19 @@ object StarsBotCommands {
         val invoice = withContext(Dispatchers.IO) { svc.createInvoiceFor(userId, tier) }
         if (invoice.isSuccess) {
             bot.execute(
-                SendMessage(chatId, "Pay via Stars: ${invoice.getOrNull()}")
+                SendMessage(chatId, "Pay via Stars: ${invoice.getOrNull()}"),
             )
             bot.execute(
-                AnswerCallbackQuery(queryId).text("Invoice sent")
+                AnswerCallbackQuery(queryId).text("Invoice sent"),
             )
             return
         }
         val error = invoice.exceptionOrNull()
-        val message = when (error) {
-            is NoSuchElementException, is IllegalArgumentException -> "Plan not found"
-            else -> "Try later"
-        }
+        val message =
+            when (error) {
+                is NoSuchElementException, is IllegalArgumentException -> "Plan not found"
+                else -> "Try later"
+            }
         bot.execute(SendMessage(chatId, message))
         bot.execute(AnswerCallbackQuery(queryId))
     }
@@ -149,10 +177,11 @@ object StarsBotCommands {
             return "*Available plans*\nNo active plans"
         }
         val header = "*Available plans*"
-        val lines = active.map { plan ->
-            val tierLabel = humanTier(plan.tier)
-            "• *$tierLabel* — ${plan.title} — ${plan.priceXtr.value} XTR"
-        }
+        val lines =
+            active.map { plan ->
+                val tierLabel = humanTier(plan.tier)
+                "• *$tierLabel* — ${plan.title} — ${plan.priceXtr.value} XTR"
+            }
         return buildString {
             appendLine(header)
             lines.forEachIndexed { index, line ->
@@ -174,12 +203,13 @@ object StarsBotCommands {
         return "*Tier:* $tier\n*Status:* ${subscription.status.name}\n*Expires:* $expires"
     }
 
-    private fun humanTier(tier: Tier): String = when (tier) {
-        Tier.FREE -> "FREE"
-        Tier.PRO -> "PRO"
-        Tier.PRO_PLUS -> "PRO+"
-        Tier.VIP -> "VIP"
-    }
+    private fun humanTier(tier: Tier): String =
+        when (tier) {
+            Tier.FREE -> "FREE"
+            Tier.PRO -> "PRO"
+            Tier.PRO_PLUS -> "PRO+"
+            Tier.VIP -> "VIP"
+        }
 
     private fun parseTier(raw: String): Tier? {
         val normalized = raw.trim().uppercase(Locale.ROOT)

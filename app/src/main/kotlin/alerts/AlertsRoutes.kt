@@ -10,7 +10,10 @@ import io.ktor.server.routing.post
 
 const val INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 
-fun Route.alertsRoutes(alertsService: AlertsService, internalToken: String?) {
+fun Route.alertsRoutes(
+    alertsService: AlertsService,
+    internalToken: String?,
+) {
     suspend fun io.ktor.server.application.ApplicationCall.ensureInternalAccess(): Boolean {
         if (internalToken.isNullOrBlank()) {
             respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "internal token not configured"))

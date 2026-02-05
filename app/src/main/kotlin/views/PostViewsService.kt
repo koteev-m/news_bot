@@ -26,17 +26,18 @@ class PostViewsService(
         val views = client.getViews(normalizedChannel, ids, increment = false)
         views.forEach { (id, count) ->
             val key = "$normalizedChannel:$id"
-            val delta = synchronized(lastSeen) {
-                val last = lastSeen[key] ?: 0L
-                val safeCount = max(0L, count)
-                if (safeCount >= last) {
-                    val diff = safeCount - last
-                    lastSeen[key] = safeCount
-                    diff
-                } else {
-                    0L
+            val delta =
+                synchronized(lastSeen) {
+                    val last = lastSeen[key] ?: 0L
+                    val safeCount = max(0L, count)
+                    if (safeCount >= last) {
+                        val diff = safeCount - last
+                        lastSeen[key] = safeCount
+                        diff
+                    } else {
+                        0L
+                    }
                 }
-            }
             if (delta > 0L) {
                 registry.counter(METRIC_NAME, LABEL_POST_ID, id.toString()).increment(delta.toDouble())
             }

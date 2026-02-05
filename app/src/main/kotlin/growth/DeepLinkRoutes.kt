@@ -1,5 +1,8 @@
 package growth
 
+import db.DatabaseFactory
+import db.tables.CtaClicksTable
+import deeplink.DeepLinkPayload
 import deeplink.DeepLinkStore
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
@@ -14,14 +17,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import org.jetbrains.exposed.sql.insert
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
-import org.jetbrains.exposed.sql.insert
-import org.slf4j.LoggerFactory
-import db.DatabaseFactory
-import db.tables.CtaClicksTable
-import deeplink.DeepLinkPayload
 
 private const val METRIC_CTA_CLICK = "cta_click_total"
 private const val METRIC_BOT_START = "bot_start_total"
@@ -35,15 +35,19 @@ internal const val USER_AGENT_MAX_LEN = 512
  * Метрики соответствуют PRD (Micrometer/Prometheus). Значение payload — канонический ID,
  * не сырой base64url.
  */
-fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore: DeepLinkStore) {
+fun Application.installGrowthRoutes(
+    meterRegistry: MeterRegistry,
+    deepLinkStore: DeepLinkStore,
+) {
     val log = LoggerFactory.getLogger("growth.routes")
 
     val cfg = environment.config
-    val bot = cfg.propertyOrNull("telegram.botUsername")?.getString()?.takeIf { it.isNotBlank() }
-        ?: run {
-            log.warn("telegram.botUsername is required; skipping growth routes")
-            return
-        }
+    val bot =
+        cfg.propertyOrNull("telegram.botUsername")?.getString()?.takeIf { it.isNotBlank() }
+            ?: run {
+                log.warn("telegram.botUsername is required; skipping growth routes")
+                return
+            }
     val limStart = cfg.propertyOrNull("growth.limits.start")?.getString()?.toIntOrNull() ?: 12
     val limStartApp = cfg.propertyOrNull("growth.limits.startapp")?.getString()?.toIntOrNull() ?: 12
 
@@ -54,22 +58,24 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             val postId = call.parameters["postId"].orEmpty()
             val ab = call.request.queryParameters["ab"].orEmpty()
             val parsed = registry.parseStart(call.request.queryParameters["start"].orEmpty())
-            val payloadLabel = resolvePayloadMetricLabel(
-                parsed = parsed,
-                deepLinkStore = deepLinkStore,
-                log = log,
-                context = "cta redirect",
-            )
+            val payloadLabel =
+                resolvePayloadMetricLabel(
+                    parsed = parsed,
+                    deepLinkStore = deepLinkStore,
+                    log = log,
+                    context = "cta redirect",
+                )
             val abLabel = normalizeAbVariant(ab)
 
             // Метрика клика
-            meterRegistry.counter(
-                METRIC_CTA_CLICK,
-                listOf(
-                    Tag.of("ab", abLabel),
-                    Tag.of("payload", payloadLabel),
-                ),
-            ).increment()
+            meterRegistry
+                .counter(
+                    METRIC_CTA_CLICK,
+                    listOf(
+                        Tag.of("ab", abLabel),
+                        Tag.of("payload", payloadLabel),
+                    ),
+                ).increment()
 
             recordCtaClick(
                 log = log,
@@ -78,20 +84,22 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
                 userAgent = call.request.headers["User-Agent"],
             )
 
-            val location = if (parsed == null) {
-                "https://t.me/$bot"
-            } else {
-                "https://t.me/$bot?start=${parsed.raw}"
-            }
+            val location =
+                if (parsed == null) {
+                    "https://t.me/$bot"
+                } else {
+                    "https://t.me/$bot?start=${parsed.raw}"
+                }
 
             // Небольшая прозрачность окружения (без payload)
-            val sourceIp = call.request.headers["X-Forwarded-For"]
-                ?.split(',')
-                ?.firstOrNull()
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?: call.request.headers["X-Real-IP"]?.takeIf { it.isNotEmpty() }
-                ?: call.request.origin.remoteHost
+            val sourceIp =
+                call.request.headers["X-Forwarded-For"]
+                    ?.split(',')
+                    ?.firstOrNull()
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: call.request.headers["X-Real-IP"]?.takeIf { it.isNotEmpty() }
+                    ?: call.request.origin.remoteHost
             log.info(
                 "cta_redirect post={} ab={} src={}",
                 postId,
@@ -107,33 +115,37 @@ fun Application.installGrowthRoutes(meterRegistry: MeterRegistry, deepLinkStore:
             val parsed = registry.parseStartApp(call.request.queryParameters["startapp"].orEmpty())
 
             if (parsed != null) {
-                val payloadLabel = resolvePayloadMetricLabel(
-                    parsed = parsed,
-                    deepLinkStore = deepLinkStore,
-                    log = log,
-                    context = "app redirect",
-                )
-                meterRegistry.counter(
-                    METRIC_BOT_START,
-                    listOf(
-                        Tag.of("payload", payloadLabel),
-                    ),
-                ).increment()
+                val payloadLabel =
+                    resolvePayloadMetricLabel(
+                        parsed = parsed,
+                        deepLinkStore = deepLinkStore,
+                        log = log,
+                        context = "app redirect",
+                    )
+                meterRegistry
+                    .counter(
+                        METRIC_BOT_START,
+                        listOf(
+                            Tag.of("payload", payloadLabel),
+                        ),
+                    ).increment()
             }
 
-            val location = if (parsed == null) {
-                "https://t.me/$bot"
-            } else {
-                "https://t.me/$bot?startapp=${parsed.raw}"
-            }
+            val location =
+                if (parsed == null) {
+                    "https://t.me/$bot"
+                } else {
+                    "https://t.me/$bot?startapp=${parsed.raw}"
+                }
 
-            val sourceIp = call.request.headers["X-Forwarded-For"]
-                ?.split(',')
-                ?.firstOrNull()
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?: call.request.headers["X-Real-IP"]?.takeIf { it.isNotEmpty() }
-                ?: call.request.origin.remoteHost
+            val sourceIp =
+                call.request.headers["X-Forwarded-For"]
+                    ?.split(',')
+                    ?.firstOrNull()
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: call.request.headers["X-Real-IP"]?.takeIf { it.isNotEmpty() }
+                    ?: call.request.origin.remoteHost
             log.info("app_redirect src={}", sourceIp)
             call.response.header("Cache-Control", "no-store")
             call.respondRedirect(url = location, permanent = false)
@@ -163,13 +175,12 @@ private suspend fun resolvePayloadMetricLabel(
     }
 }
 
-private fun DeepLinkPayload.toMetricLabel(): String {
-    return when (type) {
+private fun DeepLinkPayload.toMetricLabel(): String =
+    when (type) {
         deeplink.DeepLinkType.TICKER -> PayloadMetricLabel.TICKER.value
         deeplink.DeepLinkType.TOPIC -> PayloadMetricLabel.TOPIC.value
         deeplink.DeepLinkType.PORTFOLIO -> PayloadMetricLabel.PORTFOLIO.value
     }
-}
 
 internal fun normalizeAbVariant(raw: String): String {
     if (raw.isBlank()) {
@@ -187,9 +198,7 @@ internal fun normalizeUserAgent(userAgent: String?): String? {
     return normalized.take(USER_AGENT_MAX_LEN)
 }
 
-internal fun parsePostId(postId: String): Long? {
-    return postId.toLongOrNull()?.takeIf { it > 0 }
-}
+internal fun parsePostId(postId: String): Long? = postId.toLongOrNull()?.takeIf { it > 0 }
 
 private suspend fun recordCtaClick(
     log: org.slf4j.Logger,
@@ -229,7 +238,9 @@ private suspend fun recordCtaClick(
     }
 }
 
-private enum class PayloadMetricLabel(val value: String) {
+private enum class PayloadMetricLabel(
+    val value: String,
+) {
     PORTFOLIO("PORTFOLIO"),
     TICKER("TICKER"),
     TOPIC("TOPIC"),

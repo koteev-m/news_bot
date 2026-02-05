@@ -19,26 +19,27 @@ open class InMemoryStarSubscriptionsRepository : StarSubscriptionsRepository {
     ): StarSubscriptionRow {
         val prev = rows[userId]
         val now = Instant.now()
-        val row = if (prev == null) {
-            StarSubscriptionRow(
-                id = idSeq.getAndIncrement(),
-                userId = userId,
-                plan = plan,
-                status = "ACTIVE",
-                autoRenew = autoRenew,
-                renewAt = renewAt,
-                trialUntil = trialUntil,
-                createdAt = now,
-            )
-        } else {
-            prev.copy(
-                plan = plan,
-                status = "ACTIVE",
-                autoRenew = autoRenew,
-                renewAt = renewAt ?: prev.renewAt,
-                trialUntil = trialUntil ?: prev.trialUntil,
-            )
-        }
+        val row =
+            if (prev == null) {
+                StarSubscriptionRow(
+                    id = idSeq.getAndIncrement(),
+                    userId = userId,
+                    plan = plan,
+                    status = "ACTIVE",
+                    autoRenew = autoRenew,
+                    renewAt = renewAt,
+                    trialUntil = trialUntil,
+                    createdAt = now,
+                )
+            } else {
+                prev.copy(
+                    plan = plan,
+                    status = "ACTIVE",
+                    autoRenew = autoRenew,
+                    renewAt = renewAt ?: prev.renewAt,
+                    trialUntil = trialUntil ?: prev.trialUntil,
+                )
+            }
         rows[userId] = row
         return row
     }

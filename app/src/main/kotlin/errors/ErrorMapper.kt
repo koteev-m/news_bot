@@ -8,15 +8,24 @@ import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.NotFoundException
 import io.ktor.server.plugins.ParameterConversionException
 import io.ktor.server.plugins.UnsupportedMediaTypeException
-import io.ktor.server.request.header
 import io.ktor.server.plugins.callid.callId
+import io.ktor.server.request.header
 import org.slf4j.Logger
 
-class ErrorMapper(private val logger: Logger) {
-    data class Mapped(val status: HttpStatusCode, val response: ErrorResponse, val headers: Map<String, String>)
+class ErrorMapper(
+    private val logger: Logger,
+) {
+    data class Mapped(
+        val status: HttpStatusCode,
+        val response: ErrorResponse,
+        val headers: Map<String, String>,
+    )
 
-    fun map(call: ApplicationCall, cause: Throwable): Mapped {
-        return when (cause) {
+    fun map(
+        call: ApplicationCall,
+        cause: Throwable,
+    ): Mapped =
+        when (cause) {
             is AppException -> mapAppException(call, cause)
             is BadRequestException, is ContentTransformationException, is ParameterConversionException ->
                 mapPredefined(call, ErrorCode.BAD_REQUEST)
@@ -24,9 +33,11 @@ class ErrorMapper(private val logger: Logger) {
             is UnsupportedMediaTypeException -> mapPredefined(call, ErrorCode.UNSUPPORTED_MEDIA)
             else -> mapUnexpected(call, cause)
         }
-    }
 
-    private fun mapAppException(call: ApplicationCall, exception: AppException): Mapped {
+    private fun mapAppException(
+        call: ApplicationCall,
+        exception: AppException,
+    ): Mapped {
         if (exception.errorCode == ErrorCode.INTERNAL && exception.cause != null) {
             logger.error("internal_error", exception)
         }
@@ -35,13 +46,19 @@ class ErrorMapper(private val logger: Logger) {
         return Mapped(status, buildResponse(call, exception.errorCode, message, exception.details), exception.headers)
     }
 
-    private fun mapPredefined(call: ApplicationCall, code: ErrorCode): Mapped {
+    private fun mapPredefined(
+        call: ApplicationCall,
+        code: ErrorCode,
+    ): Mapped {
         val status = ErrorCatalog.status(code)
         val message = ErrorCatalog.message(code)
         return Mapped(status, buildResponse(call, code, message, emptyList()), emptyMap())
     }
 
-    private fun mapUnexpected(call: ApplicationCall, cause: Throwable): Mapped {
+    private fun mapUnexpected(
+        call: ApplicationCall,
+        cause: Throwable,
+    ): Mapped {
         logger.error("unhandled_error", cause)
         val status = ErrorCatalog.status(ErrorCode.INTERNAL)
         val message = ErrorCatalog.message(ErrorCode.INTERNAL)
@@ -52,14 +69,15 @@ class ErrorMapper(private val logger: Logger) {
         call: ApplicationCall,
         code: ErrorCode,
         message: String,
-        details: List<String>
+        details: List<String>,
     ): ErrorResponse {
-        val traceId = call.callId ?: call.request.header(HttpHeaders.XRequestId) ?: call.request.header("Trace-Id") ?: "-"
+        val traceId =
+            call.callId ?: call.request.header(HttpHeaders.XRequestId) ?: call.request.header("Trace-Id") ?: "-"
         return ErrorResponse(
             code = code.name,
             message = message,
             details = details,
-            traceId = traceId
+            traceId = traceId,
         )
     }
 }

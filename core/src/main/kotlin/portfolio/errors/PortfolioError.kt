@@ -5,8 +5,14 @@ import java.time.LocalDate
 sealed interface PortfolioError {
     val message: String
 
-    data class Validation(override val message: String) : PortfolioError
-    data class NotFound(override val message: String) : PortfolioError
+    data class Validation(
+        override val message: String,
+    ) : PortfolioError
+
+    data class NotFound(
+        override val message: String,
+    ) : PortfolioError
+
     data class FxRateNotFound(
         val currency: String,
         val requestedDate: LocalDate,
@@ -23,10 +29,12 @@ sealed interface PortfolioError {
 
     data class External(
         override val message: String,
-        val cause: Throwable? = null
+        val cause: Throwable? = null,
     ) : PortfolioError
 }
 
 typealias DomainResult<T> = Result<T>
 
-class PortfolioException(val error: PortfolioError) : RuntimeException(error.message)
+class PortfolioException(
+    val error: PortfolioError,
+) : RuntimeException(error.message)

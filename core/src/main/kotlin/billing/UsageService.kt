@@ -5,16 +5,32 @@ import kotlin.math.min
 
 interface UsageRepo {
     suspend fun record(e: UsageEvent): Long
-    suspend fun aggregateByMetric(tenantId: Long, from: Instant, to: Instant): Map<String, Double>
-    suspend fun findRateCardForTenant(tenantId: Long, at: Instant): RateCard
+
+    suspend fun aggregateByMetric(
+        tenantId: Long,
+        from: Instant,
+        to: Instant,
+    ): Map<String, Double>
+
+    suspend fun findRateCardForTenant(
+        tenantId: Long,
+        at: Instant,
+    ): RateCard
+
     suspend fun persistInvoice(draft: InvoiceDraft): Long
 }
 
-class UsageService(private val repo: UsageRepo) {
-
+class UsageService(
+    private val repo: UsageRepo,
+) {
     suspend fun recordEvent(e: UsageEvent): Long = repo.record(e)
 
-    suspend fun draftInvoice(tenantId: Long, from: Instant, to: Instant, taxRate: Double = 0.0): InvoiceDraft {
+    suspend fun draftInvoice(
+        tenantId: Long,
+        from: Instant,
+        to: Instant,
+        taxRate: Double = 0.0,
+    ): InvoiceDraft {
         val totals = repo.aggregateByMetric(tenantId, from, to) // metric -> quantity
         val rate = repo.findRateCardForTenant(tenantId, to)
         val lines = mutableListOf<InvoiceLine>()

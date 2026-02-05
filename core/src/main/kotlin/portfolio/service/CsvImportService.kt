@@ -1,5 +1,14 @@
 package portfolio.service
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import portfolio.errors.DomainResult
+import portfolio.errors.PortfolioError
+import portfolio.errors.PortfolioException
+import portfolio.model.Money
+import portfolio.model.TradeSide
+import portfolio.model.TradeView
+import portfolio.model.ValuationMethod
 import java.io.Reader
 import java.math.BigDecimal
 import java.time.Instant
@@ -8,16 +17,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
 import java.util.Locale
 import java.util.UUID
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlin.ConsistentCopyVisibility
-import portfolio.errors.DomainResult
-import portfolio.errors.PortfolioError
-import portfolio.errors.PortfolioException
-import portfolio.model.Money
-import portfolio.model.TradeSide
-import portfolio.model.TradeView
-import portfolio.model.ValuationMethod
 
 class CsvImportService(
     private val instrumentResolver: InstrumentResolver,
@@ -28,165 +28,177 @@ class CsvImportService(
         portfolioId: UUID,
         reader: Reader,
         valuationMethod: ValuationMethod,
-    ): DomainResult<ImportReport> = withContext(Dispatchers.IO) {
-        reader.buffered().use { buffered ->
-            val headerLine = buffered.readLine() ?: return@use DomainResult.success(ImportReport())
-            val header = parseHeader(headerLine)
-                ?: return@use failure(
-                    PortfolioError.Validation("CSV header must contain: ${EXPECTED_HEADER.joinToString(",")}"),
-                )
-
-            if (header != EXPECTED_HEADER) {
-                val actual = header.joinToString(",")
-                return@use failure(
-                    PortfolioError.Validation("Unexpected CSV header: $actual"),
-                )
-            }
-
-            var lineNumber = 1
-            var inserted = 0
-            var duplicates = 0
-            val failures = mutableListOf<ImportFailure>()
-            val seenExtIds = mutableSetOf<String>()
-            val seenSoftKeys = mutableSetOf<SoftTradeKey>()
-
-            for (line in buffered.lineSequence()) {
-                lineNumber += 1
-                if (line.isBlank()) continue
-
-                val columns = try {
-                    parseLine(line)
-                } catch (iae: IllegalArgumentException) {
-                    failures += ImportFailure(lineNumber, null, iae.message ?: "Invalid CSV row")
-                    continue
-                }
-
-                if (columns.size != header.size) {
-                    failures += ImportFailure(
-                        lineNumber,
-                        null,
-                        "Expected ${header.size} columns but found ${columns.size}",
-                    )
-                    continue
-                }
-
-                val rowValues = header.indices.associate { index ->
-                    header[index] to columns[index]
-                }
-
-                val parsed = parseRow(rowValues)
-                when (parsed) {
-                    is RowParseResult.Failure -> {
-                        failures += ImportFailure(lineNumber, parsed.extId, parsed.message)
-                    }
-                    is RowParseResult.Success -> {
-                        val row = parsed.value
-
-                        val instrumentResult = resolveInstrument(row)
-                        if (instrumentResult.isFailure) {
-                            failures += ImportFailure(
-                                lineNumber,
-                                row.extId,
-                                errorMessage(instrumentResult.exceptionOrNull()!!),
-                            )
-                            continue
-                        }
-
-                        val instrument = instrumentResult.getOrNull()
-                        if (instrument == null) {
-                            failures += ImportFailure(
-                                lineNumber,
-                                row.extId,
-                                "Instrument not found for ${row.ticker}",
-                            )
-                            continue
-                        }
-
-                        val extId = row.extId
-                        if (extId != null && seenExtIds.contains(extId)) {
-                            duplicates += 1
-                            continue
-                        }
-
-                        val softKey = SoftTradeKey.of(
-                            portfolioId = portfolioId,
-                            instrumentId = instrument.instrumentId,
-                            executedAt = row.executedAt,
-                            side = row.side,
-                            quantity = row.quantity,
-                            price = row.price,
+    ): DomainResult<ImportReport> =
+        withContext(Dispatchers.IO) {
+            reader.buffered().use { buffered ->
+                val headerLine = buffered.readLine() ?: return@use DomainResult.success(ImportReport())
+                val header =
+                    parseHeader(headerLine)
+                        ?: return@use failure(
+                            PortfolioError.Validation("CSV header must contain: ${EXPECTED_HEADER.joinToString(",")}"),
                         )
 
-                        if (seenSoftKeys.contains(softKey)) {
-                            duplicates += 1
+                if (header != EXPECTED_HEADER) {
+                    val actual = header.joinToString(",")
+                    return@use failure(
+                        PortfolioError.Validation("Unexpected CSV header: $actual"),
+                    )
+                }
+
+                var lineNumber = 1
+                var inserted = 0
+                var duplicates = 0
+                val failures = mutableListOf<ImportFailure>()
+                val seenExtIds = mutableSetOf<String>()
+                val seenSoftKeys = mutableSetOf<SoftTradeKey>()
+
+                for (line in buffered.lineSequence()) {
+                    lineNumber += 1
+                    if (line.isBlank()) continue
+
+                    val columns =
+                        try {
+                            parseLine(line)
+                        } catch (iae: IllegalArgumentException) {
+                            failures += ImportFailure(lineNumber, null, iae.message ?: "Invalid CSV row")
                             continue
                         }
 
-                        if (extId != null) {
-                            val existsByExtId = tradeLookup.existsByExternalId(portfolioId, extId)
-                            if (existsByExtId.isFailure) {
-                                failures += ImportFailure(
-                                    lineNumber,
-                                    extId,
-                                    errorMessage(existsByExtId.exceptionOrNull()!!),
-                                )
+                    if (columns.size != header.size) {
+                        failures +=
+                            ImportFailure(
+                                lineNumber,
+                                null,
+                                "Expected ${header.size} columns but found ${columns.size}",
+                            )
+                        continue
+                    }
+
+                    val rowValues =
+                        header.indices.associate { index ->
+                            header[index] to columns[index]
+                        }
+
+                    val parsed = parseRow(rowValues)
+                    when (parsed) {
+                        is RowParseResult.Failure -> {
+                            failures += ImportFailure(lineNumber, parsed.extId, parsed.message)
+                        }
+                        is RowParseResult.Success -> {
+                            val row = parsed.value
+
+                            val instrumentResult = resolveInstrument(row)
+                            if (instrumentResult.isFailure) {
+                                failures +=
+                                    ImportFailure(
+                                        lineNumber,
+                                        row.extId,
+                                        errorMessage(instrumentResult.exceptionOrNull()!!),
+                                    )
                                 continue
                             }
-                            if (existsByExtId.getOrThrow()) {
-                                seenExtIds += extId
+
+                            val instrument = instrumentResult.getOrNull()
+                            if (instrument == null) {
+                                failures +=
+                                    ImportFailure(
+                                        lineNumber,
+                                        row.extId,
+                                        "Instrument not found for ${row.ticker}",
+                                    )
+                                continue
+                            }
+
+                            val extId = row.extId
+                            if (extId != null && seenExtIds.contains(extId)) {
+                                duplicates += 1
+                                continue
+                            }
+
+                            val softKey =
+                                SoftTradeKey.of(
+                                    portfolioId = portfolioId,
+                                    instrumentId = instrument.instrumentId,
+                                    executedAt = row.executedAt,
+                                    side = row.side,
+                                    quantity = row.quantity,
+                                    price = row.price,
+                                )
+
+                            if (seenSoftKeys.contains(softKey)) {
+                                duplicates += 1
+                                continue
+                            }
+
+                            if (extId != null) {
+                                val existsByExtId = tradeLookup.existsByExternalId(portfolioId, extId)
+                                if (existsByExtId.isFailure) {
+                                    failures +=
+                                        ImportFailure(
+                                            lineNumber,
+                                            extId,
+                                            errorMessage(existsByExtId.exceptionOrNull()!!),
+                                        )
+                                    continue
+                                }
+                                if (existsByExtId.getOrThrow()) {
+                                    seenExtIds += extId
+                                    seenSoftKeys += softKey
+                                    duplicates += 1
+                                    continue
+                                }
+                            }
+
+                            val existsByKey = tradeLookup.existsBySoftKey(softKey)
+                            if (existsByKey.isFailure) {
+                                failures +=
+                                    ImportFailure(
+                                        lineNumber,
+                                        extId,
+                                        errorMessage(existsByKey.exceptionOrNull()!!),
+                                    )
+                                continue
+                            }
+                            if (existsByKey.getOrThrow()) {
+                                extId?.let { seenExtIds += it }
                                 seenSoftKeys += softKey
                                 duplicates += 1
                                 continue
                             }
-                        }
 
-                        val existsByKey = tradeLookup.existsBySoftKey(softKey)
-                        if (existsByKey.isFailure) {
-                            failures += ImportFailure(
-                                lineNumber,
-                                extId,
-                                errorMessage(existsByKey.exceptionOrNull()!!),
-                            )
-                            continue
-                        }
-                        if (existsByKey.getOrThrow()) {
-                            extId?.let { seenExtIds += it }
-                            seenSoftKeys += softKey
-                            duplicates += 1
-                            continue
-                        }
+                            val tradeView =
+                                buildTradeView(
+                                    row = row,
+                                    portfolioId = portfolioId,
+                                    instrumentId = instrument.instrumentId,
+                                )
 
-                        val tradeView = buildTradeView(
-                            row = row,
-                            portfolioId = portfolioId,
-                            instrumentId = instrument.instrumentId,
-                        )
-
-                        val applied = portfolioService.applyTrade(tradeView, valuationMethod)
-                        if (applied.isSuccess) {
-                            inserted += 1
-                            seenSoftKeys += softKey
-                            extId?.let { seenExtIds += it }
-                        } else {
-                            failures += ImportFailure(
-                                lineNumber,
-                                extId,
-                                errorMessage(applied.exceptionOrNull()!!),
-                            )
+                            val applied = portfolioService.applyTrade(tradeView, valuationMethod)
+                            if (applied.isSuccess) {
+                                inserted += 1
+                                seenSoftKeys += softKey
+                                extId?.let { seenExtIds += it }
+                            } else {
+                                failures +=
+                                    ImportFailure(
+                                        lineNumber,
+                                        extId,
+                                        errorMessage(applied.exceptionOrNull()!!),
+                                    )
+                            }
                         }
                     }
                 }
-            }
 
-            DomainResult.success(
-                ImportReport(
-                    inserted = inserted,
-                    skippedDuplicates = duplicates,
-                    failed = failures,
-                ),
-            )
+                DomainResult.success(
+                    ImportReport(
+                        inserted = inserted,
+                        skippedDuplicates = duplicates,
+                        failed = failures,
+                    ),
+                )
+            }
         }
-    }
 
     private fun buildTradeView(
         row: ParsedTrade,
@@ -237,11 +249,12 @@ class CsvImportService(
     }
 
     private fun parseHeader(line: String): List<String>? {
-        val values = try {
-            parseLine(line)
-        } catch (_: IllegalArgumentException) {
-            return null
-        }
+        val values =
+            try {
+                parseLine(line)
+            } catch (_: IllegalArgumentException) {
+                return null
+            }
 
         if (values.isEmpty()) return null
 
@@ -255,43 +268,64 @@ class CsvImportService(
     private fun parseRow(values: Map<String, String>): RowParseResult {
         val extId = values["ext_id"].orEmpty().ifBlank { null }
 
-        val executedAt = parseInstant(values["datetime"]) ?: return RowParseResult.Failure(
-            extId,
-            "Invalid or missing datetime",
-        )
+        val executedAt =
+            parseInstant(values["datetime"]) ?: return RowParseResult.Failure(
+                extId,
+                "Invalid or missing datetime",
+            )
 
         val ticker = values["ticker"].orEmpty().trim().uppercase(Locale.ROOT)
         if (ticker.isEmpty()) {
             return RowParseResult.Failure(extId, "Ticker is required")
         }
 
-        val exchange = values["exchange"].orEmpty().trim().takeIf { it.isNotEmpty() }?.uppercase(Locale.ROOT)
-        val board = values["board"].orEmpty().trim().takeIf { it.isNotEmpty() }?.uppercase(Locale.ROOT)
-        val aliasSource = values["alias_source"].orEmpty().trim().takeIf { it.isNotEmpty() }?.uppercase(Locale.ROOT)
+        val exchange =
+            values["exchange"]
+                .orEmpty()
+                .trim()
+                .takeIf { it.isNotEmpty() }
+                ?.uppercase(Locale.ROOT)
+        val board =
+            values["board"]
+                .orEmpty()
+                .trim()
+                .takeIf { it.isNotEmpty() }
+                ?.uppercase(Locale.ROOT)
+        val aliasSource =
+            values["alias_source"]
+                .orEmpty()
+                .trim()
+                .takeIf { it.isNotEmpty() }
+                ?.uppercase(Locale.ROOT)
 
         val sideRaw = values["side"].orEmpty().trim().uppercase(Locale.ROOT)
-        val side = try {
-            TradeSide.valueOf(sideRaw)
-        } catch (_: IllegalArgumentException) {
-            return RowParseResult.Failure(extId, "Unknown trade side: $sideRaw")
-        }
+        val side =
+            try {
+                TradeSide.valueOf(sideRaw)
+            } catch (_: IllegalArgumentException) {
+                return RowParseResult.Failure(extId, "Unknown trade side: $sideRaw")
+            }
 
-        val quantity = parseDecimal(values["quantity"], positive = true)
-            ?: return RowParseResult.Failure(extId, "Quantity must be a positive decimal")
+        val quantity =
+            parseDecimal(values["quantity"], positive = true)
+                ?: return RowParseResult.Failure(extId, "Quantity must be a positive decimal")
 
-        val price = parseDecimal(values["price"], positive = true)
-            ?: return RowParseResult.Failure(extId, "Price must be a positive decimal")
+        val price =
+            parseDecimal(values["price"], positive = true)
+                ?: return RowParseResult.Failure(extId, "Price must be a positive decimal")
 
-        val currency = parseCurrency(values["currency"], default = null)
-            ?: return RowParseResult.Failure(extId, "Currency is required")
+        val currency =
+            parseCurrency(values["currency"], default = null)
+                ?: return RowParseResult.Failure(extId, "Currency is required")
 
         val fee = parseDecimal(values["fee"], positive = false) ?: BigDecimal.ZERO
         if (fee < BigDecimal.ZERO) {
             return RowParseResult.Failure(extId, "Fee cannot be negative")
         }
 
-        val feeCurrency = parseCurrency(values["fee_currency"], default = currency)
-            ?: return RowParseResult.Failure(extId, "Fee currency is invalid")
+        val feeCurrency =
+            parseCurrency(values["fee_currency"], default = currency)
+                ?: return RowParseResult.Failure(extId, "Fee currency is invalid")
 
         val taxRaw = values["tax"]
         val tax = parseDecimal(taxRaw, positive = false)
@@ -299,15 +333,16 @@ class CsvImportService(
             return RowParseResult.Failure(extId, "Tax cannot be negative")
         }
 
-        val taxCurrency = if (tax != null) {
-            parseCurrency(values["tax_currency"], default = currency)
-                ?: return RowParseResult.Failure(extId, "Tax currency is invalid")
-        } else {
-            values["tax_currency"].orEmpty().trim().takeIf { it.isNotEmpty() }?.let {
-                parseCurrency(it, default = null)
-                    ?: return RowParseResult.Failure(extId, "Tax currency requires a tax amount")
+        val taxCurrency =
+            if (tax != null) {
+                parseCurrency(values["tax_currency"], default = currency)
+                    ?: return RowParseResult.Failure(extId, "Tax currency is invalid")
+            } else {
+                values["tax_currency"].orEmpty().trim().takeIf { it.isNotEmpty() }?.let {
+                    parseCurrency(it, default = null)
+                        ?: return RowParseResult.Failure(extId, "Tax currency requires a tax amount")
+                }
             }
-        }
 
         val broker = values["broker"].orEmpty().trim().takeIf { it.isNotEmpty() }
         val note = values["note"].orEmpty().trim().takeIf { it.isNotEmpty() }
@@ -348,7 +383,10 @@ class CsvImportService(
         }
     }
 
-    private fun parseDecimal(raw: String?, positive: Boolean): BigDecimal? {
+    private fun parseDecimal(
+        raw: String?,
+        positive: Boolean,
+    ): BigDecimal? {
         val value = raw?.trim()
         if (value.isNullOrEmpty()) return null
         val decimal = value.toBigDecimalOrNull() ?: return null
@@ -359,7 +397,10 @@ class CsvImportService(
         }
     }
 
-    private fun parseCurrency(raw: String?, default: String?): String? {
+    private fun parseCurrency(
+        raw: String?,
+        default: String?,
+    ): String? {
         val value = raw?.trim()
         if (value.isNullOrEmpty()) {
             return default?.uppercase(Locale.ROOT)
@@ -409,12 +450,17 @@ class CsvImportService(
         return portfolioError?.message ?: throwable.message ?: "Unknown error"
     }
 
-    private fun failure(error: PortfolioError): DomainResult<Nothing> =
-        DomainResult.failure(PortfolioException(error))
+    private fun failure(error: PortfolioError): DomainResult<Nothing> = DomainResult.failure(PortfolioException(error))
 
     private sealed interface RowParseResult {
-        data class Success(val value: ParsedTrade) : RowParseResult
-        data class Failure(val extId: String?, val message: String) : RowParseResult
+        data class Success(
+            val value: ParsedTrade,
+        ) : RowParseResult
+
+        data class Failure(
+            val extId: String?,
+            val message: String,
+        ) : RowParseResult
     }
 
     data class ImportReport(
@@ -446,14 +492,15 @@ class CsvImportService(
                 side: TradeSide,
                 quantity: BigDecimal,
                 price: BigDecimal,
-            ): SoftTradeKey = SoftTradeKey(
-                portfolioId = portfolioId,
-                instrumentId = instrumentId,
-                executedAt = executedAt,
-                side = side,
-                quantity = normalize(quantity),
-                price = normalize(price),
-            )
+            ): SoftTradeKey =
+                SoftTradeKey(
+                    portfolioId = portfolioId,
+                    instrumentId = instrumentId,
+                    executedAt = executedAt,
+                    side = side,
+                    quantity = normalize(quantity),
+                    price = normalize(price),
+                )
 
             private fun normalize(value: BigDecimal): BigDecimal {
                 val stripped = value.stripTrailingZeros()
@@ -495,31 +542,38 @@ class CsvImportService(
     }
 
     interface TradeLookup {
-        suspend fun existsByExternalId(portfolioId: UUID, externalId: String): DomainResult<Boolean>
+        suspend fun existsByExternalId(
+            portfolioId: UUID,
+            externalId: String,
+        ): DomainResult<Boolean>
+
         suspend fun existsBySoftKey(key: SoftTradeKey): DomainResult<Boolean>
     }
 
-    data class InstrumentRef(val instrumentId: Long)
+    data class InstrumentRef(
+        val instrumentId: Long,
+    )
 
     companion object {
-        private val EXPECTED_HEADER = listOf(
-            "ext_id",
-            "datetime",
-            "ticker",
-            "exchange",
-            "board",
-            "alias_source",
-            "side",
-            "quantity",
-            "price",
-            "currency",
-            "fee",
-            "fee_currency",
-            "tax",
-            "tax_currency",
-            "broker",
-            "note",
-        )
+        private val EXPECTED_HEADER =
+            listOf(
+                "ext_id",
+                "datetime",
+                "ticker",
+                "exchange",
+                "board",
+                "alias_source",
+                "side",
+                "quantity",
+                "price",
+                "currency",
+                "fee",
+                "fee_currency",
+                "tax",
+                "tax_currency",
+                "broker",
+                "note",
+            )
 
         private val CURRENCY_REGEX = Regex("^[A-Z]{3}$")
     }

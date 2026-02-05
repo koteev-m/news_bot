@@ -1,19 +1,20 @@
 package billing.stars
 
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import java.util.concurrent.TimeUnit
 
 class BotBalanceRateLimiterTest {
     @Test
     fun `respects per-minute refill without over-permitting`() {
         var now = 0L
-        val limiter = BotBalanceRateLimiter(
-            capacity = 1,
-            refillPerMinute = 1,
-            nanoTimeProvider = { now },
-        )
+        val limiter =
+            BotBalanceRateLimiter(
+                capacity = 1,
+                refillPerMinute = 1,
+                nanoTimeProvider = { now },
+            )
 
         assertEquals(RateLimitVerdict.Allowed, limiter.check(1))
         val denied = limiter.check(1)
@@ -32,14 +33,15 @@ class BotBalanceRateLimiterTest {
     @Test
     fun `cleans up stale buckets lazily`() {
         var now = 0L
-        val limiter = BotBalanceRateLimiter(
-            capacity = 1,
-            refillPerMinute = 60,
-            cleanupThreshold = 2,
-            staleAfterNanos = 10,
-            cleanupIntervalNanos = 0,
-            nanoTimeProvider = { now },
-        )
+        val limiter =
+            BotBalanceRateLimiter(
+                capacity = 1,
+                refillPerMinute = 60,
+                cleanupThreshold = 2,
+                staleAfterNanos = 10,
+                cleanupIntervalNanos = 0,
+                nanoTimeProvider = { now },
+            )
 
         limiter.check(1)
         now = 1

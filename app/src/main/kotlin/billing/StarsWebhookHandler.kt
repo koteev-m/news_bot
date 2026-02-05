@@ -5,6 +5,7 @@ import billing.model.Tier
 import billing.service.ApplyPaymentOutcome
 import billing.service.BillingService
 import billing.service.applySuccessfulPaymentOutcome
+import common.runCatchingNonFatal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveText
@@ -12,33 +13,36 @@ import io.ktor.server.response.respond
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import observability.DomainMetrics
-import java.util.UUID
 import org.slf4j.LoggerFactory
-import common.runCatchingNonFatal
+import java.util.UUID
 
 @Serializable
-data class TgUpdate(val message: TgMessage? = null)
+data class TgUpdate(
+    val message: TgMessage? = null,
+)
 
 @Serializable
 data class TgMessage(
     val from: TgUser? = null,
-    val successful_payment: TgSuccessfulPayment? = null
+    val successful_payment: TgSuccessfulPayment? = null,
 )
 
 @Serializable
-data class TgUser(val id: Long? = null)
+data class TgUser(
+    val id: Long? = null,
+)
 
 @Serializable
 data class TgSuccessfulPayment(
     val currency: String,
     val total_amount: Long,
     val invoice_payload: String? = null,
-    val provider_payment_charge_id: String? = null
+    val provider_payment_charge_id: String? = null,
 )
 
 object StarsWebhookHandler {
-
     private val logger = LoggerFactory.getLogger(StarsWebhookHandler::class.java)
+    private const val MIN_PAYLOAD_PARTS = 3
 
     internal val json = Json { ignoreUnknownKeys = true }
 
@@ -50,18 +54,20 @@ object StarsWebhookHandler {
         call: ApplicationCall,
         billing: BillingService,
         metrics: DomainMetrics? = null,
-        analytics: AnalyticsPort = AnalyticsPort.Noop
+        analytics: AnalyticsPort = AnalyticsPort.Noop,
     ): Boolean {
         val requestId = requestId()
-        val body = runCatchingNonFatal { call.receiveText() }.getOrElse {
-            call.respond(HttpStatusCode.OK)
-            return false
-        }
+        val body =
+            runCatchingNonFatal { call.receiveText() }.getOrElse {
+                call.respond(HttpStatusCode.OK)
+                return false
+            }
 
-        val update = runCatchingNonFatal { json.decodeFromString(TgUpdate.serializer(), body) }.getOrElse {
-            call.respond(HttpStatusCode.OK)
-            return false
-        }
+        val update =
+            runCatchingNonFatal { json.decodeFromString(TgUpdate.serializer(), body) }.getOrElse {
+                call.respond(HttpStatusCode.OK)
+                return false
+            }
 
         return handleParsed(call, update, billing, requestId, metrics, analytics)
     }
@@ -71,7 +77,7 @@ object StarsWebhookHandler {
         update: TgUpdate,
         billing: BillingService,
         metrics: DomainMetrics? = null,
-        analytics: AnalyticsPort = AnalyticsPort.Noop
+        analytics: AnalyticsPort = AnalyticsPort.Noop,
     ): Boolean {
         val requestId = requestId()
         return handleParsed(call, update, billing, requestId, metrics, analytics)
@@ -83,7 +89,7 @@ object StarsWebhookHandler {
         billing: BillingService,
         requestId: String,
         metrics: DomainMetrics?,
-        analytics: AnalyticsPort
+        analytics: AnalyticsPort,
     ): Boolean {
         val successfulPayment = update.message?.successful_payment
         if (successfulPayment == null) {
@@ -113,34 +119,37 @@ object StarsWebhookHandler {
             return true
         }
 
-        val outcomeResult = billing.applySuccessfulPaymentOutcome(
-            userId = userId,
-            tier = tier,
-            amountXtr = successfulPayment.total_amount,
-            providerPaymentId = successfulPayment.provider_payment_charge_id,
-            payload = successfulPayment.invoice_payload
-        )
-
-        val outcome = outcomeResult.getOrElse { error ->
-            logger.error(
-                "stars-webhook requestId={} reason=applied_ok status=error",
-                requestId,
-                error
+        val outcomeResult =
+            billing.applySuccessfulPaymentOutcome(
+                userId = userId,
+                tier = tier,
+                amountXtr = successfulPayment.total_amount,
+                providerPaymentId = successfulPayment.provider_payment_charge_id,
+                payload = successfulPayment.invoice_payload,
             )
-            call.respond(HttpStatusCode.OK)
-            return true
-        }
 
-        val eventType = if (outcome.duplicate) {
-            "stars_payment_duplicate"
-        } else {
-            "stars_payment_succeeded"
-        }
+        val outcome =
+            outcomeResult.getOrElse { error ->
+                logger.error(
+                    "stars-webhook requestId={} reason=applied_ok status=error",
+                    requestId,
+                    error,
+                )
+                call.respond(HttpStatusCode.OK)
+                return true
+            }
+
+        val eventType =
+            if (outcome.duplicate) {
+                "stars_payment_duplicate"
+            } else {
+                "stars_payment_succeeded"
+            }
         analytics.track(
             type = eventType,
             userId = userId,
             source = "webhook",
-            props = mapOf("tier" to tier.name)
+            props = mapOf("tier" to tier.name),
         )
 
         handleSuccess(metrics, requestId, outcome)
@@ -149,7 +158,11 @@ object StarsWebhookHandler {
         return true
     }
 
-    private fun handleSuccess(metrics: DomainMetrics?, requestId: String, outcome: ApplyPaymentOutcome) {
+    private fun handleSuccess(
+        metrics: DomainMetrics?,
+        requestId: String,
+        outcome: ApplyPaymentOutcome,
+    ) {
         if (outcome.duplicate) {
             metrics?.webhookStarsDuplicate?.increment()
             logger.info("stars-webhook requestId={} reason=duplicate", requestId)
@@ -162,7 +175,7 @@ object StarsWebhookHandler {
     private fun parsePayload(payload: String?): Pair<Long, Tier>? {
         if (payload.isNullOrBlank()) return null
         val parts = payload.split(':')
-        if (parts.size < 3) return null
+        if (parts.size < MIN_PAYLOAD_PARTS) return null
         val userId = parts[0].toLongOrNull() ?: return null
         val tier = runCatchingNonFatal { Tier.valueOf(parts[1].uppercase()) }.getOrNull() ?: return null
         return userId to tier

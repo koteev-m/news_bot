@@ -1,5 +1,6 @@
 package security
 
+import common.runCatchingNonFatal
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -21,25 +22,27 @@ import io.ktor.util.AttributeKey
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.readAvailable
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CancellationException
+import java.io.ByteArrayOutputStream
 import kotlin.io.DEFAULT_BUFFER_SIZE
-import common.runCatchingNonFatal
 
 object UploadGuard : BaseApplicationPlugin<Application, UploadGuard.Config, UploadGuard> {
-
     class Config {
         var csvMaxBytes: Long = 1_048_576
-        var allowedCsvContentTypes: Set<ContentType> = setOf(
-            ContentType.Text.CSV,
-            ContentType.Application.OctetStream,
-            ContentType.parse("application/vnd.ms-excel"),
-        )
+        var allowedCsvContentTypes: Set<ContentType> =
+            setOf(
+                ContentType.Text.CSV,
+                ContentType.Application.OctetStream,
+                ContentType.parse("application/vnd.ms-excel"),
+            )
     }
 
     override val key: AttributeKey<UploadGuard> = AttributeKey("UploadGuard")
 
-    override fun install(pipeline: Application, configure: Config.() -> Unit): UploadGuard {
+    override fun install(
+        pipeline: Application,
+        configure: Config.() -> Unit,
+    ): UploadGuard {
         val pluginConfig = Config().apply(configure)
         require(pluginConfig.csvMaxBytes > 0) { "upload.csvMaxBytes must be greater than zero" }
         require(pluginConfig.allowedCsvContentTypes.isNotEmpty()) { "upload.allowedCsvContentTypes must not be empty" }
@@ -70,18 +73,21 @@ object UploadGuard : BaseApplicationPlugin<Application, UploadGuard.Config, Uplo
             if (received !is MultiPartData) return@intercept
             if (!call.isMultipartFormData()) return@intercept
 
-            val guarded = GuardedMultiPartData(
-                delegate = received,
-                limit = pluginConfig.csvMaxBytes,
-                allowedContentTypes = pluginConfig.allowedCsvContentTypes,
-            )
+            val guarded =
+                GuardedMultiPartData(
+                    delegate = received,
+                    limit = pluginConfig.csvMaxBytes,
+                    allowedContentTypes = pluginConfig.allowedCsvContentTypes,
+                )
             proceedWith(guarded)
         }
 
         return this
     }
 
-    private class PayloadTooLargeException(val limit: Long) : RuntimeException()
+    private class PayloadTooLargeException(
+        val limit: Long,
+    ) : RuntimeException()
 
     private object UnsupportedCsvMediaTypeException : RuntimeException()
 
@@ -111,18 +117,19 @@ object UploadGuard : BaseApplicationPlugin<Application, UploadGuard.Config, Uplo
                 throw PayloadTooLargeException(limit)
             }
 
-            val bytes = try {
-                part.provider().readBytesWithin(limit)
-            } catch (cancellation: CancellationException) {
-                part.dispose()
-                throw cancellation
-            } catch (err: Error) {
-                part.dispose()
-                throw err
-            } catch (cause: Throwable) {
-                part.dispose()
-                throw cause
-            }
+            val bytes =
+                try {
+                    part.provider().readBytesWithin(limit)
+                } catch (cancellation: CancellationException) {
+                    part.dispose()
+                    throw cancellation
+                } catch (err: Error) {
+                    part.dispose()
+                    throw err
+                } catch (cause: Throwable) {
+                    part.dispose()
+                    throw cause
+                }
 
             return PartData.FileItem(
                 provider = { ByteReadChannel(bytes) },
@@ -213,8 +220,9 @@ fun Application.installUploadGuard() {
 
 private fun ApplicationConfig.longProperty(name: String): Long? {
     val rawValue = propertyOrNull(name)?.getString()?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val parsed = rawValue.toLongOrNull()
-        ?: throw IllegalArgumentException("upload.$name must be a positive integer")
+    val parsed =
+        rawValue.toLongOrNull()
+            ?: throw IllegalArgumentException("upload.$name must be a positive integer")
     require(parsed > 0) { "upload.$name must be greater than zero" }
     return parsed
 }
@@ -222,16 +230,17 @@ private fun ApplicationConfig.longProperty(name: String): Long? {
 private fun ApplicationConfig.contentTypeSet(name: String): Set<ContentType>? {
     val values = propertyOrNull(name)?.getList()?.map { it.trim() }?.filter { it.isNotEmpty() } ?: return null
     if (values.isEmpty()) return null
-    val parsed = values.map { value ->
-        try {
-            ContentType.parse(value)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (err: Error) {
-            throw err
-        } catch (cause: Throwable) {
-            throw IllegalArgumentException("upload.$name contains invalid content type: $value", cause)
+    val parsed =
+        values.map { value ->
+            try {
+                ContentType.parse(value)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
+            } catch (cause: Throwable) {
+                throw IllegalArgumentException("upload.$name contains invalid content type: $value", cause)
+            }
         }
-    }
     return parsed.toSet()
 }

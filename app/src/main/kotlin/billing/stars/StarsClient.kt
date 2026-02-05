@@ -1,5 +1,6 @@
 package billing.stars
 
+import common.runCatchingNonFatal
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpRequestRetry
@@ -12,6 +13,10 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
@@ -19,11 +24,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ThreadLocalRandom
 import kotlin.math.min
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import org.slf4j.LoggerFactory
-import common.runCatchingNonFatal
 
 data class StarsClientConfig(
     val connectTimeoutMs: Long,
@@ -38,7 +38,6 @@ open class StarsClient(
     client: HttpClient? = null,
     private val baseUrl: String = "https://api.telegram.org",
 ) : AutoCloseable {
-
     private val logger = LoggerFactory.getLogger(StarsClient::class.java)
     private val json = Json { ignoreUnknownKeys = true }
     private val httpClient: HttpClient = client ?: defaultClient()
@@ -62,8 +61,9 @@ open class StarsClient(
 
     open suspend fun getBotStarAmount(): StarAmount {
         val payload = fetchBalancePayload()
-        val amount = payload.amount ?: payload.available
-            ?: throw StarsClientDecodeError(IllegalStateException("telegram response missing amount"))
+        val amount =
+            payload.amount ?: payload.available
+                ?: throw StarsClientDecodeError(IllegalStateException("telegram response missing amount"))
 
         return StarAmount(
             amount = amount,
@@ -71,11 +71,12 @@ open class StarsClient(
         )
     }
 
+    @Suppress("ThrowsCount")
     private suspend fun fetchBalancePayload(): BalancePayload {
         val started = System.nanoTime()
         val response = httpClient.get("$baseUrl/bot$botToken/getMyStarBalance")
 
-        val latencyMs = (System.nanoTime() - started) / 1_000_000
+        val latencyMs = (System.nanoTime() - started) / NANOS_IN_MILLIS
         logger.debug(
             "stars-client action=getBotStarBalance status={} latencyMs={}",
             response.status.value,
@@ -84,7 +85,8 @@ open class StarsClient(
 
         val payload = response.bodyAsText()
         val decoded = runCatchingNonFatal { json.decodeFromString(TgBalanceResponse.serializer(), payload) }.getOrNull()
-        val retryAfterSeconds = decoded?.parameters?.retryAfter ?: parseRetryAfter(response.headers[HttpHeaders.RetryAfter])
+        val retryAfterSeconds =
+            decoded?.parameters?.retryAfter ?: parseRetryAfter(response.headers[HttpHeaders.RetryAfter])
 
         if (response.status == HttpStatusCode.TooManyRequests) {
             throw StarsClientRateLimited(retryAfterSeconds)
@@ -94,17 +96,21 @@ open class StarsClient(
             val code = decoded.errorCode
             when {
                 code == HttpStatusCode.TooManyRequests.value -> throw StarsClientRateLimited(retryAfterSeconds)
-                code != null && code in 500..599 -> throw StarsClientServerError(code)
-                code != null && code in 400..499 -> throw StarsClientBadRequest(code)
+                code != null && code in HTTP_SERVER_ERROR_START..HTTP_SERVER_ERROR_END -> throw StarsClientServerError(
+                    code
+                )
+                code != null && code in HTTP_BAD_REQUEST_START..HTTP_BAD_REQUEST_END -> throw StarsClientBadRequest(
+                    code
+                )
                 else -> throw StarsClientDecodeError(IllegalStateException("telegram response not ok"))
             }
         }
 
-        if (response.status.value in 500..599) {
+        if (response.status.value in HTTP_SERVER_ERROR_START..HTTP_SERVER_ERROR_END) {
             throw StarsClientServerError(response.status.value)
         }
 
-        if (response.status.value in 400..499) {
+        if (response.status.value in HTTP_BAD_REQUEST_START..HTTP_BAD_REQUEST_END) {
             throw StarsClientBadRequest(response.status.value)
         }
 
@@ -123,47 +129,48 @@ open class StarsClient(
         )
     }
 
-    private fun defaultClient(): HttpClient = HttpClient(CIO) {
-        expectSuccess = false
+    private fun defaultClient(): HttpClient =
+        HttpClient(CIO) {
+            expectSuccess = false
 
-        defaultRequest {
-            header(HttpHeaders.UserAgent, USER_AGENT)
-            header(HttpHeaders.Accept, "application/json")
-        }
+            defaultRequest {
+                header(HttpHeaders.UserAgent, USER_AGENT)
+                header(HttpHeaders.Accept, "application/json")
+            }
 
-        install(HttpTimeout) {
-            connectTimeoutMillis = config.connectTimeoutMs
-            requestTimeoutMillis = config.readTimeoutMs
-            socketTimeoutMillis = config.readTimeoutMs
-        }
+            install(HttpTimeout) {
+                connectTimeoutMillis = config.connectTimeoutMs
+                requestTimeoutMillis = config.readTimeoutMs
+                socketTimeoutMillis = config.readTimeoutMs
+            }
 
-        install(ContentNegotiation) {
-            json(json)
-        }
+            install(ContentNegotiation) {
+                json(json)
+            }
 
-        install(HttpRequestRetry) {
-            maxRetries = config.retryMax
-            retryIf { _, response ->
-                when {
-                    response.status == HttpStatusCode.TooManyRequests ->
-                        parseRetryAfter(response.headers[HttpHeaders.RetryAfter]) != null
-                    response.status.value >= 500 -> true
-                    else -> false
+            install(HttpRequestRetry) {
+                maxRetries = config.retryMax
+                retryIf { _, response ->
+                    when {
+                        response.status == HttpStatusCode.TooManyRequests ->
+                            parseRetryAfter(response.headers[HttpHeaders.RetryAfter]) != null
+                        response.status.value >= HTTP_SERVER_ERROR_START -> true
+                        else -> false
+                    }
+                }
+                retryOnExceptionIf { _, cause -> cause is IOException }
+                delayMillis(respectRetryAfterHeader = true) { attempt ->
+                    exponentialDelay(attempt)
                 }
             }
-            retryOnExceptionIf { _, cause -> cause is IOException }
-            delayMillis(respectRetryAfterHeader = true) { attempt ->
-                exponentialDelay(attempt)
-            }
         }
-    }
 
     private fun exponentialDelay(attempt: Int): Long {
         val cappedAttempt = attempt.coerceAtLeast(0)
         val multiplier = 1L shl cappedAttempt
-        val maxDelay = config.retryBaseDelayMs * 10
+        val maxDelay = config.retryBaseDelayMs * RETRY_DELAY_MULTIPLIER
         val baseDelay = maxOf(1L, min(config.retryBaseDelayMs * multiplier, maxDelay))
-        val jitter = ThreadLocalRandom.current().nextLong(baseDelay / 10 + 1)
+        val jitter = ThreadLocalRandom.current().nextLong(baseDelay / RETRY_DELAY_MULTIPLIER + 1)
         return baseDelay + jitter
     }
 
@@ -182,17 +189,40 @@ open class StarsClient(
     override fun close() {
         httpClient.close()
     }
+
+    companion object {
+        private const val HTTP_SERVER_ERROR_START = 500
+        private const val HTTP_SERVER_ERROR_END = 599
+        private const val HTTP_BAD_REQUEST_START = 400
+        private const val HTTP_BAD_REQUEST_END = 499
+        private const val RETRY_DELAY_MULTIPLIER = 10L
+        private const val NANOS_IN_MILLIS = 1_000_000L
+    }
 }
 
 private const val USER_AGENT = "stars-client"
 
 private fun nowEpochSeconds(): Long = Instant.now().epochSecond
 
-open class StarsClientException(message: String) : Exception(message)
-class StarsClientRateLimited(val retryAfterSeconds: Long? = null) : StarsClientException("telegram rate limited")
-class StarsClientServerError(val code: Int) : StarsClientException("telegram server error: $code")
-class StarsClientBadRequest(val code: Int) : StarsClientException("telegram bad request: $code")
-class StarsClientDecodeError(cause: Throwable) : StarsClientException("telegram decode error: ${cause.message}")
+open class StarsClientException(
+    message: String,
+) : Exception(message)
+
+class StarsClientRateLimited(
+    val retryAfterSeconds: Long? = null,
+) : StarsClientException("telegram rate limited")
+
+class StarsClientServerError(
+    val code: Int,
+) : StarsClientException("telegram server error: $code")
+
+class StarsClientBadRequest(
+    val code: Int,
+) : StarsClientException("telegram bad request: $code")
+
+class StarsClientDecodeError(
+    cause: Throwable,
+) : StarsClientException("telegram decode error: ${cause.message}")
 
 @Serializable
 private data class TgBalanceResponse(

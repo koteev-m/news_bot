@@ -1,11 +1,16 @@
 package privacy
 
-import java.time.Instant
 import kotlinx.serialization.Serializable
+import java.time.Instant
 
 interface PrivacyService {
     suspend fun enqueueErasure(userId: Long)
-    suspend fun runErasure(userId: Long, dryRun: Boolean = false): ErasureReport
+
+    suspend fun runErasure(
+        userId: Long,
+        dryRun: Boolean = false,
+    ): ErasureReport
+
     suspend fun runRetention(now: Instant = Instant.now()): RetentionReport
 }
 
@@ -14,10 +19,10 @@ data class ErasureReport(
     val userId: Long,
     val deleted: Map<String, Long>,
     val anonymized: Map<String, Long>,
-    val dryRun: Boolean
+    val dryRun: Boolean,
 )
 
 @Serializable
 data class RetentionReport(
-    val deletedByTable: Map<String, Long>
+    val deletedByTable: Map<String, Long>,
 )

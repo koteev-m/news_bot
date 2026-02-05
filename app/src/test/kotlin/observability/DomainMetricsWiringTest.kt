@@ -21,65 +21,67 @@ import io.ktor.server.request.receiveText
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
-import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import observability.adapters.AlertMetricsAdapter
 import observability.adapters.NewsMetricsAdapter
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.days
 
 class DomainMetricsWiringTest {
-
     @Test
-    fun `webhook counters reflect primary and duplicate deliveries`() = testApplication {
-        val billing = FakeBillingService()
+    fun `webhook counters reflect primary and duplicate deliveries`() =
+        testApplication {
+            val billing = FakeBillingService()
 
-        application {
-            val registry = Observability.install(this)
-            val domainMetrics = DomainMetrics(registry)
-            attributes.put(
-                Services.Key,
-                Services(
-                    billingService = billing,
-                    telegramBot = NoopTelegramBot(),
-                    featureFlags = stubFeatureFlagsService(),
-                    adminUserIds = emptySet(),
-                    metrics = domainMetrics,
-                    alertMetrics = AlertMetricsAdapter(domainMetrics),
-                    newsMetrics = NewsMetricsAdapter(domainMetrics),
-                    deepLinkStore = InMemoryDeepLinkStore(),
-                    deepLinkTtl = 14.days,
+            application {
+                val registry = Observability.install(this)
+                val domainMetrics = DomainMetrics(registry)
+                attributes.put(
+                    Services.Key,
+                    Services(
+                        billingService = billing,
+                        telegramBot = NoopTelegramBot(),
+                        featureFlags = stubFeatureFlagsService(),
+                        adminUserIds = emptySet(),
+                        metrics = domainMetrics,
+                        alertMetrics = AlertMetricsAdapter(domainMetrics),
+                        newsMetrics = NewsMetricsAdapter(domainMetrics),
+                        deepLinkStore = InMemoryDeepLinkStore(),
+                        deepLinkTtl = 14.days,
+                    ),
                 )
-            )
-            installWebhookRoute(billing, domainMetrics)
+                installWebhookRoute(billing, domainMetrics)
+            }
+
+            val client = createClient { }
+            val payload = paymentUpdateJson(userId = 1001L, providerId = "pid-1001")
+
+            val first =
+                client.post("/test/webhook") {
+                    contentType(ContentType.Application.Json)
+                    setBody(payload)
+                }
+            assertEquals(HttpStatusCode.OK, first.status)
+
+            val duplicate =
+                client.post("/test/webhook") {
+                    contentType(ContentType.Application.Json)
+                    setBody(payload)
+                }
+            assertEquals(HttpStatusCode.OK, duplicate.status)
+
+            val metricsBody = client.get("/metrics").bodyAsText()
+            assertEquals(1.0, metricValue(metricsBody, "webhook_stars_success_total"))
+            assertEquals(1.0, metricValue(metricsBody, "webhook_stars_duplicate_total"))
         }
-
-        val client = createClient { }
-        val payload = paymentUpdateJson(userId = 1001L, providerId = "pid-1001")
-
-        val first = client.post("/test/webhook") {
-            contentType(ContentType.Application.Json)
-            setBody(payload)
-        }
-        assertEquals(HttpStatusCode.OK, first.status)
-
-        val duplicate = client.post("/test/webhook") {
-            contentType(ContentType.Application.Json)
-            setBody(payload)
-        }
-        assertEquals(HttpStatusCode.OK, duplicate.status)
-
-        val metricsBody = client.get("/metrics").bodyAsText()
-        assertEquals(1.0, metricValue(metricsBody, "webhook_stars_success_total"))
-        assertEquals(1.0, metricValue(metricsBody, "webhook_stars_duplicate_total"))
-    }
 
     private fun Application.installWebhookRoute(
         billing: FakeBillingService,
-        metrics: DomainMetrics
+        metrics: DomainMetrics,
     ) {
         routing {
             post("/test/webhook") {
@@ -90,26 +92,37 @@ class DomainMetricsWiringTest {
         }
     }
 
-    private fun paymentUpdateJson(userId: Long, providerId: String): String {
-        val update = TgUpdate(
-            message = billing.TgMessage(
-                from = billing.TgUser(id = userId),
-                successful_payment = billing.TgSuccessfulPayment(
-                    currency = "XTR",
-                    total_amount = 1000,
-                    invoice_payload = "$userId:PRO:payload",
-                    provider_payment_charge_id = providerId
-                )
+    private fun paymentUpdateJson(
+        userId: Long,
+        providerId: String,
+    ): String {
+        val update =
+            TgUpdate(
+                message =
+                billing.TgMessage(
+                    from = billing.TgUser(id = userId),
+                    successful_payment =
+                    billing.TgSuccessfulPayment(
+                        currency = "XTR",
+                        total_amount = 1000,
+                        invoice_payload = "$userId:PRO:payload",
+                        provider_payment_charge_id = providerId,
+                    ),
+                ),
             )
-        )
         return Json.encodeToString(update)
     }
 
-    private fun metricValue(metrics: String, name: String): Double {
-        val line = metrics.lineSequence()
-            .map { it.trim() }
-            .firstOrNull { it.startsWith(name) && !it.contains('{') }
-            ?: return 0.0
+    private fun metricValue(
+        metrics: String,
+        name: String,
+    ): Double {
+        val line =
+            metrics
+                .lineSequence()
+                .map { it.trim() }
+                .firstOrNull { it.startsWith(name) && !it.contains('{') }
+                ?: return 0.0
         return line.substringAfter(' ').toDoubleOrNull() ?: 0.0
     }
 
@@ -121,45 +134,52 @@ class DomainMetricsWiringTest {
             tier: billing.model.Tier,
             amountXtr: Long,
             providerPaymentId: String?,
-            payload: String?
-        ): Result<ApplyPaymentOutcome> = runCatching {
-            val key = providerPaymentId ?: "$userId:${tier.name}:${payload ?: ""}"
-            val isNew = processed.add(key)
-            ApplyPaymentOutcome(duplicate = !isNew)
-        }
+            payload: String?,
+        ): Result<ApplyPaymentOutcome> =
+            runCatching {
+                val key = providerPaymentId ?: "$userId:${tier.name}:${payload ?: ""}"
+                val isNew = processed.add(key)
+                ApplyPaymentOutcome(duplicate = !isNew)
+            }
 
         override suspend fun applySuccessfulPayment(
             userId: Long,
             tier: billing.model.Tier,
             amountXtr: Long,
             providerPaymentId: String?,
-            payload: String?
+            payload: String?,
         ): Result<Unit> = applySuccessfulPaymentWithOutcome(userId, tier, amountXtr, providerPaymentId, payload).map { }
 
         override suspend fun listPlans(): Result<List<billing.model.BillingPlan>> =
             Result.failure(UnsupportedOperationException("not used"))
 
-        override suspend fun createInvoiceFor(userId: Long, tier: billing.model.Tier): Result<String> =
-            Result.failure(UnsupportedOperationException("not used"))
+        override suspend fun createInvoiceFor(
+            userId: Long,
+            tier: billing.model.Tier,
+        ): Result<String> = Result.failure(UnsupportedOperationException("not used"))
 
         override suspend fun getMySubscription(userId: Long): Result<billing.model.UserSubscription?> =
             Result.failure(UnsupportedOperationException("not used"))
     }
 
     private fun stubFeatureFlagsService(): FeatureFlagsService {
-        val defaults = FeatureFlags(
-            importByUrl = false,
-            webhookQueue = true,
-            newsPublish = true,
-            alertsEngine = true,
-            billingStars = true,
-            miniApp = true
-        )
+        val defaults =
+            FeatureFlags(
+                importByUrl = false,
+                webhookQueue = true,
+                newsPublish = true,
+                alertsEngine = true,
+                billingStars = true,
+                miniApp = true,
+            )
         return object : FeatureFlagsService {
             private val flow = MutableStateFlow(0L)
             override val updatesFlow: StateFlow<Long> = flow
+
             override suspend fun defaults(): FeatureFlags = defaults
+
             override suspend fun effective(): FeatureFlags = defaults
+
             override suspend fun upsertGlobal(patch: FeatureFlagsPatch) {}
         }
     }

@@ -8,9 +8,14 @@ import repo.TenancyRepository
 
 val TenantContextKey = AttributeKey<TenantContext>("tenantContext")
 
-class TenantResolver(private val repository: TenancyRepository) {
-
-    suspend fun resolve(call: ApplicationCall, userId: Long?, jwtScopes: Set<String>): TenantContext {
+class TenantResolver(
+    private val repository: TenancyRepository,
+) {
+    suspend fun resolve(
+        call: ApplicationCall,
+        userId: Long?,
+        jwtScopes: Set<String>,
+    ): TenantContext {
         val slugHeader = call.request.header("X-Tenant-Slug")
         val host = call.request.host()
         val slugSub = host.takeIf { it.contains('.') }?.substringBefore('.')

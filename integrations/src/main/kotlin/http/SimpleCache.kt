@@ -1,22 +1,28 @@
 package http
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import java.time.Clock
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CancellationException
 
 class SimpleCache<K : Any, V : Any>(
     private val ttlMillis: Long,
-    private val clock: Clock = Clock.systemUTC()
+    private val clock: Clock = Clock.systemUTC(),
 ) {
-    private data class Entry<V>(val value: V, val expiresAtMillis: Long) {
+    private data class Entry<V>(
+        val value: V,
+        val expiresAtMillis: Long,
+    ) {
         fun isExpired(nowMillis: Long): Boolean = nowMillis >= expiresAtMillis
     }
 
     private val store = ConcurrentHashMap<K, Entry<V>>()
     private val inFlight = ConcurrentHashMap<K, CompletableDeferred<V>>()
 
-    suspend fun getOrPut(key: K, loader: suspend () -> V): V {
+    suspend fun getOrPut(
+        key: K,
+        loader: suspend () -> V,
+    ): V {
         val now = clock.millis()
         store[key]?.let { entry ->
             if (!entry.isExpired(now)) {

@@ -29,28 +29,30 @@ fun Route.adminFeaturesRoutes() {
         }
 
         patch {
-            val subject = call.userIdOrNull?.toLongOrNull() ?: run {
-                call.respondUnauthorized()
-                return@patch
-            }
+            val subject =
+                call.userIdOrNull?.toLongOrNull() ?: run {
+                    call.respondUnauthorized()
+                    return@patch
+                }
             val services = call.application.attributes[Services.Key]
             if (!services.adminUserIds.contains(subject)) {
                 call.respond(HttpStatusCode.Forbidden, mapOf("error" to "forbidden"))
                 return@patch
             }
 
-            val patch = try {
-                call.receive<FeatureFlagsPatch>()
-            } catch (_: ContentTransformationException) {
-                call.respondBadRequest(listOf("invalid_json"))
-                return@patch
-            } catch (_: SerializationException) {
-                call.respondBadRequest(listOf("invalid_json"))
-                return@patch
-            } catch (_: Exception) {
-                call.respondBadRequest(listOf("invalid_json"))
-                return@patch
-            }
+            val patch =
+                try {
+                    call.receive<FeatureFlagsPatch>()
+                } catch (_: ContentTransformationException) {
+                    call.respondBadRequest(listOf("invalid_json"))
+                    return@patch
+                } catch (_: SerializationException) {
+                    call.respondBadRequest(listOf("invalid_json"))
+                    return@patch
+                } catch (_: Exception) {
+                    call.respondBadRequest(listOf("invalid_json"))
+                    return@patch
+                }
 
             val service: FeatureFlagsService = services.featureFlags
             try {

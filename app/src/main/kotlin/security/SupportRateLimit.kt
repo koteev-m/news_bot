@@ -6,7 +6,10 @@ object SupportRateLimit {
     @Volatile
     private var limiter: RateLimiter? = null
 
-    fun get(config: RateLimitConfig, clock: Clock = Clock.systemUTC()): RateLimiter {
+    fun get(
+        config: RateLimitConfig,
+        clock: Clock = Clock.systemUTC(),
+    ): RateLimiter {
         val existing = limiter
         if (existing != null) {
             return existing

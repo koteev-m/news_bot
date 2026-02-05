@@ -1,10 +1,10 @@
 package routes.dto
 
 import io.ktor.server.application.ApplicationCall
+import kotlinx.serialization.Serializable
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class PositionItemResponse(
@@ -36,40 +36,32 @@ data class TradesPageResponse(
     val offset: Int,
 )
 
-fun ApplicationCall.paramLimit(default: Int = 50): Int {
+fun ApplicationCall.paramLimit(default: Int = DEFAULT_LIMIT): Int {
     val raw = request.queryParameters["limit"] ?: return default
     val value = raw.trim()
-    if (value.isEmpty()) {
-        throw IllegalArgumentException("limit must be between 1 and 200")
-    }
-    val parsed = value.toIntOrNull()
-        ?: throw IllegalArgumentException("limit must be between 1 and 200")
-    if (parsed !in 1..200) {
-        throw IllegalArgumentException("limit must be between 1 and 200")
-    }
+    require(value.isNotEmpty()) { "limit must be between 1 and $MAX_LIMIT" }
+    val parsed =
+        value.toIntOrNull()
+            ?: throw IllegalArgumentException("limit must be between 1 and $MAX_LIMIT")
+    require(parsed in 1..MAX_LIMIT) { "limit must be between 1 and $MAX_LIMIT" }
     return parsed
 }
 
 fun ApplicationCall.paramOffset(default: Int = 0): Int {
     val raw = request.queryParameters["offset"] ?: return default
     val value = raw.trim()
-    if (value.isEmpty()) {
-        throw IllegalArgumentException("offset must be a non-negative integer")
-    }
-    val parsed = value.toIntOrNull()
-        ?: throw IllegalArgumentException("offset must be a non-negative integer")
-    if (parsed < 0) {
-        throw IllegalArgumentException("offset must be a non-negative integer")
-    }
+    require(value.isNotEmpty()) { "offset must be a non-negative integer" }
+    val parsed =
+        value.toIntOrNull()
+            ?: throw IllegalArgumentException("offset must be a non-negative integer")
+    require(parsed >= 0) { "offset must be a non-negative integer" }
     return parsed
 }
 
 fun ApplicationCall.paramDate(name: String): LocalDate? {
     val raw = request.queryParameters[name] ?: return null
     val value = raw.trim()
-    if (value.isEmpty()) {
-        throw IllegalArgumentException("$name must be in format YYYY-MM-DD")
-    }
+    require(value.isNotEmpty()) { "$name must be in format YYYY-MM-DD" }
     return try {
         LocalDate.parse(value, DateTimeFormatter.ISO_LOCAL_DATE)
     } catch (ex: DateTimeParseException) {
@@ -80,13 +72,9 @@ fun ApplicationCall.paramDate(name: String): LocalDate? {
 fun ApplicationCall.paramSide(): String? {
     val raw = request.queryParameters["side"] ?: return null
     val value = raw.trim()
-    if (value.isEmpty()) {
-        throw IllegalArgumentException("side must be BUY or SELL")
-    }
+    require(value.isNotEmpty()) { "side must be BUY or SELL" }
     val normalized = value.uppercase()
-    if (normalized !in setOf("BUY", "SELL")) {
-        throw IllegalArgumentException("side must be BUY or SELL")
-    }
+    require(normalized in setOf("BUY", "SELL")) { "side must be BUY or SELL" }
     return normalized
 }
 
@@ -97,9 +85,7 @@ fun ApplicationCall.paramSort(default: String = "instrumentId"): String {
         return default
     }
     val allowed = setOf("instrumentId", "qty", "upl")
-    if (value !in allowed) {
-        throw IllegalArgumentException("sort must be one of: ${allowed.joinToString(",")}")
-    }
+    require(value in allowed) { "sort must be one of: ${allowed.joinToString(",")}" }
     return value
 }
 
@@ -110,8 +96,9 @@ fun ApplicationCall.paramOrder(default: String = "asc"): String {
         return default
     }
     val normalized = value.lowercase()
-    if (normalized !in setOf("asc", "desc")) {
-        throw IllegalArgumentException("order must be 'asc' or 'desc'")
-    }
+    require(normalized in setOf("asc", "desc")) { "order must be 'asc' or 'desc'" }
     return normalized
 }
+
+private const val DEFAULT_LIMIT = 50
+private const val MAX_LIMIT = 200

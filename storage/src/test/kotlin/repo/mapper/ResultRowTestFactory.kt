@@ -1,9 +1,9 @@
 package repo.mapper
 
-import java.util.LinkedHashMap
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Expression
 import org.jetbrains.exposed.sql.ResultRow
+import java.util.LinkedHashMap
 
 private val testDatabase by lazy {
     Database.connect("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")

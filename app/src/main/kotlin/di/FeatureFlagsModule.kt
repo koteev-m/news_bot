@@ -12,7 +12,7 @@ import repo.FeatureOverridesRepositoryImpl
 object FeatureFlagsModule {
     data class Component(
         val service: FeatureFlagsService,
-        val adminUserIds: Set<Long>
+        val adminUserIds: Set<Long>,
     )
 
     private val Key: AttributeKey<Component> = AttributeKey("FeatureFlagsModule")
@@ -46,8 +46,8 @@ object FeatureFlagsModule {
     }
 }
 
-private fun ApplicationConfig.loadFeatureDefaults(): FeatureFlags {
-    return FeatureFlags(
+private fun ApplicationConfig.loadFeatureDefaults(): FeatureFlags =
+    FeatureFlags(
         importByUrl = getFlag("features.importByUrl", default = false),
         webhookQueue = getFlag("features.webhookQueue", default = true),
         newsPublish = getFlag("features.newsPublish", default = true),
@@ -55,17 +55,18 @@ private fun ApplicationConfig.loadFeatureDefaults(): FeatureFlags {
         billingStars = getFlag("features.billingStars", default = true),
         miniApp = getFlag("features.miniApp", default = true),
     )
-}
 
-private fun ApplicationConfig.loadAdminUserIds(): Set<Long> {
-    return propertyOrNull("admin.adminUserIds")
+private fun ApplicationConfig.loadAdminUserIds(): Set<Long> =
+    propertyOrNull("admin.adminUserIds")
         ?.getList()
         ?.mapNotNull { raw -> raw.trim().takeIf { it.isNotEmpty() }?.toLongOrNull() }
         ?.toSet()
         ?: emptySet()
-}
 
-private fun ApplicationConfig.getFlag(path: String, default: Boolean): Boolean {
+private fun ApplicationConfig.getFlag(
+    path: String,
+    default: Boolean,
+): Boolean {
     val raw = propertyOrNull(path)?.getString()?.trim() ?: return default
     return when (raw.lowercase()) {
         "true", "1", "yes", "y" -> true
@@ -76,7 +77,5 @@ private fun ApplicationConfig.getFlag(path: String, default: Boolean): Boolean {
 
 private fun Services.withFeatureFlags(
     service: FeatureFlagsService,
-    adminUserIds: Set<Long>
-): Services {
-    return copy(featureFlags = service, adminUserIds = adminUserIds)
-}
+    adminUserIds: Set<Long>,
+): Services = copy(featureFlags = service, adminUserIds = adminUserIds)

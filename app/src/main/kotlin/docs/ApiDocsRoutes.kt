@@ -24,7 +24,7 @@ fun Route.apiDocsRoutes() {
               </body>
             </html>
             """.trimIndent(),
-            ContentType.Text.Html
+            ContentType.Text.Html,
         )
     }
 }

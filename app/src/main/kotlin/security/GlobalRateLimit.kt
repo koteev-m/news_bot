@@ -38,19 +38,27 @@ fun Application.installGlobalRateLimit() {
             return@intercept
         }
 
-        val userSubject = call.principal<JWTPrincipal>()?.payload?.subject?.takeIf { it.isNotBlank() }
-        val forwardedIp = call.request.header(HttpHeaders.XForwardedFor)
-            ?.split(',')
-            ?.firstOrNull()
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
+        val userSubject =
+            call
+                .principal<JWTPrincipal>()
+                ?.payload
+                ?.subject
+                ?.takeIf { it.isNotBlank() }
+        val forwardedIp =
+            call.request
+                .header(HttpHeaders.XForwardedFor)
+                ?.split(',')
+                ?.firstOrNull()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
         val realIp = call.request.header("X-Real-IP")?.takeIf { it.isNotBlank() }
         val fallbackHost = call.request.host().takeIf { it.isNotBlank() }
         val subject = userSubject ?: forwardedIp ?: realIp ?: fallbackHost ?: "anonymous"
 
-        val bucket = buckets.computeIfAbsent(subject) {
-            PerSubjectTokenBucket(capacity, refillPerMinute, burst)
-        }
+        val bucket =
+            buckets.computeIfAbsent(subject) {
+                PerSubjectTokenBucket(capacity, refillPerMinute, burst)
+            }
 
         when (val result = bucket.tryConsume()) {
             is RateLimitResult.Denied -> {
@@ -69,7 +77,10 @@ fun Application.installGlobalRateLimit() {
 
 private sealed interface RateLimitResult {
     object Allowed : RateLimitResult
-    class Denied(val retryAfterSeconds: Int) : RateLimitResult
+
+    class Denied(
+        val retryAfterSeconds: Int,
+    ) : RateLimitResult
 }
 
 private class PerSubjectTokenBucket(
@@ -95,11 +106,12 @@ private class PerSubjectTokenBucket(
             }
 
             val needed = 1.0 - tokens
-            val seconds = if (refillPerSecond <= 0.0) {
-                1.0
-            } else {
-                needed / refillPerSecond
-            }
+            val seconds =
+                if (refillPerSecond <= 0.0) {
+                    1.0
+                } else {
+                    needed / refillPerSecond
+                }
             val retryAfter = ceil(seconds).toInt().coerceAtLeast(1)
             return RateLimitResult.Denied(retryAfter)
         }

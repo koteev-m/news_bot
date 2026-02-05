@@ -5,13 +5,13 @@ data class LedgerEntry(
     val tier: String,
     val event: String,
     val providerPaymentId: String,
-    val payloadHash: String
+    val payloadHash: String,
 )
 
 data class ReconResult(
     val runId: Long,
     val status: String,
-    val counts: Map<String, Int>
+    val counts: Map<String, Int>,
 )
 
 interface BillingLedgerPort {
@@ -20,6 +20,18 @@ interface BillingLedgerPort {
 
 interface BillingReconPort {
     suspend fun beginRun(): Long
-    suspend fun recordMismatch(runId: Long, kind: String, userId: Long?, providerPaymentId: String?, tier: String?)
-    suspend fun finishRun(runId: Long, status: String, notes: String?)
+
+    suspend fun recordMismatch(
+        runId: Long,
+        kind: String,
+        userId: Long?,
+        providerPaymentId: String?,
+        tier: String?,
+    )
+
+    suspend fun finishRun(
+        runId: Long,
+        status: String,
+        notes: String?,
+    )
 }

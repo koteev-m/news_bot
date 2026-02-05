@@ -1,20 +1,22 @@
 package billing.model
 
-import java.time.Instant
 import kotlinx.serialization.Serializable
+import java.time.Instant
 
 enum class Tier {
     FREE,
     PRO,
     PRO_PLUS,
-    VIP;
+    VIP,
+    ;
 
-    fun level(): Int = when (this) {
-        FREE -> 0
-        PRO -> 1
-        PRO_PLUS -> 2
-        VIP -> 3
-    }
+    fun level(): Int =
+        when (this) {
+            FREE -> 0
+            PRO -> 1
+            PRO_PLUS -> 2
+            VIP -> 3
+        }
 
     fun meets(required: Tier): Boolean = level() >= required.level()
 
@@ -31,7 +33,8 @@ enum class SubStatus {
     ACTIVE,
     EXPIRED,
     CANCELLED,
-    PENDING;
+    PENDING,
+    ;
 
     companion object {
         fun parse(value: String): SubStatus {
@@ -43,7 +46,9 @@ enum class SubStatus {
 }
 
 @JvmInline
-value class Xtr(val value: Long) {
+value class Xtr(
+    val value: Long,
+) {
     init {
         require(value >= 0) { "XTR must be >= 0" }
     }
@@ -55,7 +60,7 @@ data class BillingPlan(
     val tier: Tier,
     val title: String,
     val priceXtr: Xtr,
-    val isActive: Boolean
+    val isActive: Boolean,
 ) {
     init {
         require(title.isNotBlank()) { "Billing plan title must not be blank" }
@@ -67,7 +72,7 @@ data class UserSubscription(
     val tier: Tier,
     val status: SubStatus,
     val startedAt: Instant,
-    val expiresAt: Instant?
+    val expiresAt: Instant?,
 )
 
 @Serializable
@@ -75,7 +80,7 @@ data class BillingPlanDto(
     val tier: String,
     val title: String,
     val priceXtr: Long,
-    val isActive: Boolean
+    val isActive: Boolean,
 )
 
 @Serializable
@@ -84,38 +89,42 @@ data class UserSubscriptionDto(
     val tier: String,
     val status: String,
     val startedAt: String,
-    val expiresAt: String?
+    val expiresAt: String?,
 )
 
-fun BillingPlan.toDto(): BillingPlanDto = BillingPlanDto(
-    tier = tier.name,
-    title = title,
-    priceXtr = priceXtr.value,
-    isActive = isActive
-)
+fun BillingPlan.toDto(): BillingPlanDto =
+    BillingPlanDto(
+        tier = tier.name,
+        title = title,
+        priceXtr = priceXtr.value,
+        isActive = isActive,
+    )
 
-fun BillingPlanDto.toDomain(): BillingPlan = BillingPlan(
-    tier = Tier.parse(tier),
-    title = title,
-    priceXtr = Xtr(priceXtr),
-    isActive = isActive
-)
+fun BillingPlanDto.toDomain(): BillingPlan =
+    BillingPlan(
+        tier = Tier.parse(tier),
+        title = title,
+        priceXtr = Xtr(priceXtr),
+        isActive = isActive,
+    )
 
-fun UserSubscription.toDto(): UserSubscriptionDto = UserSubscriptionDto(
-    userId = userId,
-    tier = tier.name,
-    status = status.name,
-    startedAt = startedAt.toIsoString(),
-    expiresAt = expiresAt?.toIsoString()
-)
+fun UserSubscription.toDto(): UserSubscriptionDto =
+    UserSubscriptionDto(
+        userId = userId,
+        tier = tier.name,
+        status = status.name,
+        startedAt = startedAt.toIsoString(),
+        expiresAt = expiresAt?.toIsoString(),
+    )
 
-fun UserSubscriptionDto.toDomain(): UserSubscription = UserSubscription(
-    userId = userId,
-    tier = Tier.parse(tier),
-    status = SubStatus.parse(status),
-    startedAt = startedAt.toInstantUnsafe(),
-    expiresAt = expiresAt?.toInstantUnsafe()
-)
+fun UserSubscriptionDto.toDomain(): UserSubscription =
+    UserSubscription(
+        userId = userId,
+        tier = Tier.parse(tier),
+        status = SubStatus.parse(status),
+        startedAt = startedAt.toInstantUnsafe(),
+        expiresAt = expiresAt?.toInstantUnsafe(),
+    )
 
 fun Instant.toIsoString(): String = toString()
 

@@ -6,6 +6,8 @@ import billing.service.EntitlementsService
 import billing.stars.BotBalanceRateLimiter
 import billing.stars.BotStarBalancePort
 import billing.stars.RateLimitVerdict
+import billing.stars.StarAmount
+import billing.stars.StarBalancePort
 import billing.stars.StarsAdminResults
 import billing.stars.StarsClient
 import billing.stars.StarsClientBadRequest
@@ -16,9 +18,8 @@ import billing.stars.StarsHeaders
 import billing.stars.StarsMetrics
 import billing.stars.StarsOutcomes
 import billing.stars.StarsPublicResults
-import billing.stars.StarBalancePort
-import billing.stars.StarAmount
 import billing.stars.label
+import common.runCatchingNonFatal
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -38,7 +39,6 @@ import routes.dto.EntitlementDto
 import routes.dto.UserSubscriptionDto
 import routes.dto.toDto
 import security.userIdOrNull
-import common.runCatchingNonFatal
 
 fun Route.billingRoutes() {
     route("/api/billing") {
@@ -51,34 +51,38 @@ fun Route.billingRoutes() {
                     call.respond(HttpStatusCode.OK, payload)
                 },
                 onFailure = { error ->
-                    call.application.environment.log.error("billing.listPlans failure", error)
+                    call.application.environment.log
+                        .error("billing.listPlans failure", error)
                     call.respondInternal()
-                }
+                },
             )
         }
     }
 
     route("/api/billing/stars") {
         post("/invoice") {
-            val subject = call.userIdOrNull?.toLongOrNull()
-                ?: return@post call.respondUnauthorized()
+            val subject =
+                call.userIdOrNull?.toLongOrNull()
+                    ?: return@post call.respondUnauthorized()
 
             val svc = call.billingService()
-            val request = try {
-                call.receive<CreateInvoiceRequest>()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (err: Error) {
-                throw err
-            } catch (_: Throwable) {
-                call.respondBadRequest(listOf("body invalid"))
-                return@post
-            }
+            val request =
+                try {
+                    call.receive<CreateInvoiceRequest>()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (err: Error) {
+                    throw err
+                } catch (_: Throwable) {
+                    call.respondBadRequest(listOf("body invalid"))
+                    return@post
+                }
 
-            val tier = runCatchingNonFatal { Tier.parse(request.tier) }.getOrElse {
-                call.respondBadRequest(listOf("tier invalid"))
-                return@post
-            }
+            val tier =
+                runCatchingNonFatal { Tier.parse(request.tier) }.getOrElse {
+                    call.respondBadRequest(listOf("tier invalid"))
+                    return@post
+                }
 
             val result = svc.createInvoiceFor(subject, tier)
             result.fold(
@@ -90,11 +94,12 @@ fun Route.billingRoutes() {
                         is NoSuchElementException -> call.respondBadRequest(listOf("plan not found or inactive"))
                         is IllegalArgumentException -> call.respondBadRequest(listOf(error.message ?: "bad request"))
                         else -> {
-                            call.application.environment.log.error("billing.createInvoice failure", error)
+                            call.application.environment.log
+                                .error("billing.createInvoice failure", error)
                             call.respondInternal()
                         }
                     }
-                }
+                },
             )
         }
 
@@ -111,14 +116,15 @@ fun Route.billingRoutes() {
                     registry?.counter(StarsMetrics.CNT_OUTCOME, StarsMetrics.LABEL_OUTCOME, outcome)?.increment()
                 }
 
-                val starsClient = call.starsClient()
-                    ?: run {
-                        record(StarsPublicResults.UNCONFIGURED)
-                        return@get call.respond(
-                            HttpStatusCode.ServiceUnavailable,
-                            mapOf("error" to "telegram not configured"),
-                        )
-                    }
+                val starsClient =
+                    call.starsClient()
+                        ?: run {
+                            record(StarsPublicResults.UNCONFIGURED)
+                            return@get call.respond(
+                                HttpStatusCode.ServiceUnavailable,
+                                mapOf("error" to "telegram not configured"),
+                            )
+                        }
 
                 val result = runCatchingNonFatal { starsClient.getBotStarAmount() }
                 result.fold(
@@ -135,7 +141,7 @@ fun Route.billingRoutes() {
                                 error.retryAfterSeconds?.let {
                                     call.response.headers.append(
                                         HttpHeaders.RetryAfter,
-                                        it.toString()
+                                        it.toString(),
                                     )
                                 }
                                 call.respond(
@@ -174,7 +180,8 @@ fun Route.billingRoutes() {
                             else -> {
                                 record(StarsPublicResults.OTHER)
                                 recordOutcome(StarsOutcomes.OTHER)
-                                call.application.environment.log.error("billing.getMyStarBalance failure", error)
+                                call.application.environment.log
+                                    .error("billing.getMyStarBalance failure", error)
                                 call.respondInternal()
                             }
                         }
@@ -192,8 +199,9 @@ fun Route.billingRoutes() {
         }
 
         get("/me") {
-            val subject = call.userIdOrNull?.toLongOrNull()
-                ?: return@get call.respondUnauthorized()
+            val subject =
+                call.userIdOrNull?.toLongOrNull()
+                    ?: return@get call.respondUnauthorized()
 
             val svc = call.billingService()
             val result = svc.getMySubscription(subject)
@@ -207,17 +215,19 @@ fun Route.billingRoutes() {
                     }
                 },
                 onFailure = { error ->
-                    call.application.environment.log.error("billing.getMySubscription failure", error)
+                    call.application.environment.log
+                        .error("billing.getMySubscription failure", error)
                     call.respondInternal()
-                }
+                },
             )
         }
     }
 
     route("/api/billing") {
         get("/entitlements") {
-            val subject = call.userIdOrNull?.toLongOrNull()
-                ?: return@get call.respondUnauthorized()
+            val subject =
+                call.userIdOrNull?.toLongOrNull()
+                    ?: return@get call.respondUnauthorized()
 
             val svc = call.entitlementsService()
             val result = svc.getEntitlement(subject)
@@ -227,7 +237,8 @@ fun Route.billingRoutes() {
                     call.respond(HttpStatusCode.OK, dto)
                 },
                 onFailure = { error ->
-                    call.application.environment.log.error("billing.getEntitlement failure", error)
+                    call.application.environment.log
+                        .error("billing.getEntitlement failure", error)
                     call.respondInternal()
                 },
             )
@@ -240,48 +251,54 @@ fun Route.billingRoutes() {
             val registry = call.meterRegistry()
             val sample = registry?.let { Timer.start(it) }
             try {
-                val subject = call.userIdOrNull?.toLongOrNull()
-                    ?: run {
-                        registry?.counter(
-                            StarsMetrics.CNT_ADMIN_REQUESTS,
-                            StarsMetrics.LABEL_RESULT,
-                            StarsAdminResults.UNAUTHORIZED,
-                        )?.increment()
-                        return@get call.respondUnauthorized()
-                    }
+                val subject =
+                    call.userIdOrNull?.toLongOrNull()
+                        ?: run {
+                            registry
+                                ?.counter(
+                                    StarsMetrics.CNT_ADMIN_REQUESTS,
+                                    StarsMetrics.LABEL_RESULT,
+                                    StarsAdminResults.UNAUTHORIZED,
+                                )?.increment()
+                            return@get call.respondUnauthorized()
+                        }
 
                 val adminUserIds = call.adminUserIds()
                 if (subject !in adminUserIds) {
-                    registry?.counter(
-                        StarsMetrics.CNT_ADMIN_REQUESTS,
-                        StarsMetrics.LABEL_RESULT,
-                        StarsAdminResults.FORBIDDEN,
-                    )?.increment()
+                    registry
+                        ?.counter(
+                            StarsMetrics.CNT_ADMIN_REQUESTS,
+                            StarsMetrics.LABEL_RESULT,
+                            StarsAdminResults.FORBIDDEN,
+                        )?.increment()
                     call.respond(HttpStatusCode.Forbidden, mapOf("error" to "forbidden"))
                     return@get
                 }
 
-                val service = call.botBalanceServiceOrNull()
-                    ?: run {
-                        registry?.counter(
-                            StarsMetrics.CNT_ADMIN_REQUESTS,
-                            StarsMetrics.LABEL_RESULT,
-                            StarsAdminResults.UNCONFIGURED,
-                        )?.increment()
-                        return@get call.respond(
-                            HttpStatusCode.ServiceUnavailable,
-                            mapOf("error" to "telegram not configured"),
-                        )
-                    }
+                val service =
+                    call.botBalanceServiceOrNull()
+                        ?: run {
+                            registry
+                                ?.counter(
+                                    StarsMetrics.CNT_ADMIN_REQUESTS,
+                                    StarsMetrics.LABEL_RESULT,
+                                    StarsAdminResults.UNCONFIGURED,
+                                )?.increment()
+                            return@get call.respond(
+                                HttpStatusCode.ServiceUnavailable,
+                                mapOf("error" to "telegram not configured"),
+                            )
+                        }
 
                 when (val verdict = call.botBalanceRateLimiter()?.check(subject)) {
                     is RateLimitVerdict.Denied -> {
                         call.response.headers.append(HttpHeaders.RetryAfter, verdict.retryAfterSeconds.toString())
-                        registry?.counter(
-                            StarsMetrics.CNT_ADMIN_REQUESTS,
-                            StarsMetrics.LABEL_RESULT,
-                            StarsAdminResults.LOCAL_RATE_LIMITED,
-                        )?.increment()
+                        registry
+                            ?.counter(
+                                StarsMetrics.CNT_ADMIN_REQUESTS,
+                                StarsMetrics.LABEL_RESULT,
+                                StarsAdminResults.LOCAL_RATE_LIMITED,
+                            )?.increment()
                         call.respond(HttpStatusCode.TooManyRequests, mapOf("error" to "rate limited"))
                         return@get
                     }
@@ -291,11 +308,12 @@ fun Route.billingRoutes() {
                 val result = runCatchingNonFatal { service.getBotStarBalance() }
                 result.fold(
                     onSuccess = { balanceResult ->
-                        registry?.counter(
-                            StarsMetrics.CNT_ADMIN_REQUESTS,
-                            StarsMetrics.LABEL_RESULT,
-                            StarsAdminResults.OK,
-                        )?.increment()
+                        registry
+                            ?.counter(
+                                StarsMetrics.CNT_ADMIN_REQUESTS,
+                                StarsMetrics.LABEL_RESULT,
+                                StarsAdminResults.OK,
+                            )?.increment()
                         call.response.headers.append(StarsHeaders.CACHE, balanceResult.cacheState.label())
                         balanceResult.cacheAgeSeconds?.let { age ->
                             val safeAge = age.coerceAtLeast(0)
@@ -306,57 +324,63 @@ fun Route.billingRoutes() {
                     onFailure = { error ->
                         when (error) {
                             is StarsClientRateLimited -> {
-                                registry?.counter(
-                                    StarsMetrics.CNT_ADMIN_REQUESTS,
-                                    StarsMetrics.LABEL_RESULT,
-                                    StarsAdminResults.TG_RATE_LIMITED,
-                                )?.increment()
+                                registry
+                                    ?.counter(
+                                        StarsMetrics.CNT_ADMIN_REQUESTS,
+                                        StarsMetrics.LABEL_RESULT,
+                                        StarsAdminResults.TG_RATE_LIMITED,
+                                    )?.increment()
                                 if (error.retryAfterSeconds != null) {
                                     call.response.headers.append(
                                         HttpHeaders.RetryAfter,
-                                        error.retryAfterSeconds.toString()
+                                        error.retryAfterSeconds.toString(),
                                     )
                                 }
                                 call.respond(HttpStatusCode.TooManyRequests, mapOf("error" to "telegram rate limited"))
                             }
 
                             is StarsClientServerError -> {
-                                registry?.counter(
-                                    StarsMetrics.CNT_ADMIN_REQUESTS,
-                                    StarsMetrics.LABEL_RESULT,
-                                    StarsAdminResults.SERVER,
-                                )?.increment()
+                                registry
+                                    ?.counter(
+                                        StarsMetrics.CNT_ADMIN_REQUESTS,
+                                        StarsMetrics.LABEL_RESULT,
+                                        StarsAdminResults.SERVER,
+                                    )?.increment()
                                 call.respond(
                                     HttpStatusCode.ServiceUnavailable,
-                                    mapOf("error" to "telegram unavailable")
+                                    mapOf("error" to "telegram unavailable"),
                                 )
                             }
 
                             is StarsClientBadRequest -> {
-                                registry?.counter(
-                                    StarsMetrics.CNT_ADMIN_REQUESTS,
-                                    StarsMetrics.LABEL_RESULT,
-                                    StarsAdminResults.BAD_REQUEST,
-                                )?.increment()
+                                registry
+                                    ?.counter(
+                                        StarsMetrics.CNT_ADMIN_REQUESTS,
+                                        StarsMetrics.LABEL_RESULT,
+                                        StarsAdminResults.BAD_REQUEST,
+                                    )?.increment()
                                 call.respond(HttpStatusCode.BadGateway, mapOf("error" to "telegram bad request"))
                             }
 
                             is StarsClientDecodeError -> {
-                                registry?.counter(
-                                    StarsMetrics.CNT_ADMIN_REQUESTS,
-                                    StarsMetrics.LABEL_RESULT,
-                                    StarsAdminResults.DECODE_ERROR,
-                                )?.increment()
+                                registry
+                                    ?.counter(
+                                        StarsMetrics.CNT_ADMIN_REQUESTS,
+                                        StarsMetrics.LABEL_RESULT,
+                                        StarsAdminResults.DECODE_ERROR,
+                                    )?.increment()
                                 call.respond(HttpStatusCode.BadGateway, mapOf("error" to "telegram decode error"))
                             }
 
                             else -> {
-                                registry?.counter(
-                                    StarsMetrics.CNT_ADMIN_REQUESTS,
-                                    StarsMetrics.LABEL_RESULT,
-                                    StarsAdminResults.OTHER,
-                                )?.increment()
-                                call.application.environment.log.error("billing.getBotStarBalance failure", error)
+                                registry
+                                    ?.counter(
+                                        StarsMetrics.CNT_ADMIN_REQUESTS,
+                                        StarsMetrics.LABEL_RESULT,
+                                        StarsAdminResults.OTHER,
+                                    )?.increment()
+                                call.application.environment.log
+                                    .error("billing.getBotStarBalance failure", error)
                                 call.respondInternal()
                             }
                         }
@@ -376,32 +400,38 @@ fun Route.billingRoutes() {
 }
 
 @Serializable
-private data class CreateInvoiceRequest(val tier: String)
+private data class CreateInvoiceRequest(
+    val tier: String,
+)
 
 @Serializable
-private data class InvoiceLinkResponse(val invoiceLink: String)
+private data class InvoiceLinkResponse(
+    val invoiceLink: String,
+)
 
 @Serializable
 private data class MySubscriptionResponse(
     val tier: String,
     val status: String,
     val startedAt: String?,
-    val expiresAt: String?
+    val expiresAt: String?,
 ) {
     companion object {
-        fun from(dto: UserSubscriptionDto): MySubscriptionResponse = MySubscriptionResponse(
-            tier = dto.tier,
-            status = dto.status,
-            startedAt = dto.startedAt,
-            expiresAt = dto.expiresAt
-        )
+        fun from(dto: UserSubscriptionDto): MySubscriptionResponse =
+            MySubscriptionResponse(
+                tier = dto.tier,
+                status = dto.status,
+                startedAt = dto.startedAt,
+                expiresAt = dto.expiresAt,
+            )
 
-        fun free(): MySubscriptionResponse = MySubscriptionResponse(
-            tier = Tier.FREE.name,
-            status = "NONE",
-            startedAt = null,
-            expiresAt = null
-        )
+        fun free(): MySubscriptionResponse =
+            MySubscriptionResponse(
+                tier = Tier.FREE.name,
+                status = "NONE",
+                startedAt = null,
+                expiresAt = null,
+            )
     }
 }
 
@@ -425,15 +455,6 @@ private fun ApplicationCall.billingService(): BillingService {
         return attributes[BillingRouteServicesKey].billingService
     }
     error("BillingService is not configured")
-}
-
-private fun ApplicationCall.balanceService(): StarBalancePort {
-    val attributes = application.attributes
-    if (attributes.contains(BillingRouteServicesKey)) {
-        return attributes[BillingRouteServicesKey].starBalancePort
-            ?: error("StarBalancePort is not configured")
-    }
-    error("StarBalancePort is not configured")
 }
 
 private fun ApplicationCall.botBalanceServiceOrNull(): BotStarBalancePort? {

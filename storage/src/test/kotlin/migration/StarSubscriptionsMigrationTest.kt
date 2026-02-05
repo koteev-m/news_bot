@@ -12,23 +12,26 @@ import kotlin.test.assertTrue
 class StarSubscriptionsMigrationTest {
     @Test
     fun `applies migrations and enforces constraints`() {
-        val pg = runCatching {
-            PostgreSQLContainer<Nothing>("postgres:15-alpine").apply {
-                withDatabaseName("testdb")
-                withUsername("test")
-                withPassword("test")
-                start()
+        val pg =
+            runCatching {
+                PostgreSQLContainer<Nothing>("postgres:15-alpine").apply {
+                    withDatabaseName("testdb")
+                    withUsername("test")
+                    withPassword("test")
+                    start()
+                }
+            }.getOrElse { throwable ->
+                assumeTrue(false, "Docker not available: ${throwable.message}")
+                return
             }
-        }.getOrElse { throwable ->
-            assumeTrue(false, "Docker not available: ${throwable.message}")
-            return
-        }
 
         pg.use { container ->
-            val flyway = Flyway.configure()
-                .dataSource(container.jdbcUrl, container.username, container.password)
-                .locations("classpath:db/migration")
-                .load()
+            val flyway =
+                Flyway
+                    .configure()
+                    .dataSource(container.jdbcUrl, container.username, container.password)
+                    .locations("classpath:db/migration")
+                    .load()
             val result = flyway.migrate()
             assertTrue(result.migrationsExecuted >= 1)
 

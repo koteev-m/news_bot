@@ -1,12 +1,5 @@
 package portfolio.service
 
-import java.math.BigDecimal
-import java.time.Clock
-import java.math.MathContext
-import java.time.Instant
-import java.time.LocalDate
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import portfolio.errors.DomainResult
@@ -17,12 +10,22 @@ import portfolio.model.PositionView
 import portfolio.model.TradeSide
 import portfolio.model.TradeView
 import portfolio.model.ValuationMethod
+import java.math.BigDecimal
+import java.math.MathContext
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class PortfolioService(
     private val storage: Storage,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    suspend fun applyTrade(trade: TradeView, method: ValuationMethod): DomainResult<Unit> {
+    suspend fun applyTrade(
+        trade: TradeView,
+        method: ValuationMethod,
+    ): DomainResult<Unit> {
         val validationError = validateTrade(trade)
         if (validationError != null) {
             return failure(validationError)
@@ -32,11 +35,12 @@ class PortfolioService(
         val quantity = trade.quantity
 
         val mutex = portfolioLocks.computeIfAbsent(trade.portfolioId) { Mutex() }
-        val result = mutex.withLock {
-            storage.transaction {
-                processTrade(this, trade, method, quantity, totalFees)
+        val result =
+            mutex.withLock {
+                storage.transaction {
+                    processTrade(this, trade, method, quantity, totalFees)
+                }
             }
-        }
 
         return result.map { Unit }
     }
@@ -52,9 +56,10 @@ class PortfolioService(
             return DomainResult.failure(storedResult.exceptionOrNull()!!)
         }
 
-        val storedPositions = storedResult
-            .getOrDefault(emptyList())
-            .filter { it.portfolioId == portfolioId }
+        val storedPositions =
+            storedResult
+                .getOrDefault(emptyList())
+                .filter { it.portfolioId == portfolioId }
         if (storedPositions.isEmpty()) {
             return DomainResult.success(emptyList())
         }
@@ -72,35 +77,39 @@ class PortfolioService(
             val price = priceResult.getOrThrow()
             val valuation = price * position.quantity
 
-            val averageCost = position.averagePrice?.let { average ->
-                val converted = convertToCurrency(
-                    average,
-                    on,
-                    valuation.currency,
-                    fxRateService,
-                )
-                if (converted.isFailure) {
-                    return DomainResult.failure(converted.exceptionOrNull()!!)
+            val averageCost =
+                position.averagePrice?.let { average ->
+                    val converted =
+                        convertToCurrency(
+                            average,
+                            on,
+                            valuation.currency,
+                            fxRateService,
+                        )
+                    if (converted.isFailure) {
+                        return DomainResult.failure(converted.exceptionOrNull()!!)
+                    }
+                    converted.getOrThrow()
                 }
-                converted.getOrThrow()
-            }
 
-            val unrealized = if (averageCost != null) {
-                val costBasis = averageCost * position.quantity
-                valuation - costBasis
-            } else {
-                zero(valuation.currency)
-            }
+            val unrealized =
+                if (averageCost != null) {
+                    val costBasis = averageCost * position.quantity
+                    valuation - costBasis
+                } else {
+                    zero(valuation.currency)
+                }
 
-            views += PositionView(
-                instrumentId = position.instrumentId,
-                instrumentName = position.instrumentName,
-                quantity = position.quantity,
-                valuation = valuation,
-                averageCost = averageCost,
-                valuationMethod = position.valuationMethod,
-                unrealizedPnl = unrealized,
-            )
+            views +=
+                PositionView(
+                    instrumentId = position.instrumentId,
+                    instrumentName = position.instrumentName,
+                    quantity = position.quantity,
+                    valuation = valuation,
+                    averageCost = averageCost,
+                    valuationMethod = position.valuationMethod,
+                    unrealizedPnl = unrealized,
+                )
         }
 
         return DomainResult.success(views)
@@ -148,44 +157,48 @@ class PortfolioService(
             return DomainResult.failure(loaded.exceptionOrNull()!!)
         }
         val stored = loaded.getOrNull()
-        val currentPosition = if (stored == null) {
-            PositionCalc.Position.empty(trade.price.currency)
-        } else {
-            val storedCurrency = stored.position.costBasis.currency
-            if (storedCurrency != trade.price.currency) {
-                return failure(
-                    PortfolioError.Validation(
-                        "Trade currency ${trade.price.currency} does not match position currency $storedCurrency",
-                    ),
-                )
+        val currentPosition =
+            if (stored == null) {
+                PositionCalc.Position.empty(trade.price.currency)
+            } else {
+                val storedCurrency = stored.position.costBasis.currency
+                if (storedCurrency != trade.price.currency) {
+                    return failure(
+                        PortfolioError.Validation(
+                            "Trade currency ${trade.price.currency} does not match position currency $storedCurrency",
+                        ),
+                    )
+                }
+                stored.position
             }
-            stored.position
-        }
 
         val calculator = calculators.getValue(method)
-        val outcome = try {
-            when (trade.side) {
-                TradeSide.BUY -> calculator.applyBuy(currentPosition, quantity, trade.price, fees)
-                TradeSide.SELL -> calculator.applySell(currentPosition, quantity, trade.price, fees)
+        val outcome =
+            try {
+                when (trade.side) {
+                    TradeSide.BUY -> calculator.applyBuy(currentPosition, quantity, trade.price, fees)
+                    TradeSide.SELL -> calculator.applySell(currentPosition, quantity, trade.price, fees)
+                }
+            } catch (iae: IllegalArgumentException) {
+                return failure(PortfolioError.Validation(iae.message ?: "Invalid trade input"))
             }
-        } catch (iae: IllegalArgumentException) {
-            return failure(PortfolioError.Validation(iae.message ?: "Invalid trade input"))
-        }
 
-        val storedPosition = StoredPosition(
-            portfolioId = trade.portfolioId,
-            instrumentId = trade.instrumentId,
-            valuationMethod = method,
-            position = outcome.position,
-            updatedAt = clock.instant(),
-        )
+        val storedPosition =
+            StoredPosition(
+                portfolioId = trade.portfolioId,
+                instrumentId = trade.instrumentId,
+                valuationMethod = method,
+                position = outcome.position,
+                updatedAt = clock.instant(),
+            )
 
         val saveResult = transaction.savePosition(storedPosition)
         if (saveResult.isFailure) {
             return DomainResult.failure(saveResult.exceptionOrNull()!!)
         }
 
-        val recordResult = transaction.recordTrade(
+        val recordResult =
+            transaction.recordTrade(
                 StoredTrade(
                     tradeId = trade.tradeId,
                     portfolioId = trade.portfolioId,
@@ -204,7 +217,7 @@ class PortfolioService(
                     note = trade.note,
                     externalId = trade.externalId,
                 ),
-        )
+            )
         if (recordResult.isFailure) {
             return DomainResult.failure(recordResult.exceptionOrNull()!!)
         }
@@ -212,8 +225,7 @@ class PortfolioService(
         return DomainResult.success(if (trade.side == TradeSide.SELL) outcome.realizedPnl else null)
     }
 
-    private fun failure(error: PortfolioError): DomainResult<Nothing> =
-        DomainResult.failure(PortfolioException(error))
+    private fun failure(error: PortfolioError): DomainResult<Nothing> = DomainResult.failure(PortfolioException(error))
 
     private suspend fun convertToCurrency(
         money: Money,
@@ -291,10 +303,11 @@ class PortfolioService(
 
     private fun zero(currency: String): Money = Money.zero(currency)
 
-    private val calculators: Map<ValuationMethod, PositionCalc> = mapOf(
-        ValuationMethod.AVERAGE to PositionCalc.AverageCostCalc(),
-        ValuationMethod.FIFO to PositionCalc.FifoCalc(),
-    )
+    private val calculators: Map<ValuationMethod, PositionCalc> =
+        mapOf(
+            ValuationMethod.AVERAGE to PositionCalc.AverageCostCalc(),
+            ValuationMethod.FIFO to PositionCalc.FifoCalc(),
+        )
 
     private val portfolioLocks = ConcurrentHashMap<UUID, Mutex>()
 }

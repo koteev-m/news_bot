@@ -1,41 +1,45 @@
 package alerts
 
+import common.runCatchingNonFatal
 import db.DatabaseFactory
+import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import java.sql.Date
 import java.time.LocalDate
-import kotlinx.serialization.json.Json
 import javax.sql.DataSource
-import org.slf4j.LoggerFactory
-import common.runCatchingNonFatal
 
 class AlertsRepositoryPostgres(
     private val dataSource: DataSource? = null,
-    private val json: Json = Json { ignoreUnknownKeys = true }
+    private val json: Json = Json { ignoreUnknownKeys = true },
 ) : AlertsRepository {
-
     private val logger = LoggerFactory.getLogger(AlertsRepositoryPostgres::class.java)
 
     override fun getState(userId: Long): FsmState {
         val sql = "SELECT state_json FROM alerts_fsm_state WHERE user_id = ?"
-        val stateJson = withConnection { conn ->
-            conn.prepareStatement(sql).use { stmt ->
-                stmt.setLong(1, userId)
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) rs.getString(1) else null
+        val stateJson =
+            withConnection { conn ->
+                conn.prepareStatement(sql).use { stmt ->
+                    stmt.setLong(1, userId)
+                    stmt.executeQuery().use { rs ->
+                        if (rs.next()) rs.getString(1) else null
+                    }
                 }
             }
-        }
-        return stateJson?.let { json.decodeFromString(FsmState.serializer(), it) } ?: FsmState.IDLE
+        return stateJson?.let { json.decodeFromString(FsmState.serializer(), it) } ?: FsmState.Idle
     }
 
-    override fun setState(userId: Long, state: FsmState) {
+    override fun setState(
+        userId: Long,
+        state: FsmState,
+    ) {
         val stateJson = json.encodeToString(FsmState.serializer(), state)
-        val sql = """
+        val sql =
+            """
             INSERT INTO alerts_fsm_state(user_id, state_json, updated_at)
             VALUES (?, ?::jsonb, now())
             ON CONFLICT (user_id) DO UPDATE
             SET state_json = EXCLUDED.state_json, updated_at = now()
-        """.trimIndent()
+            """.trimIndent()
         withWriteConnection { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setLong(1, userId)
@@ -45,22 +49,30 @@ class AlertsRepositoryPostgres(
         }
     }
 
-    override fun getDailyPushCount(userId: Long, date: LocalDate): Int {
+    override fun getDailyPushCount(
+        userId: Long,
+        date: LocalDate,
+    ): Int {
         val sql = "SELECT push_count FROM alerts_daily_budget WHERE user_id = ? AND day = ?"
-        val count = withConnection { conn ->
-            conn.prepareStatement(sql).use { stmt ->
-                stmt.setLong(1, userId)
-                stmt.setDate(2, Date.valueOf(date))
-                stmt.executeQuery().use { rs ->
-                    if (!rs.next()) null else rs.getInt(1)
+        val count =
+            withConnection { conn ->
+                conn.prepareStatement(sql).use { stmt ->
+                    stmt.setLong(1, userId)
+                    stmt.setDate(2, Date.valueOf(date))
+                    stmt.executeQuery().use { rs ->
+                        if (!rs.next()) null else rs.getInt(1)
+                    }
                 }
             }
-        }
         return count ?: 0
     }
 
-    override fun incDailyPushCount(userId: Long, date: LocalDate) {
-        val sql = """
+    override fun incDailyPushCount(
+        userId: Long,
+        date: LocalDate,
+    ) {
+        val sql =
+            """
             INSERT INTO alerts_daily_budget(user_id, day, push_count, updated_at)
             VALUES (?, ?, 1, now())
             ON CONFLICT (user_id) DO UPDATE SET
@@ -70,7 +82,7 @@ class AlertsRepositoryPostgres(
                     ELSE 1
                 END,
                 updated_at = now()
-        """.trimIndent()
+            """.trimIndent()
         withWriteConnection { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setLong(1, userId)
@@ -89,22 +101,23 @@ class AlertsRepositoryPostgres(
         }
     }
 
-    private fun <T> withWriteConnection(block: (java.sql.Connection) -> T): T = withConnection { conn ->
-        val autoCommit = conn.autoCommit
-        try {
-            val result = block(conn)
-            if (!autoCommit) {
-                conn.commit()
+    private fun <T> withWriteConnection(block: (java.sql.Connection) -> T): T =
+        withConnection { conn ->
+            val autoCommit = conn.autoCommit
+            try {
+                val result = block(conn)
+                if (!autoCommit) {
+                    conn.commit()
+                }
+                result
+            } catch (e: Exception) {
+                if (!autoCommit) {
+                    runCatchingNonFatal { conn.rollback() }
+                        .onFailure { rollbackError ->
+                            logger.warn("Failed to rollback transaction after error", rollbackError)
+                        }
+                }
+                throw e
             }
-            result
-        } catch (e: Exception) {
-            if (!autoCommit) {
-                runCatchingNonFatal { conn.rollback() }
-                    .onFailure { rollbackError ->
-                        logger.warn("Failed to rollback transaction after error", rollbackError)
-                    }
-            }
-            throw e
         }
-    }
 }
