@@ -2,8 +2,14 @@ package alerts.metrics
 
 import io.micrometer.core.instrument.MeterRegistry
 
-class AlertMetrics(private val registry: MeterRegistry) {
-    fun fire(classId: String, ticker: String, window: String) {
+class AlertMetrics(
+    private val registry: MeterRegistry,
+) {
+    fun fire(
+        classId: String,
+        ticker: String,
+        window: String,
+    ) {
         registry.counter("alert_fire_total", "class", classId, "ticker", ticker, "window", window).increment()
     }
 

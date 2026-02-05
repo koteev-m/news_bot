@@ -1,5 +1,6 @@
 package moex
 
+import common.runCatchingNonFatal
 import http.CircuitBreaker
 import http.HttpClientError
 import http.HttpClients
@@ -10,6 +11,12 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -18,14 +25,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import kotlin.jvm.Volatile
-import common.runCatchingNonFatal
 
 class MoexIssClient(
     private val client: HttpClient,
@@ -33,7 +33,7 @@ class MoexIssClient(
     private val metrics: IntegrationsMetrics,
     private val cacheTtlMs: Long = DEFAULT_CACHE_TTL_MS,
     private val statusCacheTtlMs: Long = DEFAULT_STATUS_CACHE_TTL_MS,
-    private val clock: Clock = Clock.systemUTC()
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     @Volatile
     private var baseUrl: String = DEFAULT_BASE_URL
@@ -66,7 +66,11 @@ class MoexIssClient(
         }
     }
 
-    suspend fun getCandlesDaily(ticker: String, from: LocalDate, till: LocalDate): HttpResult<MoexCandlesResponse> {
+    suspend fun getCandlesDaily(
+        ticker: String,
+        from: LocalDate,
+        till: LocalDate,
+    ): HttpResult<MoexCandlesResponse> {
         if (ticker.isBlank()) {
             return Result.failure(HttpClientError.ValidationError("ticker must not be blank"))
         }
@@ -82,40 +86,51 @@ class MoexIssClient(
         }
     }
 
-    suspend fun getMarketStatus(): HttpResult<MoexStatusResponse> = runCatchingNonFatal {
-        statusCache.getOrPut("status") {
-            requestMarketStatus()
+    suspend fun getMarketStatus(): HttpResult<MoexStatusResponse> =
+        runCatchingNonFatal {
+            statusCache.getOrPut("status") {
+                requestMarketStatus()
+            }
         }
-    }
 
     private suspend fun requestSecurities(key: String): MoexSecuritiesResponse =
         cb.withPermit {
             HttpClients.measure(SERVICE) {
-                client.get("${baseUrl}$SECURITIES_PATH") {
-                    parameter("securities", key)
-                    parameter("iss.meta", "off")
-                }.body<MoexSecuritiesRaw>().toDomain()
+                client
+                    .get("${baseUrl}$SECURITIES_PATH") {
+                        parameter("securities", key)
+                        parameter("iss.meta", "off")
+                    }.body<MoexSecuritiesRaw>()
+                    .toDomain()
             }
         }
 
-    private suspend fun requestCandles(ticker: String, from: LocalDate, till: LocalDate): MoexCandlesResponse =
+    private suspend fun requestCandles(
+        ticker: String,
+        from: LocalDate,
+        till: LocalDate,
+    ): MoexCandlesResponse =
         cb.withPermit {
             HttpClients.measure(SERVICE) {
-                client.get("${baseUrl}$CANDLES_PREFIX$ticker$CANDLES_SUFFIX") {
-                    parameter("interval", "24")
-                    parameter("from", from.toString())
-                    parameter("till", till.toString())
-                    parameter("iss.meta", "off")
-                }.body<MoexCandlesRaw>().toDomain()
+                client
+                    .get("${baseUrl}$CANDLES_PREFIX$ticker$CANDLES_SUFFIX") {
+                        parameter("interval", "24")
+                        parameter("from", from.toString())
+                        parameter("till", till.toString())
+                        parameter("iss.meta", "off")
+                    }.body<MoexCandlesRaw>()
+                    .toDomain()
             }
         }
 
     private suspend fun requestMarketStatus(): MoexStatusResponse =
         cb.withPermit {
             HttpClients.measure(SERVICE) {
-                client.get("${baseUrl}$MARKET_STATUS_PATH") {
-                    parameter("iss.meta", "off")
-                }.body<MoexStatusRaw>().toDomain()
+                client
+                    .get("${baseUrl}$MARKET_STATUS_PATH") {
+                        parameter("iss.meta", "off")
+                    }.body<MoexStatusRaw>()
+                    .toDomain()
             }
         }
 
@@ -162,83 +177,108 @@ class MoexIssClient(
         }
     }
 
-    private fun MoexTableDto.asRecords(): List<Map<String, JsonElement?>> = data.map { row ->
-        columns.mapIndexed { index, column ->
-            column.uppercase() to row.getOrNull(index)
-        }.toMap()
-    }
-
-    private fun Map<String, JsonElement?>.string(vararg keys: String): String? = keys.asSequence()
-        .mapNotNull { key ->
-            get(key.uppercase())?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    private fun MoexTableDto.asRecords(): List<Map<String, JsonElement?>> =
+        data.map { row ->
+            columns
+                .mapIndexed { index, column ->
+                    column.uppercase() to row.getOrNull(index)
+                }.toMap()
         }
-        .firstOrNull()
 
-    private fun Map<String, JsonElement?>.decimal(vararg keys: String): BigDecimal? = string(*keys)?.let { raw ->
-        raw.replace(',', '.').toBigDecimalOrNull()
-    }
+    private fun Map<String, JsonElement?>.string(vararg keys: String): String? =
+        keys
+            .asSequence()
+            .mapNotNull { key ->
+                get(key.uppercase())?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            }.firstOrNull()
+
+    private fun Map<String, JsonElement?>.decimal(vararg keys: String): BigDecimal? =
+        string(*keys)?.let { raw ->
+            raw.replace(',', '.').toBigDecimalOrNull()
+        }
 
     private fun Map<String, JsonElement?>.int(vararg keys: String): Int? = string(*keys)?.toIntOrNull()
 
-    private fun Map<String, JsonElement?>.instantOrNull(vararg keys: String): Instant? = string(*keys)?.let { parseInstant(it) }
+    private fun Map<String, JsonElement?>.instantOrNull(vararg keys: String): Instant? =
+        string(*keys)?.let {
+            parseInstant(it)
+        }
 
-    private fun Map<String, JsonElement?>.booleanOrNull(vararg keys: String): Boolean? = keys.asSequence()
-        .mapNotNull { key -> get(key.uppercase())?.jsonPrimitive?.booleanOrNull }
-        .firstOrNull()
+    private fun Map<String, JsonElement?>.booleanOrNull(vararg keys: String): Boolean? =
+        keys
+            .asSequence()
+            .mapNotNull { key -> get(key.uppercase())?.jsonPrimitive?.booleanOrNull }
+            .firstOrNull()
 
     private fun MoexSecuritiesRaw.toDomain(): MoexSecuritiesResponse {
         val records = securities.asRecords()
         if (securities.columns.none { it.equals("SECID", ignoreCase = true) }) {
             throw HttpClientError.DeserializationError("SECID column is missing in MOEX securities payload")
         }
-        val items = records.mapNotNull { record ->
-            val code = record.string("SECID") ?: return@mapNotNull null
-            MoexSecurity(
-                code = code,
-                shortName = record.string("SHORTNAME"),
-                boardId = record.string("BOARDID"),
-                lotSize = record.int("LOTSIZE"),
-                currency = record.string("FACEUNIT"),
-                prevClosePrice = record.decimal("PREVPRICE"),
-                marketPrice = record.decimal("LAST"),
-                active = record.booleanOrNull("ISSUESIZEPLACED"),
-                type = record.string("SECTYPE")
-            )
-        }
+        val items =
+            records.mapNotNull { record ->
+                val code = record.string("SECID") ?: return@mapNotNull null
+                MoexSecurity(
+                    code = code,
+                    shortName = record.string("SHORTNAME"),
+                    boardId = record.string("BOARDID"),
+                    lotSize = record.int("LOTSIZE"),
+                    currency = record.string("FACEUNIT"),
+                    prevClosePrice = record.decimal("PREVPRICE"),
+                    marketPrice = record.decimal("LAST"),
+                    active = record.booleanOrNull("ISSUESIZEPLACED"),
+                    type = record.string("SECTYPE"),
+                )
+            }
         return MoexSecuritiesResponse(items)
     }
 
     private fun MoexCandlesRaw.toDomain(): MoexCandlesResponse {
         val records = candles.asRecords()
-        val candlesList = records.map { record ->
-            MoexCandle(
-                open = record.decimal("OPEN") ?: throw HttpClientError.DeserializationError("Missing OPEN in candle"),
-                close = record.decimal("CLOSE") ?: throw HttpClientError.DeserializationError("Missing CLOSE in candle"),
-                high = record.decimal("HIGH") ?: throw HttpClientError.DeserializationError("Missing HIGH in candle"),
-                low = record.decimal("LOW") ?: throw HttpClientError.DeserializationError("Missing LOW in candle"),
-                value = record.decimal("VALUE"),
-                volume = record.decimal("VOLUME"),
-                begin = record.instantOrNull("BEGIN") ?: throw HttpClientError.DeserializationError("Missing BEGIN in candle"),
-                end = record.instantOrNull("END") ?: throw HttpClientError.DeserializationError("Missing END in candle")
-            )
-        }
+        val candlesList =
+            records.map { record ->
+                MoexCandle(
+                    open =
+                    record.decimal("OPEN") ?: throw HttpClientError.DeserializationError("Missing OPEN in candle"),
+                    close =
+                    record.decimal(
+                        "CLOSE",
+                    ) ?: throw HttpClientError.DeserializationError("Missing CLOSE in candle"),
+                    high =
+                    record.decimal("HIGH") ?: throw HttpClientError.DeserializationError("Missing HIGH in candle"),
+                    low = record.decimal("LOW") ?: throw HttpClientError.DeserializationError("Missing LOW in candle"),
+                    value = record.decimal("VALUE"),
+                    volume = record.decimal("VOLUME"),
+                    begin =
+                    record.instantOrNull("BEGIN")
+                        ?: throw HttpClientError.DeserializationError("Missing BEGIN in candle"),
+                    end =
+                    record.instantOrNull("END")
+                        ?: throw HttpClientError.DeserializationError("Missing END in candle"),
+                )
+            }
         return MoexCandlesResponse(candlesList)
     }
 
     private fun MoexStatusRaw.toDomain(): MoexStatusResponse {
         val table = marketStatus ?: marketData ?: MoexTableDto()
         val records = table.asRecords()
-        val statuses = records.map { record ->
-            MoexMarketStatus(
-                boardId = record.string("BOARDID", "BOARD"),
-                market = record.string("MARKET"),
-                state = record.string("STATE", "MARKETSTATE", "TRADE_STATUS"),
-                title = record.string("TITLE", "NAME"),
-                startTime = record.instantOrNull("BEGIN", "STARTTIME", "FROM"),
-                endTime = record.instantOrNull("END", "TILL", "ENDTIME"),
-                isTrading = record.string("TRADINGSESSION", "IS_TRADING")?.let { it == "1" || it.equals("true", true) }
-            )
-        }
+        val statuses =
+            records.map { record ->
+                MoexMarketStatus(
+                    boardId = record.string("BOARDID", "BOARD"),
+                    market = record.string("MARKET"),
+                    state = record.string("STATE", "MARKETSTATE", "TRADE_STATUS"),
+                    title = record.string("TITLE", "NAME"),
+                    startTime = record.instantOrNull("BEGIN", "STARTTIME", "FROM"),
+                    endTime = record.instantOrNull("END", "TILL", "ENDTIME"),
+                    isTrading =
+                    record.string("TRADINGSESSION", "IS_TRADING")?.let {
+                        it == "1" ||
+                            it.equals("true", true)
+                    },
+                )
+            }
         return MoexStatusResponse(statuses)
     }
 }
@@ -246,22 +286,28 @@ class MoexIssClient(
 @Serializable
 private data class MoexTableDto(
     val columns: List<String> = emptyList(),
-    val data: List<List<JsonElement>> = emptyList()
+    val data: List<List<JsonElement>> = emptyList(),
 )
 
 @Serializable
-private data class MoexSecuritiesRaw(val securities: MoexTableDto = MoexTableDto())
+private data class MoexSecuritiesRaw(
+    val securities: MoexTableDto = MoexTableDto(),
+)
 
 @Serializable
-private data class MoexCandlesRaw(val candles: MoexTableDto = MoexTableDto())
+private data class MoexCandlesRaw(
+    val candles: MoexTableDto = MoexTableDto(),
+)
 
 @Serializable
 private data class MoexStatusRaw(
     @SerialName("marketstatus") val marketStatus: MoexTableDto? = null,
-    @SerialName("marketdata") val marketData: MoexTableDto? = null
+    @SerialName("marketdata") val marketData: MoexTableDto? = null,
 )
 
-data class MoexSecuritiesResponse(val securities: List<MoexSecurity>)
+data class MoexSecuritiesResponse(
+    val securities: List<MoexSecurity>,
+)
 
 data class MoexSecurity(
     val code: String,
@@ -272,10 +318,12 @@ data class MoexSecurity(
     val prevClosePrice: BigDecimal?,
     val marketPrice: BigDecimal?,
     val active: Boolean?,
-    val type: String?
+    val type: String?,
 )
 
-data class MoexCandlesResponse(val candles: List<MoexCandle>)
+data class MoexCandlesResponse(
+    val candles: List<MoexCandle>,
+)
 
 data class MoexCandle(
     val open: BigDecimal,
@@ -285,10 +333,12 @@ data class MoexCandle(
     val value: BigDecimal?,
     val volume: BigDecimal?,
     val begin: Instant,
-    val end: Instant
+    val end: Instant,
 )
 
-data class MoexStatusResponse(val statuses: List<MoexMarketStatus>)
+data class MoexStatusResponse(
+    val statuses: List<MoexMarketStatus>,
+)
 
 data class MoexMarketStatus(
     val boardId: String?,
@@ -297,5 +347,5 @@ data class MoexMarketStatus(
     val title: String?,
     val startTime: Instant?,
     val endTime: Instant?,
-    val isTrading: Boolean?
+    val isTrading: Boolean?,
 )

@@ -14,9 +14,15 @@ import privacy.RetentionReport
 import security.userIdOrNull
 
 @Serializable
-data class ErasureReq(val userId: Long, val dryRun: Boolean = false)
+data class ErasureReq(
+    val userId: Long,
+    val dryRun: Boolean = false,
+)
 
-fun Route.adminPrivacyRoutes(service: PrivacyService, adminUserIds: Set<Long>) {
+fun Route.adminPrivacyRoutes(
+    service: PrivacyService,
+    adminUserIds: Set<Long>,
+) {
     route("/api/admin/privacy") {
         post("/erase") {
             val subject = call.request.headers["X-User-Id"]?.toLongOrNull() ?: call.userIdOrNull?.toLongOrNull()

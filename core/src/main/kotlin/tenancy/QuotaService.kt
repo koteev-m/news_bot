@@ -2,11 +2,15 @@ package tenancy
 
 interface QuotaRepo {
     suspend fun getQuotas(tenantId: Long): Quotas
+
     suspend fun countPortfolios(tenantId: Long): Int
+
     suspend fun countAlerts(tenantId: Long): Int
 }
 
-class QuotaService(private val repo: QuotaRepo) {
+class QuotaService(
+    private val repo: QuotaRepo,
+) {
     suspend fun ensurePortfolioQuota(ctx: TenantContext) {
         val quotas = repo.getQuotas(ctx.tenant.tenantId)
         val used = repo.countPortfolios(ctx.tenant.tenantId)
@@ -20,4 +24,6 @@ class QuotaService(private val repo: QuotaRepo) {
     }
 }
 
-class QuotaExceeded(message: String) : RuntimeException(message)
+class QuotaExceeded(
+    message: String,
+) : RuntimeException(message)

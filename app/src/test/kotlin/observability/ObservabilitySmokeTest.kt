@@ -17,32 +17,34 @@ import kotlin.test.assertTrue
 
 class ObservabilitySmokeTest {
     @Test
-    fun `metrics endpoint exposes prometheus data and masks bearer tokens`() = testApplication {
-        application {
-            Observability.install(this)
-            routing {
-                get("/ping") {
-                    call.respondText("pong")
+    fun `metrics endpoint exposes prometheus data and masks bearer tokens`() =
+        testApplication {
+            application {
+                Observability.install(this)
+                routing {
+                    get("/ping") {
+                        call.respondText("pong")
+                    }
                 }
             }
+
+            val pingResponse =
+                client.get("/ping") {
+                    header(HttpHeaders.Authorization, "Bearer abc.def.ghi")
+                }
+            assertEquals(HttpStatusCode.OK, pingResponse.status)
+
+            val metricsResponse = client.get("/metrics")
+            assertEquals(HttpStatusCode.OK, metricsResponse.status)
+            val metricsBody = metricsResponse.bodyAsText()
+            assertTrue(
+                metricsBody.contains("http_server_requests_seconds_count") ||
+                    metricsBody.contains("ktor_http_server_requests_seconds_count"),
+            )
+
+            val masked = maskSensitive("Authorization: Bearer abc.def.ghi")
+            assertFalse(masked.contains("abc.def.ghi"))
         }
-
-        val pingResponse = client.get("/ping") {
-            header(HttpHeaders.Authorization, "Bearer abc.def.ghi")
-        }
-        assertEquals(HttpStatusCode.OK, pingResponse.status)
-
-        val metricsResponse = client.get("/metrics")
-        assertEquals(HttpStatusCode.OK, metricsResponse.status)
-        val metricsBody = metricsResponse.bodyAsText()
-        assertTrue(
-            metricsBody.contains("http_server_requests_seconds_count") ||
-                metricsBody.contains("ktor_http_server_requests_seconds_count")
-        )
-
-        val masked = maskSensitive("Authorization: Bearer abc.def.ghi")
-        assertFalse(masked.contains("abc.def.ghi"))
-    }
 
     private fun maskSensitive(message: String): String {
         val regex =

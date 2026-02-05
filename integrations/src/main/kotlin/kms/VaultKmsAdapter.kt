@@ -8,19 +8,26 @@ import org.slf4j.LoggerFactory
 class VaultKmsAdapter(
     private val http: HttpClient,
     private val baseUrl: String,
-    private val token: String
+    private val token: String,
 ) : KmsAdapter {
     @Suppress("DEPRECATION")
     private val log = LoggerFactory.getLogger(VaultKmsAdapter::class.java)
+
     @Volatile
     private var warned = false
 
-    override suspend fun wrapDek(kid: String, rawKey: ByteArray): ByteArray {
+    override suspend fun wrapDek(
+        kid: String,
+        rawKey: ByteArray,
+    ): ByteArray {
         warnOnce()
         return rawKey.copyOf()
     }
 
-    override suspend fun unwrapDek(kid: String, wrapped: ByteArray): ByteArray {
+    override suspend fun unwrapDek(
+        kid: String,
+        wrapped: ByteArray,
+    ): ByteArray {
         warnOnce()
         return wrapped.copyOf()
     }

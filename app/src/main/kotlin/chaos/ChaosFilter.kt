@@ -19,14 +19,17 @@ data class ChaosConfig(
     val errorRate: Double,
     val pathPrefix: String,
     val method: String,
-    val percent: Int
+    val percent: Int,
 )
 
-class ChaosMetrics(registry: MeterRegistry) {
-    val latency: Timer = Timer
-        .builder("chaos_injected_latency_ms_histogram")
-        .publishPercentiles(0.5, 0.95, 0.99)
-        .register(registry)
+class ChaosMetrics(
+    registry: MeterRegistry,
+) {
+    val latency: Timer =
+        Timer
+            .builder("chaos_injected_latency_ms_histogram")
+            .publishPercentiles(0.5, 0.95, 0.99)
+            .register(registry)
     val errors = registry.counter("chaos_injected_errors_total")
 }
 
@@ -36,19 +39,24 @@ class ChaosFilterConfig {
     var skipWhen: (ApplicationCall) -> Boolean = { false }
 }
 
-val ChaosFilter = createApplicationPlugin(name = "ChaosFilter", createConfiguration = ::ChaosFilterConfig) {
-    val stateProvider = pluginConfig.stateProvider ?: error("ChaosFilter.stateProvider not configured")
-    val metricsProvider = pluginConfig.metricsProvider ?: error("ChaosFilter.metricsProvider not configured")
+val ChaosFilter =
+    createApplicationPlugin(name = "ChaosFilter", createConfiguration = ::ChaosFilterConfig) {
+        val stateProvider = pluginConfig.stateProvider ?: error("ChaosFilter.stateProvider not configured")
+        val metricsProvider = pluginConfig.metricsProvider ?: error("ChaosFilter.metricsProvider not configured")
 
-    onCall { call ->
-        if (pluginConfig.skipWhen(call)) {
-            return@onCall
+        onCall { call ->
+            if (pluginConfig.skipWhen(call)) {
+                return@onCall
+            }
+            maybeInjectChaos(call, stateProvider(), metricsProvider())
         }
-        maybeInjectChaos(call, stateProvider(), metricsProvider())
     }
-}
 
-suspend fun maybeInjectChaos(call: ApplicationCall, cfg: ChaosConfig, metrics: ChaosMetrics): Boolean {
+suspend fun maybeInjectChaos(
+    call: ApplicationCall,
+    cfg: ChaosConfig,
+    metrics: ChaosMetrics,
+): Boolean {
     if (!cfg.enabled) {
         return false
     }
@@ -56,7 +64,9 @@ suspend fun maybeInjectChaos(call: ApplicationCall, cfg: ChaosConfig, metrics: C
     if (cfg.pathPrefix.isNotEmpty() && !path.startsWith(cfg.pathPrefix)) {
         return false
     }
-    val method = call.request.httpMethod.value.uppercase()
+    val method =
+        call.request.httpMethod.value
+            .uppercase()
     val targetMethod = cfg.method.uppercase()
     if (targetMethod != "ANY" && targetMethod != method) {
         return false

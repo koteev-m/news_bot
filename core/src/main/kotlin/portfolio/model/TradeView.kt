@@ -1,12 +1,12 @@
 package portfolio.model
 
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
-import kotlinx.serialization.Contextual
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class TradeView(

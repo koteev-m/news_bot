@@ -2,9 +2,9 @@
 
 package billing
 
-import java.time.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.UseSerializers
+import java.time.Instant
 
 @Serializable
 data class UsageEvent(
@@ -14,7 +14,7 @@ data class UsageEvent(
     val metric: String,
     val quantity: Double,
     val occurredAt: Instant = Instant.now(),
-    val dedupKey: String? = null
+    val dedupKey: String? = null,
 )
 
 @Serializable
@@ -23,7 +23,7 @@ data class RateItem(
     val unit: String,
     val pricePerUnit: Double,
     val tierFrom: Double = 0.0,
-    val tierTo: Double? = null
+    val tierTo: Double? = null,
 )
 
 @Serializable
@@ -31,7 +31,7 @@ data class RateCard(
     val rateId: Long,
     val name: String,
     val currency: String,
-    val items: List<RateItem>
+    val items: List<RateItem>,
 )
 
 @Serializable
@@ -40,7 +40,7 @@ data class InvoiceLine(
     val quantity: Double,
     val unit: String,
     val unitPrice: Double,
-    val amount: Double
+    val amount: Double,
 )
 
 @Serializable
@@ -52,5 +52,5 @@ data class InvoiceDraft(
     val lines: List<InvoiceLine>,
     val subtotal: Double,
     val tax: Double,
-    val total: Double
+    val total: Double,
 )

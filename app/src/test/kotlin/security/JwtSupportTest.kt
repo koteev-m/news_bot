@@ -9,22 +9,24 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class JwtSupportTest {
-    private val baseConfig = JwtConfig(
-        issuer = "test-issuer",
-        audience = "test-audience",
-        realm = "test-realm",
-        secret = "very-secret-key",
-        accessTtlMinutes = 5,
-    )
+    private val baseConfig =
+        JwtConfig(
+            issuer = "test-issuer",
+            audience = "test-audience",
+            realm = "test-realm",
+            secret = "very-secret-key",
+            accessTtlMinutes = 5,
+        )
 
     @Test
     fun `issueToken and verify should return expected subject and claims`() {
         val claims = mapOf("role" to "admin", "userId" to "42")
-        val token = JwtSupport.issueToken(
-            config = baseConfig,
-            subject = "user-123",
-            claims = claims,
-        )
+        val token =
+            JwtSupport.issueToken(
+                config = baseConfig,
+                subject = "user-123",
+                claims = claims,
+            )
 
         val decoded = JwtSupport.verify(baseConfig).verify(token)
 
@@ -36,10 +38,11 @@ class JwtSupportTest {
 
     @Test
     fun `verify should fail for tokens signed with another secret`() {
-        val token = JwtSupport.issueToken(
-            config = baseConfig,
-            subject = "user-456",
-        )
+        val token =
+            JwtSupport.issueToken(
+                config = baseConfig,
+                subject = "user-456",
+            )
         val differentSecretConfig = baseConfig.copy(secret = "different-secret")
 
         assertFailsWith<JWTVerificationException> {
@@ -51,11 +54,12 @@ class JwtSupportTest {
     fun `verify should reject expired tokens`() {
         val past = Instant.now().minus(2, ChronoUnit.HOURS)
         val shortLivedConfig = baseConfig.copy(accessTtlMinutes = 1)
-        val token = JwtSupport.issueToken(
-            config = shortLivedConfig,
-            subject = "user-789",
-            now = past,
-        )
+        val token =
+            JwtSupport.issueToken(
+                config = shortLivedConfig,
+                subject = "user-789",
+                now = past,
+            )
 
         assertFailsWith<TokenExpiredException> {
             JwtSupport.verify(shortLivedConfig).verify(token)

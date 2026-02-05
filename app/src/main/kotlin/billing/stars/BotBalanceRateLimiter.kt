@@ -8,9 +8,9 @@ import kotlin.math.min
 class BotBalanceRateLimiter(
     private val capacity: Int,
     private val refillPerMinute: Int,
-    private val cleanupThreshold: Int = 1024,
-    private val staleAfterNanos: Long = TimeUnit.MINUTES.toNanos(30),
-    private val cleanupIntervalNanos: Long = TimeUnit.MINUTES.toNanos(5),
+    private val cleanupThreshold: Int = CLEANUP_THRESHOLD,
+    private val staleAfterNanos: Long = TimeUnit.MINUTES.toNanos(STALE_AFTER_MINUTES),
+    private val cleanupIntervalNanos: Long = TimeUnit.MINUTES.toNanos(CLEANUP_INTERVAL_MINUTES),
     private val nanoTimeProvider: () -> Long = System::nanoTime,
 ) {
     private val buckets = ConcurrentHashMap<Long, TokenBucket>()
@@ -53,7 +53,10 @@ class BotBalanceRateLimiter(
 
 sealed interface RateLimitVerdict {
     object Allowed : RateLimitVerdict
-    data class Denied(val retryAfterSeconds: Int) : RateLimitVerdict
+
+    data class Denied(
+        val retryAfterSeconds: Int,
+    ) : RateLimitVerdict
 }
 
 private class TokenBucket(
@@ -79,18 +82,19 @@ private class TokenBucket(
             }
 
             val needed = 1.0 - tokens
-            val seconds = if (refillPerSecond <= 0.0) {
-                1.0
-            } else {
-                needed / refillPerSecond
-            }
+            val seconds =
+                if (refillPerSecond <= 0.0) {
+                    1.0
+                } else {
+                    needed / refillPerSecond
+                }
             val retryAfter = ceil(seconds).toInt().coerceAtLeast(1)
             return RateLimitVerdict.Denied(retryAfter)
         }
     }
 
     private fun refill(nowNanos: Long) {
-        val elapsedSeconds = (nowNanos - lastRefillNanos) / 1_000_000_000.0
+        val elapsedSeconds = (nowNanos - lastRefillNanos) / NANOS_IN_SECOND
         if (elapsedSeconds <= 0.0) {
             return
         }
@@ -98,5 +102,12 @@ private class TokenBucket(
         val tokensToAdd = elapsedSeconds * refillPerSecond
         tokens = min(maxTokens, tokens + tokensToAdd)
         lastRefillNanos = nowNanos
+    }
+
+    companion object {
+        private const val CLEANUP_THRESHOLD = 1024
+        private const val STALE_AFTER_MINUTES = 30L
+        private const val CLEANUP_INTERVAL_MINUTES = 5L
+        private const val NANOS_IN_SECOND = 1_000_000_000.0
     }
 }

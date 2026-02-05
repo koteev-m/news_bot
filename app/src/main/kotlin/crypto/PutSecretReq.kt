@@ -1,18 +1,26 @@
 package crypto
 
-import io.ktor.server.routing.*
-import io.ktor.server.application.*
-import io.ktor.server.response.*
-import io.ktor.server.request.*
-import io.ktor.http.*
 import io.ktor.client.*
+import io.ktor.http.*
+import io.ktor.server.application.*
 import io.ktor.server.config.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 import kms.VaultKmsAdapter
 import repo.SecretStore
 
-data class PutSecretReq(val tenantId: Long, val name: String, val plaintext: String)
+data class PutSecretReq(
+    val tenantId: Long,
+    val name: String,
+    val plaintext: String,
+)
 
-fun Route.cryptoRoutes(http: HttpClient, store: SecretStore, cfg: ApplicationConfig) {
+fun Route.cryptoRoutes(
+    http: HttpClient,
+    store: SecretStore,
+    cfg: ApplicationConfig,
+) {
     val base = cfg.propertyOrNull("vault.transitBase")?.getString() ?: ""
     val token = cfg.propertyOrNull("vault.token")?.getString() ?: ""
     val keyId = cfg.propertyOrNull("vault.keyId")?.getString() ?: ""
@@ -26,7 +34,9 @@ fun Route.cryptoRoutes(http: HttpClient, store: SecretStore, cfg: ApplicationCon
     }
 
     get("/api/crypto/get") {
-        val tenantId = call.request.queryParameters["tenantId"]?.toLongOrNull() ?: return@get call.respond(HttpStatusCode.BadRequest)
+        val tenantId =
+            call.request.queryParameters["tenantId"]?.toLongOrNull()
+                ?: return@get call.respond(HttpStatusCode.BadRequest)
         val name = call.request.queryParameters["name"] ?: return@get call.respond(HttpStatusCode.BadRequest)
         val env = store.get(tenantId, name) ?: return@get call.respond(HttpStatusCode.NotFound)
         val pt = EnvelopeCrypto.decrypt(kms, env)

@@ -9,11 +9,6 @@ import com.pengrad.telegrambot.request.SendMessage
 import com.pengrad.telegrambot.response.SendResponse
 import db.DatabaseFactory
 import db.tables.PostStatsTable
-import java.time.Clock
-import java.time.Instant
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
-import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import news.config.NewsConfig
@@ -23,10 +18,15 @@ import news.pipeline.PublishJobRequest
 import news.pipeline.PublishTarget
 import news.publisher.PostHash
 import news.render.ModerationTemplates
-import org.jetbrains.exposed.sql.insertIgnore
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.insertIgnore
 import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
+import java.time.Clock
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.UUID
 
 class ModerationBotHandler(
     private val bot: TelegramBot,
@@ -59,7 +59,10 @@ class ModerationBotHandler(
         return handleEditReply(moderationItem, text, message.messageId())
     }
 
-    private suspend fun handleCallback(queryId: String, data: String) {
+    private suspend fun handleCallback(
+        queryId: String,
+        data: String,
+    ) {
         val parts = data.split(':')
         if (parts.size < 3) {
             bot.execute(AnswerCallbackQuery(queryId))
@@ -82,7 +85,11 @@ class ModerationBotHandler(
         }
     }
 
-    private suspend fun markAction(moderationId: UUID, actionId: String, status: ModerationStatus) {
+    private suspend fun markAction(
+        moderationId: UUID,
+        actionId: String,
+        status: ModerationStatus,
+    ) {
         val updated = repository.markActionIfPending(moderationId, actionId, status)
         if (!updated) {
             bot.execute(AnswerCallbackQuery(actionId).text("Уже обработано"))
@@ -91,7 +98,10 @@ class ModerationBotHandler(
         bot.execute(AnswerCallbackQuery(actionId).text("Готово"))
     }
 
-    private suspend fun enqueueDigest(moderationId: UUID, actionId: String) {
+    private suspend fun enqueueDigest(
+        moderationId: UUID,
+        actionId: String,
+    ) {
         val updated = repository.markActionIfPending(moderationId, actionId, ModerationStatus.DIGEST)
         if (!updated) {
             bot.execute(AnswerCallbackQuery(actionId).text("Уже обработано"))
@@ -112,13 +122,16 @@ class ModerationBotHandler(
                     topics = item.candidate.topics,
                     deepLink = item.candidate.deepLink,
                     createdAt = item.candidate.createdAt,
-                )
+                ),
             )
         }
         bot.execute(AnswerCallbackQuery(actionId).text("Готово"))
     }
 
-    private suspend fun requestEdit(moderationId: UUID, actionId: String) {
+    private suspend fun requestEdit(
+        moderationId: UUID,
+        actionId: String,
+    ) {
         val updated = repository.markEditRequested(moderationId)
         if (!updated) {
             bot.execute(AnswerCallbackQuery(actionId).text("Уже обработано"))
@@ -135,7 +148,10 @@ class ModerationBotHandler(
         bot.execute(AnswerCallbackQuery(actionId).text("Жду текст"))
     }
 
-    private suspend fun publishNow(moderationId: UUID, actionId: String) {
+    private suspend fun publishNow(
+        moderationId: UUID,
+        actionId: String,
+    ) {
         val locked = repository.markActionIfPending(moderationId, actionId, ModerationStatus.PUBLISHING)
         if (!locked) {
             bot.execute(AnswerCallbackQuery(actionId).text("Уже обработано"))
@@ -156,7 +172,11 @@ class ModerationBotHandler(
         }
     }
 
-    private suspend fun handleEditReply(item: ModerationItem, text: String, replyMessageId: Int): Boolean {
+    private suspend fun handleEditReply(
+        item: ModerationItem,
+        text: String,
+        replyMessageId: Int,
+    ): Boolean {
         if (item.status != ModerationStatus.EDIT_REQUESTED && item.status != ModerationStatus.PENDING) {
             return false
         }
@@ -172,7 +192,10 @@ class ModerationBotHandler(
         return false
     }
 
-    private suspend fun muteSource(moderationId: UUID, actionId: String) {
+    private suspend fun muteSource(
+        moderationId: UUID,
+        actionId: String,
+    ) {
         val item = repository.findByModerationId(moderationId)
         if (item == null) {
             bot.execute(AnswerCallbackQuery(actionId))
@@ -187,7 +210,10 @@ class ModerationBotHandler(
         bot.execute(AnswerCallbackQuery(actionId).text("Источник замьючен"))
     }
 
-    private suspend fun muteEntity(moderationId: UUID, actionId: String) {
+    private suspend fun muteEntity(
+        moderationId: UUID,
+        actionId: String,
+    ) {
         val item = repository.findByModerationId(moderationId)
         if (item == null) {
             bot.execute(AnswerCallbackQuery(actionId))
@@ -207,15 +233,20 @@ class ModerationBotHandler(
         bot.execute(AnswerCallbackQuery(actionId).text("Сущность замьючена"))
     }
 
-    private suspend fun sendToChannel(candidate: ModerationCandidate, editedText: String?): Long? {
-        val text = if (editedText != null) {
-            ModerationTemplates.renderEditedPost(editedText, candidate.deepLink)
-        } else {
-            ModerationTemplates.renderBreakingPost(candidate)
-        }
+    private suspend fun sendToChannel(
+        candidate: ModerationCandidate,
+        editedText: String?,
+    ): Long? {
+        val text =
+            if (editedText != null) {
+                ModerationTemplates.renderEditedPost(editedText, candidate.deepLink)
+            } else {
+                ModerationTemplates.renderBreakingPost(candidate)
+            }
         return withContext(Dispatchers.IO) {
-            val request = SendMessage(newsConfig.channelId, text)
-                .parseMode(ParseMode.MarkdownV2)
+            val request =
+                SendMessage(newsConfig.channelId, text)
+                    .parseMode(ParseMode.MarkdownV2)
             val response: SendResponse = bot.execute(request)
             if (!response.isOk) {
                 logger.warn("Moderation publish failed for cluster {}", candidate.clusterKey)
@@ -229,7 +260,12 @@ class ModerationBotHandler(
         }
     }
 
-    private suspend fun recordPostStats(clusterId: UUID, channelId: Long, messageId: Int, text: String) {
+    private suspend fun recordPostStats(
+        clusterId: UUID,
+        channelId: Long,
+        messageId: Int,
+        text: String,
+    ) {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
         val contentHash = PostHash.hash(text)
         DatabaseFactory.dbQuery {
@@ -245,7 +281,7 @@ class ModerationBotHandler(
             PostStatsTable.update(
                 where = {
                     (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
-                }
+                },
             ) {
                 it[PostStatsTable.messageId] = messageId.toLong()
                 it[PostStatsTable.updatedAt] = now
@@ -254,7 +290,5 @@ class ModerationBotHandler(
         }
     }
 
-    private fun mutedUntil(): Instant {
-        return clock.instant().plusSeconds(config.muteHours * 3600)
-    }
+    private fun mutedUntil(): Instant = clock.instant().plusSeconds(config.muteHours * 3600)
 }

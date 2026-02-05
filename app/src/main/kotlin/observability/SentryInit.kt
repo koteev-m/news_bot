@@ -22,33 +22,36 @@ fun Application.installSentry() {
         if (!release.isNullOrBlank()) opts.release = release
         opts.tracesSampleRate = 0.0
         opts.isSendDefaultPii = false
-        opts.beforeSend = SentryOptions.BeforeSendCallback { event, _ ->
-            val traceId = MDC.get("requestId")
-            if (!traceId.isNullOrBlank()) {
-                event.setTag("traceId", traceId)
-                val existing = event.fingerprints
-                val updated = buildList {
-                    if (existing != null && existing.isNotEmpty()) {
-                        addAll(existing)
-                    } else {
-                        add("event")
+        opts.beforeSend =
+            SentryOptions.BeforeSendCallback { event, _ ->
+                val traceId = MDC.get("requestId")
+                if (!traceId.isNullOrBlank()) {
+                    event.setTag("traceId", traceId)
+                    val existing = event.fingerprints
+                    val updated =
+                        buildList {
+                            if (existing != null && existing.isNotEmpty()) {
+                                addAll(existing)
+                            } else {
+                                add("event")
+                            }
+                            add(traceId)
+                        }
+                    event.setFingerprints(updated)
+                }
+                event.message?.let { message ->
+                    val sanitized =
+                        message.formatted
+                            ?.replace(Regex("(?i)\\b(bearer\\s+[A-Za-z0-9._-]+)"), "***")
+                            ?.replace(Regex("(?i)x-telegram-bot-api-secret-token:[^,\\s]+"), "***")
+                            ?.replace(Regex("(?i)initData=[^&\\s]+"), "***")
+                            ?.replace(Regex("token=[A-Za-z0-9:_-]{20,}"), "***")
+                    if (sanitized != null) {
+                        message.formatted = sanitized
                     }
-                    add(traceId)
                 }
-                event.setFingerprints(updated)
+                event
             }
-            event.message?.let { message ->
-                val sanitized = message.formatted
-                    ?.replace(Regex("(?i)\\b(bearer\\s+[A-Za-z0-9._-]+)"), "***")
-                    ?.replace(Regex("(?i)x-telegram-bot-api-secret-token:[^,\\s]+"), "***")
-                    ?.replace(Regex("(?i)initData=[^&\\s]+"), "***")
-                    ?.replace(Regex("token=[A-Za-z0-9:_-]{20,}"), "***")
-                if (sanitized != null) {
-                    message.formatted = sanitized
-                }
-            }
-            event
-        }
         opts.setDiagnosticLevel(SentryLevel.WARNING)
     }
 

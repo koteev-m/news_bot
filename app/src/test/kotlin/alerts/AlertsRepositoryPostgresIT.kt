@@ -32,7 +32,7 @@ class AlertsRepositoryPostgresIT {
                     )
 
                 val result = service.onSnapshot(snapshot)
-                assertTrue(result.newState is FsmState.PUSHED)
+                assertTrue(result.newState is FsmState.Pushed)
 
                 val rehydratedService = AlertsService(repo, config, SimpleMeterRegistry())
                 val persistedState = rehydratedService.getState(userId)
@@ -57,9 +57,9 @@ class AlertsRepositoryPostgresIT {
                 val userId = 777L
                 val today = LocalDate.of(2024, 1, 5)
 
-                repo.setState(userId, FsmState.COOLDOWN(untilEpochSec = 1234))
+                repo.setState(userId, FsmState.Cooldown(untilEpochSec = 1234))
                 val secondRepo = AlertsRepositoryPostgres(dataSource)
-                assertEquals(FsmState.COOLDOWN(untilEpochSec = 1234), secondRepo.getState(userId))
+                assertEquals(FsmState.Cooldown(untilEpochSec = 1234), secondRepo.getState(userId))
 
                 repeat(3) { repo.incDailyPushCount(userId, today) }
                 assertEquals(3, secondRepo.getDailyPushCount(userId, today))
@@ -76,11 +76,11 @@ class AlertsRepositoryPostgresIT {
                 val repo = AlertsRepositoryPostgres(dataSource)
                 val userId = 4242L
 
-                repo.setState(userId, FsmState.PORTFOLIO_SUMMARY(deliveredAtEpochSec = 1700000000))
+                repo.setState(userId, FsmState.PortfolioSummary(deliveredAtEpochSec = 1700000000))
 
                 val rehydrated = AlertsRepositoryPostgres(dataSource)
                 assertEquals(
-                    FsmState.PORTFOLIO_SUMMARY(deliveredAtEpochSec = 1700000000),
+                    FsmState.PortfolioSummary(deliveredAtEpochSec = 1700000000),
                     rehydrated.getState(userId),
                 )
             }

@@ -14,7 +14,7 @@ interface BillingRepository {
         tier: Tier,
         status: SubStatus,
         expiresAt: Instant?,
-        lastPaymentId: String?
+        lastPaymentId: String?,
     )
 
     suspend fun findSubscription(userId: Long): UserSubscription?
@@ -25,6 +25,6 @@ interface BillingRepository {
         amountXtr: Long,
         providerPaymentId: String?,
         payload: String?,
-        status: SubStatus
+        status: SubStatus,
     ): Boolean
 }

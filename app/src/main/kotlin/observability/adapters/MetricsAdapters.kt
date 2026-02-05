@@ -1,6 +1,7 @@
 package observability.adapters
 
 import alerts.metrics.AlertMetricsPort
+import io.micrometer.core.instrument.Tags
 import news.metrics.NewsMetricsPort
 import news.metrics.NewsPublishResult
 import news.metrics.NewsPublishType
@@ -11,12 +12,13 @@ import news.routing.DropReason
 import news.routing.EventRoute
 import news.rss.RssFetchMetrics
 import observability.DomainMetrics
-import io.micrometer.core.instrument.Tags
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
-class AlertMetricsAdapter(private val metrics: DomainMetrics) : AlertMetricsPort {
+class AlertMetricsAdapter(
+    private val metrics: DomainMetrics,
+) : AlertMetricsPort {
     override fun incPush() {
         metrics.alertsPush.increment()
     }
@@ -26,7 +28,9 @@ class AlertMetricsAdapter(private val metrics: DomainMetrics) : AlertMetricsPort
     }
 }
 
-class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
+class NewsMetricsAdapter(
+    private val metrics: DomainMetrics,
+) : NewsMetricsPort {
     private val dedupRatio = AtomicReference(0.0)
     private val dedupRatioGaugeNames = listOf("news_dedup_ratio", "dedup_ratio")
     private val publishJobsCounterNames = listOf("news_publish_jobs_total", "publish_jobs_total")
@@ -39,53 +43,67 @@ class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
         }
     }
 
-    override fun incPublish(type: NewsPublishType, result: NewsPublishResult) {
-        metrics.meterRegistry.counter(
-            "news_publish_total",
-            "type",
-            type.name.lowercase(),
-            "result",
-            result.name.lowercase(),
-        ).increment()
+    override fun incPublish(
+        type: NewsPublishType,
+        result: NewsPublishResult,
+    ) {
+        metrics.meterRegistry
+            .counter(
+                "news_publish_total",
+                "type",
+                type.name.lowercase(),
+                "result",
+                result.name.lowercase(),
+            ).increment()
     }
 
     override fun incEdit() {
         metrics.meterRegistry.counter("news_edit_total").increment()
     }
 
-    override fun incCandidatesReceived(sourceId: String, count: Int) {
-        metrics.meterRegistry.counter(
-            "candidates_received_total",
-            "source_id",
-            sourceId,
-        ).increment(count.toDouble())
+    override fun incCandidatesReceived(
+        sourceId: String,
+        count: Int,
+    ) {
+        metrics.meterRegistry
+            .counter(
+                "candidates_received_total",
+                "source_id",
+                sourceId,
+            ).increment(count.toDouble())
     }
 
     override fun incClustersCreated(eventType: EventType) {
-        metrics.meterRegistry.counter(
-            "clusters_created_total",
-            "event_type",
-            eventType.name.lowercase(),
-        ).increment()
+        metrics.meterRegistry
+            .counter(
+                "clusters_created_total",
+                "event_type",
+                eventType.name.lowercase(),
+            ).increment()
     }
 
     override fun incRouted(route: EventRoute) {
-        metrics.meterRegistry.counter(
-            "routed_total",
-            "route",
-            route.name.lowercase(),
-        ).increment()
+        metrics.meterRegistry
+            .counter(
+                "routed_total",
+                "route",
+                route.name.lowercase(),
+            ).increment()
     }
 
     override fun incDropped(reason: DropReason) {
-        metrics.meterRegistry.counter(
-            "dropped_total",
-            "reason",
-            reason.name.lowercase(),
-        ).increment()
+        metrics.meterRegistry
+            .counter(
+                "dropped_total",
+                "reason",
+                reason.name.lowercase(),
+            ).increment()
     }
 
-    override fun incPublishJobStatus(status: PublishJobStatus, count: Int) {
+    override fun incPublishJobStatus(
+        status: PublishJobStatus,
+        count: Int,
+    ) {
         if (count <= 0) return
         incrementCounters(
             publishJobsCounterNames,
@@ -95,7 +113,10 @@ class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
         )
     }
 
-    override fun incModerationQueueStatus(status: ModerationStatus, count: Int) {
+    override fun incModerationQueueStatus(
+        status: ModerationStatus,
+        count: Int,
+    ) {
         if (count <= 0) return
         incrementCounters(
             moderationQueueCounterNames,
@@ -109,30 +130,41 @@ class NewsMetricsAdapter(private val metrics: DomainMetrics) : NewsMetricsPort {
         dedupRatio.set(ratio.coerceIn(0.0, 1.0))
     }
 
-    private fun incrementCounters(names: List<String>, count: Double, vararg tags: String) {
+    private fun incrementCounters(
+        names: List<String>,
+        count: Double,
+        vararg tags: String,
+    ) {
         names.forEach { name ->
             metrics.meterRegistry.counter(name, *tags).increment(count)
         }
     }
 }
 
-class RssFetchMetricsAdapter(private val metrics: DomainMetrics) : RssFetchMetrics {
+class RssFetchMetricsAdapter(
+    private val metrics: DomainMetrics,
+) : RssFetchMetrics {
     private val cooldownActive = ConcurrentHashMap<String, AtomicInteger>()
 
     override fun incCooldownTotal(sourceId: String) {
-        metrics.meterRegistry.counter(
-            "feed_cooldown_total",
-            "src",
-            sourceId,
-        ).increment()
+        metrics.meterRegistry
+            .counter(
+                "feed_cooldown_total",
+                "src",
+                sourceId,
+            ).increment()
     }
 
-    override fun markCooldownActive(sourceId: String, active: Boolean) {
-        val gauge = cooldownActive.computeIfAbsent(sourceId) { key ->
-            val holder = AtomicInteger(0)
-            metrics.meterRegistry.gauge("feed_cooldown_active", Tags.of("src", key), holder)
-            holder
-        }
+    override fun markCooldownActive(
+        sourceId: String,
+        active: Boolean,
+    ) {
+        val gauge =
+            cooldownActive.computeIfAbsent(sourceId) { key ->
+                val holder = AtomicInteger(0)
+                metrics.meterRegistry.gauge("feed_cooldown_active", Tags.of("src", key), holder)
+                holder
+            }
         gauge.set(if (active) 1 else 0)
     }
 }

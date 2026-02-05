@@ -31,7 +31,10 @@ data class Netflow2PullWindow(
          *
          * [fromInclusive] is included, [tillExclusive] is excluded to avoid overlapping borders between windows.
          */
-        fun split(fromInclusive: LocalDate, tillExclusive: LocalDate): List<Netflow2PullWindow> {
+        fun split(
+            fromInclusive: LocalDate,
+            tillExclusive: LocalDate,
+        ): List<Netflow2PullWindow> {
             require(!fromInclusive.isAfter(tillExclusive)) { "fromInclusive must not be after tillExclusive" }
             if (fromInclusive == tillExclusive) {
                 return emptyList()
@@ -50,7 +53,10 @@ data class Netflow2PullWindow(
         /**
          * Inclusive range splitter that preserves the right boundary.
          */
-        fun splitInclusive(fromInclusive: LocalDate, tillInclusive: LocalDate): List<Netflow2PullWindow> {
+        fun splitInclusive(
+            fromInclusive: LocalDate,
+            tillInclusive: LocalDate,
+        ): List<Netflow2PullWindow> {
             require(!fromInclusive.isAfter(tillInclusive)) { "fromInclusive must not be after tillInclusive" }
             return split(fromInclusive, tillInclusive.plusDays(1))
         }
@@ -59,7 +65,10 @@ data class Netflow2PullWindow(
          * Constructs an inclusive window, converting the inclusive [tillInclusive] boundary into the internal
          * inclusive-exclusive representation.
          */
-        fun ofInclusive(fromInclusive: LocalDate, tillInclusive: LocalDate): Netflow2PullWindow {
+        fun ofInclusive(
+            fromInclusive: LocalDate,
+            tillInclusive: LocalDate,
+        ): Netflow2PullWindow {
             require(!fromInclusive.isAfter(tillInclusive)) { "fromInclusive must not be after tillInclusive" }
             return Netflow2PullWindow(fromInclusive, tillInclusive.plusDays(1))
         }

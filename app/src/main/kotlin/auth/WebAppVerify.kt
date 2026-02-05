@@ -1,5 +1,11 @@
 package auth
 
+import common.runCatchingNonFatal
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.Duration
@@ -7,12 +13,6 @@ import java.time.Instant
 import java.util.LinkedHashMap
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
-import common.runCatchingNonFatal
 
 object WebAppVerify {
     private const val HASH_KEY = "hash"
@@ -33,8 +33,10 @@ object WebAppVerify {
         val trimmed = initData.trim().removePrefix("?")
         require(trimmed.isNotEmpty()) { "initData must not be blank" }
 
-        val pairs = trimmed.split('&')
-            .filter { it.isNotEmpty() }
+        val pairs =
+            trimmed
+                .split('&')
+                .filter { it.isNotEmpty() }
 
         val rawMap = LinkedHashMap<String, String>(pairs.size)
         for (pair in pairs) {
@@ -53,11 +55,13 @@ object WebAppVerify {
             rawMap[key] = value
         }
 
-        val hash = rawMap[HASH_KEY]?.takeIf { it.isNotBlank() }
-            ?: throw IllegalArgumentException("hash is missing")
+        val hash =
+            rawMap[HASH_KEY]?.takeIf { it.isNotBlank() }
+                ?: throw IllegalArgumentException("hash is missing")
 
-        val authDateValue = rawMap[AUTH_DATE_KEY]?.toLongOrNull()
-            ?: throw IllegalArgumentException("auth_date is missing or invalid")
+        val authDateValue =
+            rawMap[AUTH_DATE_KEY]?.toLongOrNull()
+                ?: throw IllegalArgumentException("auth_date is missing or invalid")
         val authDate = Instant.ofEpochSecond(authDateValue)
 
         val userRaw = rawMap["user"]
@@ -120,29 +124,36 @@ object WebAppVerify {
         return true
     }
 
-    fun constantTimeEquals(a: String, b: String): Boolean {
+    fun constantTimeEquals(
+        a: String,
+        b: String,
+    ): Boolean {
         val aBytes = a.toByteArray(StandardCharsets.UTF_8)
         val bBytes = b.toByteArray(StandardCharsets.UTF_8)
         return java.security.MessageDigest.isEqual(aBytes, bBytes)
     }
 
     private fun buildDataCheckString(raw: Map<String, String>): String =
-        raw.filterKeys { it != HASH_KEY }
+        raw
+            .filterKeys { it != HASH_KEY }
             .toSortedMap()
             .entries
             .joinToString(separator = "\n") { (key, value) -> "$key=$value" }
 
-    private fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray {
+    private fun hmacSha256(
+        key: ByteArray,
+        message: ByteArray,
+    ): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(key, "HmacSHA256"))
         return mac.doFinal(message)
     }
 
-    private fun ByteArray.toHex(): String = joinToString(separator = "") { byte ->
-        val unsigned = byte.toInt() and 0xff
-        unsigned.toString(16).padStart(2, '0')
-    }
+    private fun ByteArray.toHex(): String =
+        joinToString(separator = "") { byte ->
+            val unsigned = byte.toInt() and 0xff
+            unsigned.toString(16).padStart(2, '0')
+        }
 
-    private fun urlDecode(value: String): String =
-        URLDecoder.decode(value, StandardCharsets.UTF_8.name())
+    private fun urlDecode(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8.name())
 }

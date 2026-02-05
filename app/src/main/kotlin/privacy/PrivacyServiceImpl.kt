@@ -1,24 +1,26 @@
 package privacy
 
 import db.DatabaseFactory.dbQuery
-import java.sql.Timestamp
-import java.time.Instant
-import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CancellationException
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import repo.PrivacyRepository
+import java.sql.Timestamp
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 class PrivacyServiceImpl(
     private val repo: PrivacyRepository,
-    private val cfg: PrivacyConfig
+    private val cfg: PrivacyConfig,
 ) : PrivacyService {
-
     override suspend fun enqueueErasure(userId: Long) {
         ensureErasureEnabled()
         repo.upsertRequest(userId)
     }
 
-    override suspend fun runErasure(userId: Long, dryRun: Boolean): ErasureReport {
+    override suspend fun runErasure(
+        userId: Long,
+        dryRun: Boolean,
+    ): ErasureReport {
         ensureErasureEnabled()
         val effectiveDryRun = dryRun || cfg.erasure.dryRun
         val deleted = linkedMapOf<String, Long>()
@@ -63,8 +65,8 @@ class PrivacyServiceImpl(
         return ErasureReport(userId, deleted, anonymized, effectiveDryRun)
     }
 
-    override suspend fun runRetention(now: Instant): RetentionReport {
-        return try {
+    override suspend fun runRetention(now: Instant): RetentionReport =
+        try {
             val deletedByTable = linkedMapOf<String, Long>()
 
             val analyticsCutoff = now.minus(cfg.retention.analyticsDays.toLong(), ChronoUnit.DAYS)
@@ -93,7 +95,6 @@ class PrivacyServiceImpl(
                 throw ex
             }
         }
-    }
 
     private fun ensureErasureEnabled() {
         if (!cfg.erasure.enabled) {
@@ -108,14 +109,15 @@ class PrivacyServiceImpl(
         deleted: MutableMap<String, Long>,
         anonymized: MutableMap<String, Long>,
         dryRun: Boolean,
-        anonymize: Boolean
+        anonymize: Boolean,
     ) {
-        val logAction = when {
-            dryRun -> "SKIP"
-            count == 0L -> "SKIP"
-            anonymize -> "ANONYMIZE"
-            else -> "DELETE"
-        }
+        val logAction =
+            when {
+                dryRun -> "SKIP"
+                count == 0L -> "SKIP"
+                anonymize -> "ANONYMIZE"
+                else -> "DELETE"
+            }
         repo.audit(userId, table, logAction, count)
 
         if (count > 0 && !dryRun) {
@@ -127,7 +129,12 @@ class PrivacyServiceImpl(
         }
     }
 
-    private suspend fun deleteByUser(table: String, column: String, userId: Long, dryRun: Boolean): Long {
+    private suspend fun deleteByUser(
+        table: String,
+        column: String,
+        userId: Long,
+        dryRun: Boolean,
+    ): Long {
         val count = countByUser(table, column, userId)
         if (!dryRun && count > 0) {
             exec("DELETE FROM $table WHERE $column = $userId")
@@ -135,20 +142,28 @@ class PrivacyServiceImpl(
         return count
     }
 
-    private suspend fun deleteAlertEvents(userId: Long, dryRun: Boolean): Long {
+    private suspend fun deleteAlertEvents(
+        userId: Long,
+        dryRun: Boolean,
+    ): Long {
         val countSql =
             "SELECT count(*) FROM alerts_events WHERE rule_id IN (" +
                 "SELECT rule_id FROM alerts_rules WHERE user_id = $userId)"
         val count = countWithQuery(countSql)
         if (!dryRun && count > 0) {
             exec(
-                "DELETE FROM alerts_events WHERE rule_id IN (SELECT rule_id FROM alerts_rules WHERE user_id = $userId)"
+                "DELETE FROM alerts_events WHERE rule_id IN (SELECT rule_id FROM alerts_rules WHERE user_id = $userId)",
             )
         }
         return count
     }
 
-    private suspend fun anonymizeUserId(table: String, column: String, userId: Long, dryRun: Boolean): Long {
+    private suspend fun anonymizeUserId(
+        table: String,
+        column: String,
+        userId: Long,
+        dryRun: Boolean,
+    ): Long {
         val count = countByUser(table, column, userId)
         if (!dryRun && count > 0) {
             exec("UPDATE $table SET $column = NULL WHERE $column = $userId")
@@ -156,7 +171,11 @@ class PrivacyServiceImpl(
         return count
     }
 
-    private suspend fun deleteOlderThan(table: String, tsColumn: String, cutoff: Instant): Long {
+    private suspend fun deleteOlderThan(
+        table: String,
+        tsColumn: String,
+        cutoff: Instant,
+    ): Long {
         val cutoffLiteral = "TIMESTAMPTZ '${Timestamp.from(cutoff).toInstant()}'"
         val count = countWithQuery("SELECT count(*) FROM $table WHERE $tsColumn < $cutoffLiteral")
         if (count > 0) {
@@ -169,20 +188,24 @@ class PrivacyServiceImpl(
         table: String,
         tsColumn: String,
         userColumn: String,
-        cutoff: Instant
+        cutoff: Instant,
     ): Long {
         val cutoffLiteral = "TIMESTAMPTZ '${Timestamp.from(cutoff).toInstant()}'"
-        val count = countWithQuery(
-            "SELECT count(*) FROM $table WHERE $tsColumn < $cutoffLiteral AND $userColumn IS NOT NULL"
-        )
+        val count =
+            countWithQuery(
+                "SELECT count(*) FROM $table WHERE $tsColumn < $cutoffLiteral AND $userColumn IS NOT NULL",
+            )
         if (count > 0) {
             exec("UPDATE $table SET $userColumn = NULL WHERE $tsColumn < $cutoffLiteral AND $userColumn IS NOT NULL")
         }
         return count
     }
 
-    private suspend fun countByUser(table: String, column: String, userId: Long): Long =
-        countWithQuery("SELECT count(*) FROM $table WHERE $column = $userId")
+    private suspend fun countByUser(
+        table: String,
+        column: String,
+        userId: Long,
+    ): Long = countWithQuery("SELECT count(*) FROM $table WHERE $column = $userId")
 
     private suspend fun exec(sql: String) =
         dbQuery {
@@ -203,17 +226,17 @@ class PrivacyServiceImpl(
 
 data class PrivacyConfig(
     val retention: RetentionCfg,
-    val erasure: ErasureCfg
+    val erasure: ErasureCfg,
 )
 
 data class RetentionCfg(
     val analyticsDays: Int,
     val alertsDays: Int,
-    val botStartsDays: Int
+    val botStartsDays: Int,
 )
 
 data class ErasureCfg(
     val enabled: Boolean,
     val dryRun: Boolean,
-    val batchSize: Int
+    val batchSize: Int,
 )

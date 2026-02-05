@@ -29,7 +29,7 @@ data class FeedbackReq(
     val message: String,
     val appVersion: String? = null,
     val deviceInfo: String? = null,
-    val locale: String? = null
+    val locale: String? = null,
 )
 
 @Serializable
@@ -38,7 +38,7 @@ private data class FaqResponse(
     val slug: String,
     val title: String,
     val bodyMd: String,
-    val updatedAt: String
+    val updatedAt: String,
 )
 
 @Serializable
@@ -52,16 +52,18 @@ private data class TicketResponse(
     val message: String,
     val status: String,
     val appVersion: String?,
-    val deviceInfo: String?
+    val deviceInfo: String?,
 )
 
 @Serializable
-data class TicketStatusReq(val status: String)
+data class TicketStatusReq(
+    val status: String,
+)
 
 fun Route.supportRoutes(
     repo: SupportRepository,
     analytics: AnalyticsPort,
-    rateLimiter: RateLimiter
+    rateLimiter: RateLimiter,
 ) {
     route("/api/support") {
         get("/faq/{locale}") {
@@ -71,25 +73,42 @@ fun Route.supportRoutes(
             call.respond(HttpStatusCode.OK, payload)
         }
         post("/feedback") {
-            val rateSubject = call.userIdOrNull
-                ?: call.request.header(HttpHeaders.XForwardedFor)?.split(',')?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: call.request.header("X-Real-IP")?.takeIf { it.isNotBlank() }
-                ?: call.request.host().takeIf { it.isNotBlank() }
-                ?: "anonymous"
+            val rateSubject =
+                call.userIdOrNull
+                    ?: call.request
+                        .header(
+                            HttpHeaders.XForwardedFor,
+                        )?.split(',')
+                        ?.firstOrNull()
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                    ?: call.request.header("X-Real-IP")?.takeIf { it.isNotBlank() }
+                    ?: call.request.host().takeIf { it.isNotBlank() }
+                    ?: "anonymous"
             val (allowed, retryAfter) = rateLimiter.tryAcquire(rateSubject)
             if (!allowed) {
-                call.respondTooManyRequests(retryAfter ?: 60)
+                call.respondTooManyRequests(retryAfter ?: DEFAULT_RETRY_AFTER)
                 return@post
             }
 
             val req = call.receive<FeedbackReq>()
             val userId = call.userIdOrNull?.toLongOrNull()
-            val locale = req.locale?.lowercase()?.take(8).orEmpty().ifBlank { "en" }
-            val category = req.category.trim().lowercase().take(32).ifBlank { "idea" }
-            val subject = req.subject.trim().take(120)
-            val message = req.message.trim().take(4000)
-            val appVersion = req.appVersion?.trim()?.take(64)
-            val deviceInfo = req.deviceInfo?.trim()?.take(256)
+            val locale =
+                req.locale
+                    ?.lowercase()
+                    ?.take(LOCALE_MAX_LENGTH)
+                    .orEmpty()
+                    .ifBlank { "en" }
+            val category =
+                req.category
+                    .trim()
+                    .lowercase()
+                    .take(CATEGORY_MAX_LENGTH)
+                    .ifBlank { "idea" }
+            val subject = req.subject.trim().take(SUBJECT_MAX_LENGTH)
+            val message = req.message.trim().take(MESSAGE_MAX_LENGTH)
+            val appVersion = req.appVersion?.trim()?.take(APP_VERSION_MAX_LENGTH)
+            val deviceInfo = req.deviceInfo?.trim()?.take(DEVICE_INFO_MAX_LENGTH)
 
             if (subject.isBlank()) {
                 call.respondBadRequest(listOf("subject"))
@@ -100,28 +119,30 @@ fun Route.supportRoutes(
                 return@post
             }
 
-            val ticketId = repo.createTicket(
-                SupportTicket(
-                    userId = userId,
-                    category = category,
-                    locale = locale,
-                    subject = subject,
-                    message = message,
-                    status = "OPEN",
-                    appVersion = appVersion,
-                    deviceInfo = deviceInfo
+            val ticketId =
+                repo.createTicket(
+                    SupportTicket(
+                        userId = userId,
+                        category = category,
+                        locale = locale,
+                        subject = subject,
+                        message = message,
+                        status = "OPEN",
+                        appVersion = appVersion,
+                        deviceInfo = deviceInfo,
+                    ),
                 )
-            )
 
             analytics.track(
                 type = "support_feedback_submitted",
                 userId = userId,
                 source = "api",
-                props = mapOf(
+                props =
+                mapOf(
                     "ticket_id" to ticketId,
                     "category" to category,
-                    "locale" to locale
-                )
+                    "locale" to locale,
+                ),
             )
             call.respond(HttpStatusCode.Accepted, mapOf("ticketId" to ticketId))
         }
@@ -130,41 +151,51 @@ fun Route.supportRoutes(
 
 fun Route.adminSupportRoutes(
     repo: SupportRepository,
-    adminUserIds: Set<Long>
+    adminUserIds: Set<Long>,
 ) {
     route("/api/admin/support") {
         get("/tickets") {
-            val uid = call.userIdOrNull?.toLongOrNull() ?: run {
-                call.respondUnauthorized()
-                return@get
-            }
+            val uid =
+                call.userIdOrNull?.toLongOrNull() ?: run {
+                    call.respondUnauthorized()
+                    return@get
+                }
             if (uid !in adminUserIds) {
                 call.respond(HttpStatusCode.Forbidden, mapOf("error" to "forbidden"))
                 return@get
             }
-            val statusParam = call.request.queryParameters["status"]?.takeIf { it.isNotBlank() }?.trim()?.uppercase()
+            val statusParam =
+                call.request.queryParameters["status"]
+                    ?.takeIf { it.isNotBlank() }
+                    ?.trim()
+                    ?.uppercase()
             if (statusParam != null && statusParam !in allowedTicketStatuses) {
                 call.respondBadRequest(listOf("status"))
                 return@get
             }
-            val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 1000) ?: 100
+            val limit =
+                call.request.queryParameters["limit"]
+                    ?.toIntOrNull()
+                    ?.coerceIn(1, MAX_LIMIT) ?: DEFAULT_LIMIT
             val tickets = repo.listTickets(statusParam, limit)
             val payload = tickets.mapNotNull { it.toResponseOrNull() }
             call.respond(HttpStatusCode.OK, payload)
         }
         patch("/tickets/{id}/status") {
-            val uid = call.userIdOrNull?.toLongOrNull() ?: run {
-                call.respondUnauthorized()
-                return@patch
-            }
+            val uid =
+                call.userIdOrNull?.toLongOrNull() ?: run {
+                    call.respondUnauthorized()
+                    return@patch
+                }
             if (uid !in adminUserIds) {
                 call.respond(HttpStatusCode.Forbidden, mapOf("error" to "forbidden"))
                 return@patch
             }
-            val id = call.parameters["id"]?.toLongOrNull() ?: run {
-                call.respondBadRequest(listOf("id"))
-                return@patch
-            }
+            val id =
+                call.parameters["id"]?.toLongOrNull() ?: run {
+                    call.respondBadRequest(listOf("id"))
+                    return@patch
+                }
             val body = call.receive<TicketStatusReq>()
             val nextStatus = body.status.trim().uppercase()
             if (nextStatus !in allowedTicketStatuses) {
@@ -177,13 +208,14 @@ fun Route.adminSupportRoutes(
     }
 }
 
-private fun FaqItem.toResponse(): FaqResponse = FaqResponse(
-    locale = locale,
-    slug = slug,
-    title = title,
-    bodyMd = bodyMd,
-    updatedAt = updatedAt.toString()
-)
+private fun FaqItem.toResponse(): FaqResponse =
+    FaqResponse(
+        locale = locale,
+        slug = slug,
+        title = title,
+        bodyMd = bodyMd,
+        updatedAt = updatedAt.toString(),
+    )
 
 private fun SupportTicket.toResponseOrNull(): TicketResponse? {
     val identifier = ticketId ?: return null
@@ -198,6 +230,16 @@ private fun SupportTicket.toResponseOrNull(): TicketResponse? {
         message = message,
         status = status,
         appVersion = appVersion,
-        deviceInfo = deviceInfo
+        deviceInfo = deviceInfo,
     )
 }
+
+private const val DEFAULT_RETRY_AFTER = 60
+private const val LOCALE_MAX_LENGTH = 8
+private const val CATEGORY_MAX_LENGTH = 32
+private const val SUBJECT_MAX_LENGTH = 120
+private const val MESSAGE_MAX_LENGTH = 4000
+private const val APP_VERSION_MAX_LENGTH = 64
+private const val DEVICE_INFO_MAX_LENGTH = 256
+private const val DEFAULT_LIMIT = 100
+private const val MAX_LIMIT = 1000

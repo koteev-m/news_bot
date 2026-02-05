@@ -10,8 +10,8 @@ class RepositorySignatureTest {
         val functions = PortfolioRepository::class.declaredMemberFunctions.map { it.name }.toSet()
         assertTrue(
             functions.containsAll(
-                listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete")
-            )
+                listOf("create", "findById", "findByUser", "listAll", "searchByName", "update", "delete"),
+            ),
         )
     }
 

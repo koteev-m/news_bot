@@ -6,7 +6,6 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.util.AttributeKey
 import io.ktor.util.Attributes
 import io.opentelemetry.api.GlobalOpenTelemetry
-import io.opentelemetry.api.common.AttributeKey as OtelAttributeKey
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
@@ -14,6 +13,7 @@ import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import io.opentelemetry.context.Scope
 import io.opentelemetry.context.propagation.TextMapSetter
+import io.opentelemetry.api.common.AttributeKey as OtelAttributeKey
 
 private val SpanAttributeKey: AttributeKey<Span> = AttributeKey("ClientTracingSpan")
 private val ScopeAttributeKey: AttributeKey<Scope> = AttributeKey("ClientTracingScope")
@@ -25,38 +25,49 @@ private val urlSchemeKey: OtelAttributeKey<String> = OtelAttributeKey.stringKey(
 private val httpResponseStatusKey: OtelAttributeKey<Long> = OtelAttributeKey.longKey("http.response.status_code")
 
 private object HeaderSetter : TextMapSetter<HttpRequestBuilder> {
-    override fun set(carrier: HttpRequestBuilder?, key: String, value: String) {
+    override fun set(
+        carrier: HttpRequestBuilder?,
+        key: String,
+        value: String,
+    ) {
         carrier?.headers?.remove(key)
         carrier?.headers?.append(key, value)
     }
 }
 
-val ClientTracing = createClientPlugin("ClientTracing") {
-    val tracer: Tracer = GlobalOpenTelemetry.getTracer("newsbot-app/ktor-client")
+val ClientTracing =
+    createClientPlugin("ClientTracing") {
+        val tracer: Tracer = GlobalOpenTelemetry.getTracer("newsbot-app/ktor-client")
 
-    onRequest { request, _ ->
-        val span = tracer.spanBuilder("HTTP ${request.method.value}")
-            .setSpanKind(SpanKind.CLIENT)
-            .setParent(Context.current())
-            .setAttribute(httpRequestMethodKey, request.method.value)
-            .setAttribute(urlFullKey, request.url.buildString())
-            .setAttribute(urlSchemeKey, request.url.protocol.name)
-            .startSpan()
-        val scope = span.makeCurrent()
-        request.attributes.put(SpanAttributeKey, span)
-        request.attributes.put(ScopeAttributeKey, scope)
-        GlobalOpenTelemetry.getPropagators().textMapPropagator.inject(Context.current(), request, HeaderSetter)
-        request.executionContext.invokeOnCompletion { cause ->
-            finishSpan(request.attributes, cause)
+        onRequest { request, _ ->
+            val span =
+                tracer
+                    .spanBuilder("HTTP ${request.method.value}")
+                    .setSpanKind(SpanKind.CLIENT)
+                    .setParent(Context.current())
+                    .setAttribute(httpRequestMethodKey, request.method.value)
+                    .setAttribute(urlFullKey, request.url.buildString())
+                    .setAttribute(urlSchemeKey, request.url.protocol.name)
+                    .startSpan()
+            val scope = span.makeCurrent()
+            request.attributes.put(SpanAttributeKey, span)
+            request.attributes.put(ScopeAttributeKey, scope)
+            GlobalOpenTelemetry.getPropagators().textMapPropagator.inject(Context.current(), request, HeaderSetter)
+            request.executionContext.invokeOnCompletion { cause ->
+                finishSpan(request.attributes, cause)
+            }
+        }
+
+        onResponse { response: HttpResponse ->
+            response.call.request.attributes
+                .put(StatusAttributeKey, response.status.value)
         }
     }
 
-    onResponse { response: HttpResponse ->
-        response.call.request.attributes.put(StatusAttributeKey, response.status.value)
-    }
-}
-
-private fun finishSpan(attributes: Attributes, failure: Throwable?) {
+private fun finishSpan(
+    attributes: Attributes,
+    failure: Throwable?,
+) {
     val span = attributes.getIfPresent(SpanAttributeKey) ?: return
     val scope = attributes.getIfPresent(ScopeAttributeKey)
     try {

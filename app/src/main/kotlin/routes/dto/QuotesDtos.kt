@@ -1,8 +1,8 @@
 package routes.dto
 
-import java.math.RoundingMode
 import kotlinx.serialization.Serializable
 import portfolio.model.Money
+import java.math.RoundingMode
 
 private const val MONEY_SCALE = 8
 
@@ -12,7 +12,8 @@ data class MoneyDto(
     val ccy: String,
 )
 
-fun Money.toDto(): MoneyDto = MoneyDto(
-    amount = amount.setScale(MONEY_SCALE, RoundingMode.HALF_UP).toPlainString(),
-    ccy = ccy,
-)
+fun Money.toDto(): MoneyDto =
+    MoneyDto(
+        amount = amount.setScale(MONEY_SCALE, RoundingMode.HALF_UP).toPlainString(),
+        ccy = ccy,
+    )

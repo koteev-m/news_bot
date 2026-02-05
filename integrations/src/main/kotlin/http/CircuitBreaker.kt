@@ -1,32 +1,33 @@
 package http
 
+import common.rethrowIfFatal
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.jvm.Volatile
-import common.rethrowIfFatal
 
 enum class CbState {
     CLOSED,
     OPEN,
-    HALF_OPEN
+    HALF_OPEN,
 }
 
 class CircuitBreaker(
     private val service: String,
     private val cfg: CircuitBreakerCfg,
     private val metrics: IntegrationsMetrics,
-    private val clock: Clock
+    private val clock: Clock,
 ) {
     private val mutex = Mutex()
     private val failures: ArrayDeque<Instant> = ArrayDeque()
     private val stateValue = AtomicInteger(CbState.CLOSED.ordinal)
+
     @Volatile
     private var state: CbState = CbState.CLOSED
     private var openedAt: Instant? = null
@@ -57,8 +58,8 @@ class CircuitBreaker(
     val currentState: CbState
         get() = state
 
-    private suspend fun prepareCall(): CbState {
-        return mutex.withLock {
+    private suspend fun prepareCall(): CbState =
+        mutex.withLock {
             val now = clock.instant()
             when (state) {
                 CbState.OPEN -> {
@@ -81,7 +82,6 @@ class CircuitBreaker(
             }
             state
         }
-    }
 
     private suspend fun onSuccess() {
         mutex.withLock {
@@ -162,4 +162,6 @@ class CircuitBreaker(
     }
 }
 
-class CircuitBreakerOpenException(service: String) : IOException("Circuit breaker OPEN for $service")
+class CircuitBreakerOpenException(
+    service: String,
+) : IOException("Circuit breaker OPEN for $service")

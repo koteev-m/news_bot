@@ -1,8 +1,8 @@
 package routes.dto
 
 import kotlinx.serialization.Serializable
-import portfolio.metrics.PortfolioMetricsReport
 import portfolio.metrics.MetricsSeriesPoint
+import portfolio.metrics.PortfolioMetricsReport
 
 @Serializable
 data class PortfolioMetricsReportResponse(
@@ -34,27 +34,30 @@ data class PortfolioMetricsPointResponse(
     val pnlTotal: String,
 )
 
-fun PortfolioMetricsReport.toResponse(): PortfolioMetricsReportResponse = PortfolioMetricsReportResponse(
-    portfolioId = portfolioId.toString(),
-    base = baseCurrency,
-    period = period.name.lowercase(),
-    delayed = delayed,
-    summary = PortfolioMetricsSummaryResponse(
-        totalPnL = summary.totalPnL.toAmt(),
-        irr = summary.irr.irr,
-        irrStatus = summary.irr.status.name,
-        twr = summary.twr.twr,
-        twrStatus = summary.twr.status.name,
-    ),
-    series = series.map { it.toResponse() },
-)
+fun PortfolioMetricsReport.toResponse(): PortfolioMetricsReportResponse =
+    PortfolioMetricsReportResponse(
+        portfolioId = portfolioId.toString(),
+        base = baseCurrency,
+        period = period.name.lowercase(),
+        delayed = delayed,
+        summary =
+        PortfolioMetricsSummaryResponse(
+            totalPnL = summary.totalPnL.toAmt(),
+            irr = summary.irr.irr,
+            irrStatus = summary.irr.status.name,
+            twr = summary.twr.twr,
+            twrStatus = summary.twr.status.name,
+        ),
+        series = series.map { it.toResponse() },
+    )
 
-private fun MetricsSeriesPoint.toResponse(): PortfolioMetricsPointResponse = PortfolioMetricsPointResponse(
-    date = date?.toString(),
-    periodStart = periodStart?.toString(),
-    periodEnd = periodEnd?.toString(),
-    valuation = valuation.toAmt(),
-    cashflow = cashflow.toAmt(),
-    pnlDaily = pnlDaily.toAmt(),
-    pnlTotal = pnlTotal.toAmt(),
-)
+private fun MetricsSeriesPoint.toResponse(): PortfolioMetricsPointResponse =
+    PortfolioMetricsPointResponse(
+        date = date?.toString(),
+        periodStart = periodStart?.toString(),
+        periodEnd = periodEnd?.toString(),
+        valuation = valuation.toAmt(),
+        cashflow = cashflow.toAmt(),
+        pnlDaily = pnlDaily.toAmt(),
+        pnlTotal = pnlTotal.toAmt(),
+    )

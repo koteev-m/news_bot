@@ -1,25 +1,19 @@
 package di
 
+import common.runCatchingNonFatal
 import db.DatabaseFactory
 import io.ktor.server.application.Application
 import io.ktor.server.config.ApplicationConfig
 import io.ktor.util.AttributeKey
-import java.math.BigDecimal
-import java.time.Clock
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.ZoneOffset
-import java.time.OffsetDateTime
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import portfolio.errors.DomainResult
 import portfolio.model.Money
 import portfolio.model.ValuationMethod
@@ -37,14 +31,20 @@ import repo.PositionRepository
 import repo.TradeRepository
 import repo.ValuationRepository
 import repo.mapper.toValuationDailyRecord
+import repo.model.NewValuationDaily
+import repo.model.ValuationDailyRecord
 import repo.tables.InstrumentsTable
 import repo.tables.PositionsTable
 import repo.tables.PricesTable
 import repo.tables.TradesTable
 import repo.tables.ValuationsDailyTable
-import repo.model.NewValuationDaily
-import repo.model.ValuationDailyRecord
-import common.runCatchingNonFatal
+import java.math.BigDecimal
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 private val PortfolioModuleKey = AttributeKey<PortfolioModule>("PortfolioModule")
 
@@ -97,72 +97,83 @@ fun Application.installPortfolioModule(): PortfolioModule {
     val defaultMethod = config.getValuationMethod("portfolio.defaultValuationMethod", ValuationMethod.AVERAGE)
     val autoCreateInstruments = config.getBoolean("portfolio.autoCreateInstruments", default = true)
 
-    val pricingConfig = PricingService.Config(
-        preferClosePrice = pricingPreferClose,
-        fallbackToLast = pricingFallback,
-    )
+    val pricingConfig =
+        PricingService.Config(
+            preferClosePrice = pricingPreferClose,
+            fallbackToLast = pricingFallback,
+        )
 
-    val repositories = PortfolioModule.Repositories(
-        portfolioRepository = PortfolioRepository(),
-        instrumentRepository = InstrumentRepository(),
-        tradeRepository = TradeRepository(),
-        positionRepository = PositionRepository(),
-        fxRateRepository = FxRateRepository(),
-        valuationRepository = ValuationRepository(),
-    )
+    val repositories =
+        PortfolioModule.Repositories(
+            portfolioRepository = PortfolioRepository(),
+            instrumentRepository = InstrumentRepository(),
+            tradeRepository = TradeRepository(),
+            positionRepository = PositionRepository(),
+            fxRateRepository = FxRateRepository(),
+            valuationRepository = ValuationRepository(),
+        )
 
     val fxRateService = FxRateService(repositories.fxRateRepository)
     val priceRepository = PriceRepository()
     val moexProvider = MoexDatabasePriceProvider(priceRepository)
     val coingeckoProvider = CoingeckoDatabasePriceProvider(priceRepository)
-    val pricingService = PricingService(
-        moexProvider = moexProvider,
-        coingeckoProvider = coingeckoProvider,
-        fxRateService = fxRateService,
-        config = pricingConfig,
-    )
+    val pricingService =
+        PricingService(
+            moexProvider = moexProvider,
+            coingeckoProvider = coingeckoProvider,
+            fxRateService = fxRateService,
+            config = pricingConfig,
+        )
 
-    val valuationStorage = DatabaseValuationStorage(
-        positionRepository = repositories.positionRepository,
-        valuationRepository = repositories.valuationRepository,
-    )
-    val valuationService = ValuationService(
-        storage = valuationStorage,
-        pricingService = pricingService,
-        fxRateService = fxRateService,
-    )
+    val valuationStorage =
+        DatabaseValuationStorage(
+            positionRepository = repositories.positionRepository,
+            valuationRepository = repositories.valuationRepository,
+        )
+    val valuationService =
+        ValuationService(
+            storage = valuationStorage,
+            pricingService = pricingService,
+            fxRateService = fxRateService,
+        )
 
-    val portfolioStorage = DatabasePortfolioStorage(
-        positionRepository = repositories.positionRepository,
-        instrumentRepository = repositories.instrumentRepository,
-        defaultValuationMethod = defaultMethod,
-        fallbackCurrency = pricingConfig.baseCurrency,
-        clock = Clock.systemUTC(),
-    )
+    val portfolioStorage =
+        DatabasePortfolioStorage(
+            positionRepository = repositories.positionRepository,
+            instrumentRepository = repositories.instrumentRepository,
+            defaultValuationMethod = defaultMethod,
+            fallbackCurrency = pricingConfig.baseCurrency,
+            clock = Clock.systemUTC(),
+        )
     val portfolioService = PortfolioService(portfolioStorage)
 
-    val settings = PortfolioModule.Settings(
-        pricing = PortfolioModule.Settings.Pricing(
-            preferClosePrice = pricingPreferClose,
-            fallbackToLast = pricingFallback,
-            baseCurrency = pricingConfig.baseCurrency,
-        ),
-        portfolio = PortfolioModule.Settings.Portfolio(
-            defaultValuationMethod = defaultMethod,
-            autoCreateInstruments = autoCreateInstruments,
-        ),
-    )
+    val settings =
+        PortfolioModule.Settings(
+            pricing =
+            PortfolioModule.Settings.Pricing(
+                preferClosePrice = pricingPreferClose,
+                fallbackToLast = pricingFallback,
+                baseCurrency = pricingConfig.baseCurrency,
+            ),
+            portfolio =
+            PortfolioModule.Settings.Portfolio(
+                defaultValuationMethod = defaultMethod,
+                autoCreateInstruments = autoCreateInstruments,
+            ),
+        )
 
-    val module = PortfolioModule(
-        repositories = repositories,
-        services = PortfolioModule.Services(
-            fxRateService = fxRateService,
-            pricingService = pricingService,
-            valuationService = valuationService,
-            portfolioService = portfolioService,
-        ),
-        settings = settings,
-    )
+    val module =
+        PortfolioModule(
+            repositories = repositories,
+            services =
+            PortfolioModule.Services(
+                fxRateService = fxRateService,
+                pricingService = pricingService,
+                valuationService = valuationService,
+                portfolioService = portfolioService,
+            ),
+            settings = settings,
+        )
 
     attributes.put(PortfolioModuleKey, module)
     return module
@@ -170,7 +181,10 @@ fun Application.installPortfolioModule(): PortfolioModule {
 
 fun Application.portfolioModule(): PortfolioModule = attributes[PortfolioModuleKey]
 
-private fun ApplicationConfig.getBoolean(path: String, default: Boolean): Boolean {
+private fun ApplicationConfig.getBoolean(
+    path: String,
+    default: Boolean,
+): Boolean {
     val raw = propertyOrNull(path)?.getString()?.trim() ?: return default
     return when (raw.lowercase()) {
         "true", "1", "yes", "y" -> true
@@ -179,7 +193,10 @@ private fun ApplicationConfig.getBoolean(path: String, default: Boolean): Boolea
     }
 }
 
-private fun ApplicationConfig.getValuationMethod(path: String, fallback: ValuationMethod): ValuationMethod {
+private fun ApplicationConfig.getValuationMethod(
+    path: String,
+    fallback: ValuationMethod,
+): ValuationMethod {
     val raw = propertyOrNull(path)?.getString()?.trim() ?: return fallback
     return try {
         ValuationMethod.valueOf(raw.uppercase())
@@ -191,10 +208,19 @@ private fun ApplicationConfig.getValuationMethod(path: String, fallback: Valuati
 private class PriceRepository(
     private val zoneId: ZoneId = ZoneOffset.UTC,
 ) {
-    suspend fun findClosePrice(source: String, instrumentId: Long, date: LocalDate): Money? =
+    suspend fun findClosePrice(
+        source: String,
+        instrumentId: Long,
+        date: LocalDate,
+    ): Money? =
         DatabaseFactory.dbQuery {
             val start = date.atStartOfDay(zoneId).toInstant().toUtcTimestamp()
-            val endExclusive = date.plusDays(1).atStartOfDay(zoneId).toInstant().toUtcTimestamp()
+            val endExclusive =
+                date
+                    .plusDays(1)
+                    .atStartOfDay(zoneId)
+                    .toInstant()
+                    .toUtcTimestamp()
             PricesTable
                 .selectAll()
                 .where {
@@ -202,24 +228,31 @@ private class PriceRepository(
                         (PricesTable.sourceCol eq source) and
                         (PricesTable.ts greaterEq start) and
                         (PricesTable.ts less endExclusive)
-                }
-                .orderBy(PricesTable.ts, SortOrder.DESC)
+                }.orderBy(PricesTable.ts, SortOrder.DESC)
                 .limit(1)
                 .singleOrNull()
                 ?.toMoney()
         }
 
-    suspend fun findLastPrice(source: String, instrumentId: Long, date: LocalDate): Money? =
+    suspend fun findLastPrice(
+        source: String,
+        instrumentId: Long,
+        date: LocalDate,
+    ): Money? =
         DatabaseFactory.dbQuery {
-            val endExclusive = date.plusDays(1).atStartOfDay(zoneId).toInstant().toUtcTimestamp()
+            val endExclusive =
+                date
+                    .plusDays(1)
+                    .atStartOfDay(zoneId)
+                    .toInstant()
+                    .toUtcTimestamp()
             PricesTable
                 .selectAll()
                 .where {
                     (PricesTable.instrumentId eq instrumentId) and
                         (PricesTable.sourceCol eq source) and
                         (PricesTable.ts less endExclusive)
-                }
-                .orderBy(PricesTable.ts, SortOrder.DESC)
+                }.orderBy(PricesTable.ts, SortOrder.DESC)
                 .limit(1)
                 .singleOrNull()
                 ?.toMoney()
@@ -232,21 +265,29 @@ private open class StoredPriceProvider(
     private val source: String,
     private val priceRepository: PriceRepository,
 ) : portfolio.service.PriceProvider {
-    override suspend fun closePrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
+    override suspend fun closePrice(
+        instrumentId: Long,
+        on: LocalDate,
+    ): DomainResult<Money?> =
         runCatchingNonFatal { priceRepository.findClosePrice(source, instrumentId, on) }
             .fold(onSuccess = { DomainResult.success(it) }, onFailure = { DomainResult.failure(it) })
 
-    override suspend fun lastPrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
+    override suspend fun lastPrice(
+        instrumentId: Long,
+        on: LocalDate,
+    ): DomainResult<Money?> =
         runCatchingNonFatal { priceRepository.findLastPrice(source, instrumentId, on) }
             .fold(onSuccess = { DomainResult.success(it) }, onFailure = { DomainResult.failure(it) })
 }
 
-private class MoexDatabasePriceProvider(priceRepository: PriceRepository) :
-    StoredPriceProvider(MOEX_SOURCE, priceRepository),
+private class MoexDatabasePriceProvider(
+    priceRepository: PriceRepository,
+) : StoredPriceProvider(MOEX_SOURCE, priceRepository),
     MoexPriceProvider
 
-private class CoingeckoDatabasePriceProvider(priceRepository: PriceRepository) :
-    StoredPriceProvider(COINGECKO_SOURCE, priceRepository),
+private class CoingeckoDatabasePriceProvider(
+    priceRepository: PriceRepository,
+) : StoredPriceProvider(COINGECKO_SOURCE, priceRepository),
     CoingeckoPriceProvider
 
 private class DatabaseValuationStorage(
@@ -254,14 +295,15 @@ private class DatabaseValuationStorage(
     private val valuationRepository: ValuationRepository,
 ) : ValuationService.Storage {
     override suspend fun listPositions(
-        portfolioId: java.util.UUID
+        portfolioId: java.util.UUID,
     ): DomainResult<List<ValuationService.Storage.PositionSnapshot>> =
         runCatchingNonFatal {
             positionRepository.list(portfolioId, Int.MAX_VALUE).map { dto ->
                 ValuationService.Storage.PositionSnapshot(
                     instrumentId = dto.instrumentId,
                     quantity = dto.qty,
-                    averagePrice = dto.avgPrice?.let { price ->
+                    averagePrice =
+                    dto.avgPrice?.let { price ->
                         val currency = dto.avgPriceCcy
                         currency?.let { Money.of(price, it) }
                     },
@@ -283,8 +325,7 @@ private class DatabaseValuationStorage(
                     .where {
                         (ValuationsDailyTable.portfolioId eq portfolioId) and
                             (ValuationsDailyTable.date less date)
-                    }
-                    .orderBy(ValuationsDailyTable.date, SortOrder.DESC)
+                    }.orderBy(ValuationsDailyTable.date, SortOrder.DESC)
                     .limit(1)
                     .singleOrNull()
                     ?.toValuationDailyRecord()
@@ -299,16 +340,17 @@ private class DatabaseValuationStorage(
         record: ValuationService.Storage.ValuationRecord,
     ): DomainResult<ValuationService.Storage.ValuationRecord> =
         runCatchingNonFatal {
-            valuationRepository.upsert(
-                NewValuationDaily(
-                    portfolioId = record.portfolioId,
-                    date = record.date,
-                    valueRub = record.valueRub,
-                    pnlDay = record.pnlDay,
-                    pnlTotal = record.pnlTotal,
-                    drawdown = record.drawdown,
-                ),
-            ).toStorageRecord()
+            valuationRepository
+                .upsert(
+                    NewValuationDaily(
+                        portfolioId = record.portfolioId,
+                        date = record.date,
+                        valueRub = record.valueRub,
+                        pnlDay = record.pnlDay,
+                        pnlTotal = record.pnlTotal,
+                        drawdown = record.drawdown,
+                    ),
+                ).toStorageRecord()
         }.fold(
             onSuccess = { DomainResult.success(it) },
             onFailure = { DomainResult.failure(it) },
@@ -345,15 +387,18 @@ private class DatabasePortfolioStorage(
             onFailure = { DomainResult.failure(it) },
         )
 
-    override suspend fun listPositions(portfolioId: java.util.UUID): DomainResult<List<PortfolioService.PositionSummary>> =
+    override suspend fun listPositions(
+        portfolioId: java.util.UUID,
+    ): DomainResult<List<PortfolioService.PositionSummary>> =
         runCatchingNonFatal {
             positionRepository.list(portfolioId, Int.MAX_VALUE).map { dto ->
                 val instrument = instrumentRepository.findById(dto.instrumentId)
                 val instrumentName = instrument?.symbol ?: "Instrument ${dto.instrumentId}"
-                val avgPriceMoney = dto.avgPrice?.let { price ->
-                    val currency = dto.avgPriceCcy ?: instrument?.currency ?: fallbackCurrency
-                    Money.of(price, currency)
-                }
+                val avgPriceMoney =
+                    dto.avgPrice?.let { price ->
+                        val currency = dto.avgPriceCcy ?: instrument?.currency ?: fallbackCurrency
+                        Money.of(price, currency)
+                    }
                 PortfolioService.PositionSummary(
                     portfolioId = dto.portfolioId,
                     instrumentId = dto.instrumentId,
@@ -382,8 +427,7 @@ private class DatabasePortfolioStorage(
                     .selectAll()
                     .where {
                         (PositionsTable.portfolioId eq portfolioId) and (PositionsTable.instrumentId eq instrumentId)
-                    }
-                    .limit(1)
+                    }.limit(1)
                     .singleOrNull()
                     ?.let { row ->
                         val quantity = row[PositionsTable.qty]
@@ -406,19 +450,19 @@ private class DatabasePortfolioStorage(
                 onFailure = { DomainResult.failure(it) },
             )
 
-        override suspend fun savePosition(
-            position: PortfolioService.StoredPosition,
-        ): DomainResult<Unit> =
+        override suspend fun savePosition(position: PortfolioService.StoredPosition): DomainResult<Unit> =
             runCatchingNonFatal {
                 val predicate =
-                    (PositionsTable.portfolioId eq position.portfolioId) and (PositionsTable.instrumentId eq position.instrumentId)
+                    (PositionsTable.portfolioId eq position.portfolioId) and
+                        (PositionsTable.instrumentId eq position.instrumentId)
                 val average = position.position.averagePrice
-                val updated = PositionsTable.update({ predicate }) { statement ->
-                    statement[PositionsTable.qty] = position.position.quantity
-                    statement[PositionsTable.avgPrice] = average?.amount
-                    statement[PositionsTable.avgPriceCcy] = average?.currency
-                    statement[PositionsTable.updatedAt] = position.updatedAt.toUtcTimestamp()
-                }
+                val updated =
+                    PositionsTable.update({ predicate }) { statement ->
+                        statement[PositionsTable.qty] = position.position.quantity
+                        statement[PositionsTable.avgPrice] = average?.amount
+                        statement[PositionsTable.avgPriceCcy] = average?.currency
+                        statement[PositionsTable.updatedAt] = position.updatedAt.toUtcTimestamp()
+                    }
                 if (updated == 0) {
                     PositionsTable.insert { statement ->
                         statement[PositionsTable.portfolioId] = position.portfolioId

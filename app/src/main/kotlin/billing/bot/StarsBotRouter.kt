@@ -6,9 +6,13 @@ import java.util.Locale
 object StarsBotRouter {
     sealed class BotRoute {
         data object Plans : BotRoute()
+
         data object Buy : BotRoute()
+
         data object Status : BotRoute()
+
         data object Callback : BotRoute()
+
         data object Unknown : BotRoute()
     }
 

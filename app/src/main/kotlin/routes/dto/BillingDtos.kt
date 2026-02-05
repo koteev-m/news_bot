@@ -9,7 +9,7 @@ data class BillingPlanDto(
     val tier: String,
     val title: String,
     val priceXtr: Long,
-    val isActive: Boolean
+    val isActive: Boolean,
 )
 
 @Serializable
@@ -18,7 +18,7 @@ data class UserSubscriptionDto(
     val tier: String,
     val status: String,
     val startedAt: String,
-    val expiresAt: String?
+    val expiresAt: String?,
 )
 
 fun BillingPlan.toDto(): BillingPlanDto =
@@ -26,7 +26,7 @@ fun BillingPlan.toDto(): BillingPlanDto =
         tier = this.tier.name,
         title = this.title,
         priceXtr = this.priceXtr.value,
-        isActive = this.isActive
+        isActive = this.isActive,
     )
 
 fun UserSubscription.toDto(): UserSubscriptionDto =
@@ -35,5 +35,5 @@ fun UserSubscription.toDto(): UserSubscriptionDto =
         tier = this.tier.name,
         status = this.status.name,
         startedAt = this.startedAt.toString(),
-        expiresAt = this.expiresAt?.toString()
+        expiresAt = this.expiresAt?.toString(),
     )

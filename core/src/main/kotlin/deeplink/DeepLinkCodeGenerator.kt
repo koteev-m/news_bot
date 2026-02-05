@@ -17,18 +17,21 @@ object DeepLinkCodeGenerator {
         return encoder.encodeToString(bytes)
     }
 
-    fun isValid(value: String, minLength: Int = MIN_LENGTH, maxLength: Int = MAX_LENGTH): Boolean {
+    fun isValid(
+        value: String,
+        minLength: Int = MIN_LENGTH,
+        maxLength: Int = MAX_LENGTH,
+    ): Boolean {
         if (value.length !in minLength..maxLength) {
             return false
         }
         return value.all { it.isAllowedChar() }
     }
 
-    private fun Char.isAllowedChar(): Boolean {
-        return this in 'a'..'z' ||
+    private fun Char.isAllowedChar(): Boolean =
+        this in 'a'..'z' ||
             this in 'A'..'Z' ||
             this in '0'..'9' ||
             this == '-' ||
             this == '_'
-    }
 }

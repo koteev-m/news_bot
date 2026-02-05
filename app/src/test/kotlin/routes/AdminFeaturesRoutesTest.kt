@@ -8,6 +8,7 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.pengrad.telegrambot.TelegramBot
 import deeplink.InMemoryDeepLinkStore
+import errors.installErrorPages
 import features.FeatureFlags
 import features.FeatureFlagsService
 import features.FeatureFlagsServiceImpl
@@ -31,116 +32,126 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.time.Duration.Companion.days
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import errors.installErrorPages
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.days
 
 class AdminFeaturesRoutesTest {
-
     @Test
-    fun `GET requires authentication`() = testApplication {
-        val repository = InMemoryFeatureOverridesRepository()
-        val service = service(repository)
-        configure(service)
+    fun `GET requires authentication`() =
+        testApplication {
+            val repository = InMemoryFeatureOverridesRepository()
+            val service = service(repository)
+            configure(service)
 
-        val response = client.get("/api/admin/features")
+            val response = client.get("/api/admin/features")
 
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
-
-    @Test
-    fun `PATCH requires authentication`() = testApplication {
-        val repository = InMemoryFeatureOverridesRepository()
-        val service = service(repository)
-        configure(service)
-
-        val response = client.patch("/api/admin/features") {
-            contentType(ContentType.Application.Json)
-            setBody("""{"importByUrl":true}""")
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
         }
 
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
+    @Test
+    fun `PATCH requires authentication`() =
+        testApplication {
+            val repository = InMemoryFeatureOverridesRepository()
+            val service = service(repository)
+            configure(service)
+
+            val response =
+                client.patch("/api/admin/features") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"importByUrl":true}""")
+                }
+
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+        }
 
     @Test
-    fun `PATCH rejects non admins`() = testApplication {
-        val repository = InMemoryFeatureOverridesRepository()
-        val service = service(repository)
-        configure(service)
+    fun `PATCH rejects non admins`() =
+        testApplication {
+            val repository = InMemoryFeatureOverridesRepository()
+            val service = service(repository)
+            configure(service)
 
-        val response = client.patch("/api/admin/features") {
-            header(HttpHeaders.Authorization, bearerFor("100"))
-            contentType(ContentType.Application.Json)
-            setBody("""{"importByUrl":true}""")
+            val response =
+                client.patch("/api/admin/features") {
+                    header(HttpHeaders.Authorization, bearerFor("100"))
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"importByUrl":true}""")
+                }
+
+            assertEquals(HttpStatusCode.Forbidden, response.status)
         }
-
-        assertEquals(HttpStatusCode.Forbidden, response.status)
-    }
 
     @Test
-    fun `GET returns effective flags`() = testApplication {
-        val repository = InMemoryFeatureOverridesRepository()
-        val service = service(repository)
-        configure(service)
+    fun `GET returns effective flags`() =
+        testApplication {
+            val repository = InMemoryFeatureOverridesRepository()
+            val service = service(repository)
+            configure(service)
 
-        val response = client.get("/api/admin/features") {
-            header(HttpHeaders.Authorization, bearerFor("200"))
+            val response =
+                client.get("/api/admin/features") {
+                    header(HttpHeaders.Authorization, bearerFor("200"))
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText())
+            val json = body.jsonObject
+            assertEquals(false, json["importByUrl"]?.jsonPrimitive?.boolean)
+            assertEquals(true, json["webhookQueue"]?.jsonPrimitive?.boolean)
         }
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText())
-        val json = body.jsonObject
-        assertEquals(false, json["importByUrl"]?.jsonPrimitive?.boolean)
-        assertEquals(true, json["webhookQueue"]?.jsonPrimitive?.boolean)
-    }
 
     @Test
-    fun `PATCH applies overrides immediately`() = testApplication {
-        val repository = InMemoryFeatureOverridesRepository()
-        val service = service(repository)
-        configure(service)
+    fun `PATCH applies overrides immediately`() =
+        testApplication {
+            val repository = InMemoryFeatureOverridesRepository()
+            val service = service(repository)
+            configure(service)
 
-        assertEquals(0L, service.updatesFlow.value)
+            assertEquals(0L, service.updatesFlow.value)
 
-        val patchResponse = client.patch("/api/admin/features") {
-            header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
-            contentType(ContentType.Application.Json)
-            setBody("""{"importByUrl":true}""")
+            val patchResponse =
+                client.patch("/api/admin/features") {
+                    header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"importByUrl":true}""")
+                }
+
+            assertEquals(HttpStatusCode.NoContent, patchResponse.status)
+            assertEquals(1L, service.updatesFlow.value)
+
+            val response =
+                client.get("/api/admin/features") {
+                    header(HttpHeaders.Authorization, bearerFor("300"))
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText())
+            val json = body.jsonObject
+            assertEquals(true, json["importByUrl"]?.jsonPrimitive?.boolean)
+            assertEquals(true, json["newsPublish"]?.jsonPrimitive?.boolean)
         }
-
-        assertEquals(HttpStatusCode.NoContent, patchResponse.status)
-        assertEquals(1L, service.updatesFlow.value)
-
-        val response = client.get("/api/admin/features") {
-            header(HttpHeaders.Authorization, bearerFor("300"))
-        }
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText())
-        val json = body.jsonObject
-        assertEquals(true, json["importByUrl"]?.jsonPrimitive?.boolean)
-        assertEquals(true, json["newsPublish"]?.jsonPrimitive?.boolean)
-    }
 
     @Test
-    fun `PATCH validates payload`() = testApplication {
-        val repository = InMemoryFeatureOverridesRepository()
-        val service = service(repository)
-        configure(service)
+    fun `PATCH validates payload`() =
+        testApplication {
+            val repository = InMemoryFeatureOverridesRepository()
+            val service = service(repository)
+            configure(service)
 
-        val response = client.patch("/api/admin/features") {
-            header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
-            contentType(ContentType.Application.Json)
-            setBody("""{"importByUrl":"yes"}""")
+            val response =
+                client.patch("/api/admin/features") {
+                    header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"importByUrl":"yes"}""")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
         }
-
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
 
     private fun ApplicationTestBuilder.configure(service: FeatureFlagsService) {
         application {
@@ -150,41 +161,47 @@ class AdminFeaturesRoutesTest {
             attributes.put(
                 Services.Key,
                 Services(
-                    billingService = object : BillingService {
+                    billingService =
+                    object : BillingService {
                         override suspend fun listPlans() = Result.success(emptyList<billing.model.BillingPlan>())
+
                         override suspend fun createInvoiceFor(
                             userId: Long,
-                            tier: Tier
+                            tier: Tier,
                         ) = Result.failure<String>(IllegalStateException("unused"))
+
                         override suspend fun applySuccessfulPayment(
                             userId: Long,
                             tier: Tier,
                             amountXtr: Long,
                             providerPaymentId: String?,
-                            payload: String?
+                            payload: String?,
                         ) = Result.failure<Unit>(IllegalStateException("unused"))
-                        override suspend fun getMySubscription(userId: Long) = Result.success<UserSubscription?>(null)
+
+                        override suspend fun getMySubscription(userId: Long) =
+                            Result.success<UserSubscription?>(null)
                     },
                     telegramBot = TelegramBot("test-token"),
                     featureFlags = service,
                     adminUserIds = setOf(ADMIN_ID),
                     deepLinkStore = InMemoryDeepLinkStore(),
                     deepLinkTtl = 14.days,
-                )
+                ),
             )
             routing { adminFeaturesRoutes() }
         }
     }
 
     private fun service(repository: FeatureOverridesRepository): FeatureFlagsService {
-        val defaults = FeatureFlags(
-            importByUrl = false,
-            webhookQueue = true,
-            newsPublish = true,
-            alertsEngine = true,
-            billingStars = true,
-            miniApp = true
-        )
+        val defaults =
+            FeatureFlags(
+                importByUrl = false,
+                webhookQueue = true,
+                newsPublish = true,
+                alertsEngine = true,
+                billingStars = true,
+                miniApp = true,
+            )
         return FeatureFlagsServiceImpl(defaults, repository)
     }
 
@@ -194,7 +211,7 @@ class AdminFeaturesRoutesTest {
     }
 
     private class InMemoryFeatureOverridesRepository(
-        private var stored: String = "{}"
+        private var stored: String = "{}",
     ) : FeatureOverridesRepository {
         override suspend fun upsertGlobal(json: String) {
             stored = json
@@ -203,16 +220,17 @@ class AdminFeaturesRoutesTest {
         override suspend fun findGlobal(): String = stored
     }
 
-    private val testAuthPlugin = createApplicationPlugin(name = "TestAuth") {
-        onCall { call ->
-            val header = call.request.headers[HttpHeaders.Authorization]
-            if (header != null && header.startsWith("Bearer ")) {
-                val token = header.removePrefix("Bearer ")
-                val decoded = JWT.decode(token)
-                call.authentication.principal(JWTPrincipal(decoded))
+    private val testAuthPlugin =
+        createApplicationPlugin(name = "TestAuth") {
+            onCall { call ->
+                val header = call.request.headers[HttpHeaders.Authorization]
+                if (header != null && header.startsWith("Bearer ")) {
+                    val token = header.removePrefix("Bearer ")
+                    val decoded = JWT.decode(token)
+                    call.authentication.principal(JWTPrincipal(decoded))
+                }
             }
         }
-    }
 
     private companion object {
         private const val ADMIN_ID = 7446417641L

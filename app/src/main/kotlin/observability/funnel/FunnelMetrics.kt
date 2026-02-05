@@ -6,22 +6,25 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.math.roundToLong
 
-class FunnelMetrics(registry: MeterRegistry) {
+class FunnelMetrics(
+    registry: MeterRegistry,
+) {
     private val postViews = registry.counter("post_views_total")
     private val ctaClicks = registry.counter("cta_click_total")
     private val botStarts = registry.counter("bot_start_total")
-    private val sloTimer: Timer = Timer.builder("breaking_publish_latency_seconds")
-        .publishPercentileHistogram(true)
-        .serviceLevelObjectives(
-            Duration.ofSeconds(30),
-            Duration.ofSeconds(60),
-            Duration.ofSeconds(120),
-            Duration.ofSeconds(300),
-            Duration.ofSeconds(600),
-            Duration.ofSeconds(900),
-            Duration.ofSeconds(1200),
-        )
-        .register(registry)
+    private val sloTimer: Timer =
+        Timer
+            .builder("breaking_publish_latency_seconds")
+            .publishPercentileHistogram(true)
+            .serviceLevelObjectives(
+                Duration.ofSeconds(30),
+                Duration.ofSeconds(60),
+                Duration.ofSeconds(120),
+                Duration.ofSeconds(300),
+                Duration.ofSeconds(600),
+                Duration.ofSeconds(900),
+                Duration.ofSeconds(1200),
+            ).register(registry)
 
     fun recordPostView() {
         postViews.increment()
@@ -35,7 +38,10 @@ class FunnelMetrics(registry: MeterRegistry) {
         botStarts.increment()
     }
 
-    fun recordBreakingLatency(startTs: Instant, sourceTs: Instant) {
+    fun recordBreakingLatency(
+        startTs: Instant,
+        sourceTs: Instant,
+    ) {
         val latency = Duration.between(sourceTs, startTs)
         recordDurationSafe(latency)
     }
@@ -51,11 +57,12 @@ class FunnelMetrics(registry: MeterRegistry) {
     }
 
     private fun recordDurationSafe(duration: Duration) {
-        val normalized = when {
-            duration.isNegative -> Duration.ZERO
-            duration > MAX_BREAKING_LATENCY -> MAX_BREAKING_LATENCY
-            else -> duration
-        }
+        val normalized =
+            when {
+                duration.isNegative -> Duration.ZERO
+                duration > MAX_BREAKING_LATENCY -> MAX_BREAKING_LATENCY
+                else -> duration
+            }
         sloTimer.record(normalized)
     }
 

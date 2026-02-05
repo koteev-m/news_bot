@@ -23,9 +23,9 @@ import io.ktor.util.Attributes
 import io.micrometer.core.instrument.config.MeterFilter
 import io.micrometer.prometheus.PrometheusConfig
 import io.micrometer.prometheus.PrometheusMeterRegistry
-import java.util.UUID
 import kotlinx.coroutines.withContext
 import org.slf4j.event.Level
+import java.util.UUID
 
 object Observability {
     private val traceIdKey: AttributeKey<String> = AttributeKey("observability-trace-id")
@@ -35,7 +35,7 @@ object Observability {
         prometheus.config().meterFilter(
             MeterFilter.deny { id ->
                 id.name == "ktor.http.server.requests" && id.getTag("uri") == "/metrics"
-            }
+            },
         )
 
         app.install(CallId) {
@@ -52,12 +52,19 @@ object Observability {
                 call.attributes.getOrNull(traceIdKey)
             }
             filter { call ->
-                call.request.path().startsWith("/metrics").not()
+                call.request
+                    .path()
+                    .startsWith("/metrics")
+                    .not()
             }
             format { call ->
                 val method = call.request.httpMethod.value
                 val path = call.request.path()
-                val status = call.response.status()?.value?.toString() ?: "Unhandled"
+                val status =
+                    call.response
+                        .status()
+                        ?.value
+                        ?.toString() ?: "Unhandled"
                 val requestId = call.callId ?: "-"
                 "Handled $method $path -> $status (requestId=$requestId)"
             }

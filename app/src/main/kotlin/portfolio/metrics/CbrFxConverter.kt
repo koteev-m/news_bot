@@ -1,14 +1,14 @@
 package portfolio.metrics
 
 import cbr.CbrXmlDailyClient
+import common.rethrowIfFatal
+import portfolio.errors.PortfolioError
+import portfolio.errors.PortfolioException
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.util.Locale
-import common.rethrowIfFatal
-import portfolio.errors.PortfolioError
-import portfolio.errors.PortfolioException
 
 class CbrFxConverter(
     private val client: CbrXmlDailyClient,
@@ -26,38 +26,43 @@ class CbrFxConverter(
             return FxConversionResult(normalizeAmount(amount), delayed = false)
         }
 
-        val rates = try {
-            client.fetchDailyRates(date)
-        } catch (ex: Throwable) {
-            rethrowIfFatal(ex)
-            throw PortfolioException(PortfolioError.FxRateUnavailable("Failed to load CBR FX rates", ex))
-        }
+        val rates =
+            try {
+                client.fetchDailyRates(date)
+            } catch (ex: Throwable) {
+                rethrowIfFatal(ex)
+                throw PortfolioException(PortfolioError.FxRateUnavailable("Failed to load CBR FX rates", ex))
+            }
 
         val ratesToRub = rates.ratesToRub
-        val amountInRub = if (normalizedCurrency == RUB) {
-            amount
-        } else {
-            val rate = ratesToRub[normalizedCurrency]
-                ?: throw PortfolioException(
-                    PortfolioError.FxRateNotFound(normalizedCurrency, date, rates.effectiveDate),
-                )
-            amount.multiply(rate, MATH_CONTEXT)
-        }
-
-        val converted = if (normalizedBase == RUB) {
-            amountInRub
-        } else {
-            val baseRate = ratesToRub[normalizedBase]
-                ?: throw PortfolioException(
-                    PortfolioError.FxRateNotFound(normalizedBase, date, rates.effectiveDate),
-                )
-            if (baseRate.compareTo(BigDecimal.ZERO) == 0) {
-                throw PortfolioException(
-                    PortfolioError.Validation("FX rate for $normalizedBase equals zero and cannot be used"),
-                )
+        val amountInRub =
+            if (normalizedCurrency == RUB) {
+                amount
+            } else {
+                val rate =
+                    ratesToRub[normalizedCurrency]
+                        ?: throw PortfolioException(
+                            PortfolioError.FxRateNotFound(normalizedCurrency, date, rates.effectiveDate),
+                        )
+                amount.multiply(rate, MATH_CONTEXT)
             }
-            amountInRub.divide(baseRate, MATH_CONTEXT)
-        }
+
+        val converted =
+            if (normalizedBase == RUB) {
+                amountInRub
+            } else {
+                val baseRate =
+                    ratesToRub[normalizedBase]
+                        ?: throw PortfolioException(
+                            PortfolioError.FxRateNotFound(normalizedBase, date, rates.effectiveDate),
+                        )
+                if (baseRate.compareTo(BigDecimal.ZERO) == 0) {
+                    throw PortfolioException(
+                        PortfolioError.Validation("FX rate for $normalizedBase equals zero and cannot be used"),
+                    )
+                }
+                amountInRub.divide(baseRate, MATH_CONTEXT)
+            }
 
         return FxConversionResult(normalizeAmount(converted), delayed = rates.delayed)
     }

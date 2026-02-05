@@ -1,22 +1,22 @@
 package billing.subscriptions
 
-import io.micrometer.core.instrument.MeterRegistry
-import java.time.Duration
-import java.time.Instant
-import kotlinx.coroutines.runBlocking
 import common.rethrowIfFatal
 import common.runCatchingNonFatal
+import io.micrometer.core.instrument.MeterRegistry
+import kotlinx.coroutines.runBlocking
+import java.time.Duration
+import java.time.Instant
 
 class SubscriptionsService(
     private val repo: StarSubscriptionsRepository,
     private val meter: MeterRegistry? = null,
 ) {
-    private val CNT_RENEW_ATTEMPT = "renew_attempt_total"
-    private val CNT_TX = "transactions_total"
-    private val GAUGE_PAID_ACTIVE = "paid_active_gauge"
+    private val cntRenewAttempt = "renew_attempt_total"
+    private val cntTx = "transactions_total"
+    private val gaugePaidActive = "paid_active_gauge"
 
     init {
-        meter?.gauge(GAUGE_PAID_ACTIVE, this) { svc ->
+        meter?.gauge(gaugePaidActive, this) { svc ->
             runCatchingNonFatal { runBlocking { repo.countPaidActive().toDouble() } }.getOrDefault(0.0)
         }
     }
@@ -31,11 +31,11 @@ class SubscriptionsService(
         val renewAt = renewAfter?.let { Instant.now().plus(it) }
         try {
             val row = repo.upsertActive(userId, plan, autoRenew, renewAt, trialUntil)
-            meter?.counter(CNT_TX, "result", "activated")?.increment()
+            meter?.counter(cntTx, "result", "activated")?.increment()
             return row
         } catch (t: Throwable) {
             rethrowIfFatal(t)
-            meter?.counter(CNT_TX, "result", "error")?.increment()
+            meter?.counter(cntTx, "result", "error")?.increment()
             throw t
         }
     }
@@ -43,16 +43,19 @@ class SubscriptionsService(
     suspend fun cancel(userId: Long): Boolean {
         try {
             val ok = repo.cancelActive(userId)
-            meter?.counter(CNT_TX, "result", if (ok) "canceled" else "noop")?.increment()
+            meter?.counter(cntTx, "result", if (ok) "canceled" else "noop")?.increment()
             return ok
         } catch (t: Throwable) {
             rethrowIfFatal(t)
-            meter?.counter(CNT_TX, "result", "error")?.increment()
+            meter?.counter(cntTx, "result", "error")?.increment()
             throw t
         }
     }
 
-    suspend fun renewDue(now: Instant, period: Duration): RenewStats {
+    suspend fun renewDue(
+        now: Instant,
+        period: Duration,
+    ): RenewStats {
         val due = repo.findDueRenew(now)
         var ok = 0
         var skipped = 0
@@ -60,11 +63,11 @@ class SubscriptionsService(
             try {
                 val next = sub.renewAt?.plus(period) ?: now.plus(period)
                 repo.upsertActive(sub.userId, sub.plan, true, next, sub.trialUntil)
-                meter?.counter(CNT_RENEW_ATTEMPT, "result", "success")?.increment()
+                meter?.counter(cntRenewAttempt, "result", "success")?.increment()
                 ok++
             } catch (t: Throwable) {
                 rethrowIfFatal(t)
-                meter?.counter(CNT_RENEW_ATTEMPT, "result", "error")?.increment()
+                meter?.counter(cntRenewAttempt, "result", "error")?.increment()
                 skipped++
             }
         }
@@ -72,4 +75,7 @@ class SubscriptionsService(
     }
 }
 
-data class RenewStats(val ok: Int, val failed: Int)
+data class RenewStats(
+    val ok: Int,
+    val failed: Int,
+)

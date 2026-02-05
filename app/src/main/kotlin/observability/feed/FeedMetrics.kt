@@ -2,8 +2,8 @@ package observability.feed
 
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.Tags
+import io.micrometer.core.instrument.Timer
 import java.util.concurrent.atomic.AtomicLong
 
 open class FeedMetrics(
@@ -26,7 +26,9 @@ open class FeedMetrics(
     }
 }
 
-class Netflow2Metrics(registry: MeterRegistry) : FeedMetrics(registry, SOURCE) {
+class Netflow2Metrics(
+    registry: MeterRegistry,
+) : FeedMetrics(registry, SOURCE) {
     companion object {
         const val SOURCE = "netflow2"
     }

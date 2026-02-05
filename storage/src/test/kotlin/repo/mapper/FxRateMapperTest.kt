@@ -1,24 +1,25 @@
 package repo.mapper
 
+import model.FxRate
+import repo.tables.FxRatesTable
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import model.FxRate
-import repo.tables.FxRatesTable
 
 class FxRateMapperTest {
     @Test
     fun `maps result row to fx rate`() {
         val ts = Instant.parse("2024-08-01T08:00:00Z")
-        val row = testResultRow(
-            FxRatesTable.ccy to "USD",
-            FxRatesTable.ts to OffsetDateTime.ofInstant(ts, ZoneOffset.UTC),
-            FxRatesTable.rateRub to BigDecimal("93.45"),
-            FxRatesTable.sourceCol to "cbr",
-        )
+        val row =
+            testResultRow(
+                FxRatesTable.ccy to "USD",
+                FxRatesTable.ts to OffsetDateTime.ofInstant(ts, ZoneOffset.UTC),
+                FxRatesTable.rateRub to BigDecimal("93.45"),
+                FxRatesTable.sourceCol to "cbr",
+            )
 
         val rate = row.toFxRate()
 

@@ -1,14 +1,14 @@
 package netflow2
 
+import common.rethrowIfFatal
 import data.moex.Netflow2Client
 import data.moex.Netflow2ClientError
-import java.time.Duration
-import java.time.LocalDate
-import java.time.ZoneOffset
 import kotlinx.coroutines.CancellationException
 import observability.feed.Netflow2Metrics
 import repo.Netflow2Repository
-import common.rethrowIfFatal
+import java.time.Duration
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 data class Netflow2LoadResult(
     val sec: String,
@@ -25,7 +25,11 @@ class Netflow2Loader(
     private val repository: Netflow2Repository,
     private val metrics: Netflow2Metrics,
 ) {
-    suspend fun upsert(sec: String, from: LocalDate, till: LocalDate): Netflow2LoadResult {
+    suspend fun upsert(
+        sec: String,
+        from: LocalDate,
+        till: LocalDate,
+    ): Netflow2LoadResult {
         val startNanos = System.nanoTime()
         var maxDate: LocalDate? = null
         var cancelled = false
@@ -37,25 +41,27 @@ class Netflow2Loader(
                 throw Netflow2LoaderError.ValidationError("from must not be after till")
             }
 
-            val normalizedTicker = try {
-                normalizeTicker(sec)
-            } catch (t: Throwable) {
-                rethrowIfFatal(t)
-                val message = t.message ?: "invalid ticker"
-                throw Netflow2LoaderError.ValidationError("sec: $message")
-            }
+            val normalizedTicker =
+                try {
+                    normalizeTicker(sec)
+                } catch (t: Throwable) {
+                    rethrowIfFatal(t)
+                    val message = t.message ?: "invalid ticker"
+                    throw Netflow2LoaderError.ValidationError("sec: $message")
+                }
             val windows = Netflow2PullWindow.splitInclusive(from, till)
             var fetchedRows = 0
             var upsertedRows = 0
 
             for (window in windows) {
-                val rows = try {
-                    client.fetchWindow(normalizedTicker, window).getOrElse { throw it }
-                } catch (t: Throwable) {
-                    rethrowIfFatal(t)
-                    metrics.pullError.increment()
-                    throw t
-                }
+                val rows =
+                    try {
+                        client.fetchWindow(normalizedTicker, window).getOrElse { throw it }
+                    } catch (t: Throwable) {
+                        rethrowIfFatal(t)
+                        metrics.pullError.increment()
+                        throw t
+                    }
 
                 val normalizedRows = rows.map { it.copy(ticker = normalizedTicker) }
                 fetchedRows += normalizedRows.size
@@ -105,7 +111,15 @@ class Netflow2Loader(
     }
 }
 
-sealed class Netflow2LoaderError(message: String, cause: Throwable? = null) : RuntimeException(message, cause) {
-    class ValidationError(details: String) : Netflow2LoaderError(details)
-    class PullFailed(cause: Throwable) : Netflow2LoaderError(cause.message ?: "netflow2 pull failed", cause)
+sealed class Netflow2LoaderError(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
+    class ValidationError(
+        details: String,
+    ) : Netflow2LoaderError(details)
+
+    class PullFailed(
+        cause: Throwable,
+    ) : Netflow2LoaderError(cause.message ?: "netflow2 pull failed", cause)
 }

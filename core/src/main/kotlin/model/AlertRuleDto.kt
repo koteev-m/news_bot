@@ -1,10 +1,10 @@
 package model
 
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
-import kotlinx.serialization.Contextual
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class AlertRuleDto(
@@ -20,5 +20,5 @@ data class AlertRuleDto(
     val cooldownMinutes: Int,
     @Contextual val hysteresis: BigDecimal,
     val quietHoursJson: String?,
-    @Contextual val createdAt: Instant
+    @Contextual val createdAt: Instant,
 )

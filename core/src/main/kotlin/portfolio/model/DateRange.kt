@@ -1,14 +1,14 @@
 package portfolio.model
 
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 @Serializable
 data class DateRange(
     @Contextual val from: LocalDate,
-    @Contextual val to: LocalDate
+    @Contextual val to: LocalDate,
 ) {
     init {
         require(!from.isAfter(to)) { "Start date must not be after end date" }

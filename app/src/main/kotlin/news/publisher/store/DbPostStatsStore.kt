@@ -2,11 +2,6 @@ package news.publisher.store
 
 import db.DatabaseFactory
 import db.tables.PostStatsTable
-import java.sql.SQLException
-import java.time.Clock
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
-import java.util.UUID
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.and
@@ -14,30 +9,41 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
+import java.sql.SQLException
+import java.time.Clock
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.UUID
 
 class DbPostStatsStore(
     private val clock: Clock = Clock.systemUTC(),
 ) : PostStatsStore {
     private val logger = LoggerFactory.getLogger(DbPostStatsStore::class.java)
 
-    override suspend fun findByCluster(channelId: Long, clusterId: UUID): PublishedPost? {
-        return DatabaseFactory.dbQuery {
-            PostStatsTable.select {
-                (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
-            }
-                .limit(1)
+    override suspend fun findByCluster(
+        channelId: Long,
+        clusterId: UUID,
+    ): PublishedPost? =
+        DatabaseFactory.dbQuery {
+            PostStatsTable
+                .select {
+                    (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
+                }.limit(1)
                 .map {
                     PublishedPost(
                         messageId = it[PostStatsTable.messageId],
                         contentHash = it[PostStatsTable.contentHash],
                         duplicateCount = it[PostStatsTable.duplicateCount],
                     )
-                }
-                .singleOrNull()
+                }.singleOrNull()
         }
-    }
 
-    override suspend fun recordNew(channelId: Long, clusterId: UUID, messageId: Long, contentHash: String) {
+    override suspend fun recordNew(
+        channelId: Long,
+        clusterId: UUID,
+        messageId: Long,
+        contentHash: String,
+    ) {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
         try {
             DatabaseFactory.dbQuery {
@@ -60,38 +66,50 @@ class DbPostStatsStore(
                 "Unique violation while recording post stats for channel {} cluster {}",
                 channelId,
                 clusterId,
-                ex
+                ex,
             )
         }
-        val updated = DatabaseFactory.dbQuery {
-            PostStatsTable.update(
-                where = {
-                    (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
-                },
-            ) { update ->
-                update[PostStatsTable.messageId] = messageId
-                update[PostStatsTable.contentHash] = contentHash
-                update[PostStatsTable.updatedAt] = now
+        val updated =
+            DatabaseFactory.dbQuery {
+                PostStatsTable.update(
+                    where = {
+                        (PostStatsTable.channelId eq channelId) and (PostStatsTable.clusterId eq clusterId)
+                    },
+                ) { update ->
+                    update[PostStatsTable.messageId] = messageId
+                    update[PostStatsTable.contentHash] = contentHash
+                    update[PostStatsTable.updatedAt] = now
+                }
             }
-        }
         if (updated == 0) {
             logger.error(
                 "Unique violation without matching post stats row for channel {} cluster {}",
                 channelId,
-                clusterId
+                clusterId,
             )
         }
     }
 
-    override suspend fun recordEdit(channelId: Long, clusterId: UUID, contentHash: String) {
+    override suspend fun recordEdit(
+        channelId: Long,
+        clusterId: UUID,
+        contentHash: String,
+    ) {
         updateExisting(channelId, clusterId, contentHash)
     }
 
-    override suspend fun recordDuplicate(channelId: Long, clusterId: UUID) {
+    override suspend fun recordDuplicate(
+        channelId: Long,
+        clusterId: UUID,
+    ) {
         updateExisting(channelId, clusterId, null)
     }
 
-    private suspend fun updateExisting(channelId: Long, clusterId: UUID, contentHash: String?) {
+    private suspend fun updateExisting(
+        channelId: Long,
+        clusterId: UUID,
+        contentHash: String?,
+    ) {
         val now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
         DatabaseFactory.dbQuery {
             PostStatsTable.update(
@@ -100,9 +118,10 @@ class DbPostStatsStore(
                 },
             ) { update ->
                 update[PostStatsTable.updatedAt] = now
-                update[PostStatsTable.duplicateCount] = with(SqlExpressionBuilder) {
-                    PostStatsTable.duplicateCount + 1
-                }
+                update[PostStatsTable.duplicateCount] =
+                    with(SqlExpressionBuilder) {
+                        PostStatsTable.duplicateCount + 1
+                    }
                 if (contentHash != null) {
                     update[PostStatsTable.contentHash] = contentHash
                 }

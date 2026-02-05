@@ -11,14 +11,14 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 class DbFeedStateStore : FeedStateStore {
-    override suspend fun get(sourceId: String): FeedState? {
-        return DatabaseFactory.dbQuery {
-            FeedStateTable.select { FeedStateTable.sourceId eq sourceId }
+    override suspend fun get(sourceId: String): FeedState? =
+        DatabaseFactory.dbQuery {
+            FeedStateTable
+                .select { FeedStateTable.sourceId eq sourceId }
                 .limit(1)
                 .map { it.toFeedState() }
                 .singleOrNull()
         }
-    }
 
     override suspend fun upsert(state: FeedState) {
         DatabaseFactory.dbQuery {
@@ -43,8 +43,8 @@ class DbFeedStateStore : FeedStateStore {
     }
 }
 
-private fun ResultRow.toFeedState(): FeedState {
-    return FeedState(
+private fun ResultRow.toFeedState(): FeedState =
+    FeedState(
         sourceId = this[FeedStateTable.sourceId],
         etag = this[FeedStateTable.etag],
         lastModified = this[FeedStateTable.lastModified],
@@ -53,6 +53,5 @@ private fun ResultRow.toFeedState(): FeedState {
         failureCount = this[FeedStateTable.failureCount],
         cooldownUntil = this[FeedStateTable.cooldownUntil]?.toInstant(),
     )
-}
 
 private fun java.time.Instant.toOffsetDateTime(): OffsetDateTime = OffsetDateTime.ofInstant(this, ZoneOffset.UTC)

@@ -178,5 +178,4 @@ fun computeTwr(
     return TwrResult(result, TwrStatus.OK)
 }
 
-private fun normalize(value: BigDecimal): BigDecimal =
-    value.setScale(SCALE, RoundingMode.HALF_UP)
+private fun normalize(value: BigDecimal): BigDecimal = value.setScale(SCALE, RoundingMode.HALF_UP)

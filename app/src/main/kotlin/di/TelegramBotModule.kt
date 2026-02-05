@@ -14,8 +14,12 @@ fun Application.ensureTelegramBot(): TelegramBot {
         return attributes[TelegramBotKey]
     }
 
-    val token = environment.config.propertyOrNull("telegram.botToken")?.getString()?.trim()
-        ?: throw IllegalStateException("telegram.botToken is not configured")
+    val token =
+        environment.config
+            .propertyOrNull("telegram.botToken")
+            ?.getString()
+            ?.trim()
+            ?: throw IllegalStateException("telegram.botToken is not configured")
     require(token.isNotEmpty()) { "telegram.botToken must not be blank" }
 
     val bot = TelegramBot(token)

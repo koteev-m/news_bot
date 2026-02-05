@@ -6,16 +6,16 @@ import io.kotest.property.arbitrary.boolean
 import io.kotest.property.arbitrary.int
 import io.kotest.property.arbitrary.list
 import io.kotest.property.checkAll
+import kotlinx.coroutines.runBlocking
+import portfolio.model.Money
+import portfolio.service.PositionCalc
 import java.math.BigDecimal
 import java.math.MathContext
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import portfolio.model.Money
-import portfolio.service.PositionCalc
 
 class PositionCalcTest {
     private val averageCalc = PositionCalc.AverageCostCalc()
@@ -25,24 +25,26 @@ class PositionCalcTest {
     fun averageCostScenario() {
         var position = PositionCalc.Position.empty(CURRENCY)
 
-        val firstBuy = averageCalc.applyBuy(
-            position,
-            BigDecimal.TEN,
-            money("100"),
-            money("5")
-        )
+        val firstBuy =
+            averageCalc.applyBuy(
+                position,
+                BigDecimal.TEN,
+                money("100"),
+                money("5"),
+            )
         assertEquals(BigDecimal.TEN, firstBuy.position.quantity)
         assertEquals(money("1005"), firstBuy.position.costBasis)
         assertEquals(money("0"), firstBuy.realizedPnl)
 
         position = firstBuy.position
 
-        val secondBuy = averageCalc.applyBuy(
-            position,
-            BigDecimal("5"),
-            money("110"),
-            money("2")
-        )
+        val secondBuy =
+            averageCalc.applyBuy(
+                position,
+                BigDecimal("5"),
+                money("110"),
+                money("2"),
+            )
         assertEquals(BigDecimal("15"), secondBuy.position.quantity)
         assertEquals(money("1557"), secondBuy.position.costBasis)
         assertEquals(money("0"), secondBuy.realizedPnl)
@@ -50,12 +52,13 @@ class PositionCalcTest {
 
         position = secondBuy.position
 
-        val sell = averageCalc.applySell(
-            position,
-            BigDecimal("8"),
-            money("120"),
-            money("4")
-        )
+        val sell =
+            averageCalc.applySell(
+                position,
+                BigDecimal("8"),
+                money("120"),
+                money("4"),
+            )
         assertEquals(BigDecimal("7"), sell.position.quantity)
         assertEquals(money("726.6"), sell.position.costBasis)
         assertEquals(money("125.6"), sell.realizedPnl)
@@ -66,36 +69,39 @@ class PositionCalcTest {
     fun fifoScenarioWithPartialLots() {
         var position = PositionCalc.Position.empty(CURRENCY)
 
-        val firstBuy = fifoCalc.applyBuy(
-            position,
-            BigDecimal.TEN,
-            money("100"),
-            money("5")
-        )
+        val firstBuy =
+            fifoCalc.applyBuy(
+                position,
+                BigDecimal.TEN,
+                money("100"),
+                money("5"),
+            )
         assertEquals(BigDecimal.TEN, firstBuy.position.quantity)
         assertEquals(1, firstBuy.position.lots.size)
         assertEquals(money("1005"), firstBuy.position.costBasis)
 
         position = firstBuy.position
 
-        val secondBuy = fifoCalc.applyBuy(
-            position,
-            BigDecimal("5"),
-            money("110"),
-            money("2")
-        )
+        val secondBuy =
+            fifoCalc.applyBuy(
+                position,
+                BigDecimal("5"),
+                money("110"),
+                money("2"),
+            )
         assertEquals(BigDecimal("15"), secondBuy.position.quantity)
         assertEquals(2, secondBuy.position.lots.size)
         assertEquals(money("1557"), secondBuy.position.costBasis)
 
         position = secondBuy.position
 
-        val sell = fifoCalc.applySell(
-            position,
-            BigDecimal("8"),
-            money("120"),
-            money("4")
-        )
+        val sell =
+            fifoCalc.applySell(
+                position,
+                BigDecimal("8"),
+                money("120"),
+                money("4"),
+            )
         assertEquals(BigDecimal("7"), sell.position.quantity)
         assertEquals(money("753"), sell.position.costBasis)
         assertEquals(money("152"), sell.realizedPnl)
@@ -121,40 +127,47 @@ class PositionCalcTest {
     }
 
     @Test
-    fun averagePropertyInvariants() = runBlocking {
-        checkAll(operationSequencesArb) { specs ->
-            val operations = buildOperations(specs)
-            verifySequence(averageCalc, operations)
+    fun averagePropertyInvariants() =
+        runBlocking {
+            checkAll(operationSequencesArb) { specs ->
+                val operations = buildOperations(specs)
+                verifySequence(averageCalc, operations)
+            }
         }
-    }
 
     @Test
-    fun fifoPropertyInvariants() = runBlocking {
-        checkAll(operationSequencesArb) { specs ->
-            val operations = buildOperations(specs)
-            verifySequence(fifoCalc, operations)
+    fun fifoPropertyInvariants() =
+        runBlocking {
+            checkAll(operationSequencesArb) { specs ->
+                val operations = buildOperations(specs)
+                verifySequence(fifoCalc, operations)
+            }
         }
-    }
 
-    private fun verifySequence(calc: PositionCalc, operations: List<Operation>) {
+    private fun verifySequence(
+        calc: PositionCalc,
+        operations: List<Operation>,
+    ) {
         var position = PositionCalc.Position.empty(CURRENCY)
         var totalRealized = zeroMoney()
 
         operations.forEach { operation ->
-            val result = when (operation) {
-                is Operation.Buy -> calc.applyBuy(position, operation.quantity, operation.price, operation.fee)
-                is Operation.Sell -> calc.applySell(position, operation.quantity, operation.price, operation.fee)
-            }
+            val result =
+                when (operation) {
+                    is Operation.Buy -> calc.applyBuy(position, operation.quantity, operation.price, operation.fee)
+                    is Operation.Sell -> calc.applySell(position, operation.quantity, operation.price, operation.fee)
+                }
             assertTrue(result.position.quantity >= BigDecimal.ZERO)
             position = result.position
             totalRealized = totalRealized + result.realizedPnl
         }
 
         if (position.quantity > BigDecimal.ZERO) {
-            val expectedAverage = Money.of(
-                position.costBasis.amount.divide(position.quantity, MathContext.DECIMAL128),
-                CURRENCY
-            )
+            val expectedAverage =
+                Money.of(
+                    position.costBasis.amount.divide(position.quantity, MathContext.DECIMAL128),
+                    CURRENCY,
+                )
             assertNotNull(position.averagePrice)
             assertEquals(expectedAverage, position.averagePrice)
         } else {
@@ -163,15 +176,18 @@ class PositionCalcTest {
             assertEquals(zeroMoney(), position.costBasis)
         }
 
-        val totalBuys = operations.filterIsInstance<Operation.Buy>().fold(zeroMoney()) { acc, buy ->
-            acc + buy.price * buy.quantity + buy.fee
-        }
-        val totalSellProceeds = operations.filterIsInstance<Operation.Sell>().fold(zeroMoney()) { acc, sell ->
-            acc + sell.price * sell.quantity
-        }
-        val totalSellFees = operations.filterIsInstance<Operation.Sell>().fold(zeroMoney()) { acc, sell ->
-            acc + sell.fee
-        }
+        val totalBuys =
+            operations.filterIsInstance<Operation.Buy>().fold(zeroMoney()) { acc, buy ->
+                acc + buy.price * buy.quantity + buy.fee
+            }
+        val totalSellProceeds =
+            operations.filterIsInstance<Operation.Sell>().fold(zeroMoney()) { acc, sell ->
+                acc + sell.price * sell.quantity
+            }
+        val totalSellFees =
+            operations.filterIsInstance<Operation.Sell>().fold(zeroMoney()) { acc, sell ->
+                acc + sell.fee
+            }
 
         assertEquals(BigDecimal.ZERO, position.quantity)
         assertEquals(totalSellProceeds - totalSellFees - totalBuys, totalRealized)
@@ -211,20 +227,20 @@ class PositionCalcTest {
         val isBuy: Boolean,
         val quantity: Int,
         val price: BigDecimal,
-        val fee: BigDecimal
+        val fee: BigDecimal,
     )
 
     private sealed interface Operation {
         data class Buy(
             val quantity: BigDecimal,
             val price: Money,
-            val fee: Money
+            val fee: Money,
         ) : Operation
 
         data class Sell(
             val quantity: BigDecimal,
             val price: Money,
-            val fee: Money
+            val fee: Money,
         ) : Operation
     }
 
@@ -234,14 +250,15 @@ class PositionCalcTest {
 
     private fun money(amount: BigDecimal): Money = Money.of(amount, CURRENCY)
 
-    private val operationSpecArb = Arb.bind(Arb.boolean(), Arb.int(1..10), Arb.int(1000..10000), Arb.int(0..500)) { isBuy, qty, price, fee ->
-        OperationSpec(
-            isBuy = isBuy,
-            quantity = qty,
-            price = BigDecimal.valueOf(price.toLong(), 2),
-            fee = BigDecimal.valueOf(fee.toLong(), 2)
-        )
-    }
+    private val operationSpecArb =
+        Arb.bind(Arb.boolean(), Arb.int(1..10), Arb.int(1000..10000), Arb.int(0..500)) { isBuy, qty, price, fee ->
+            OperationSpec(
+                isBuy = isBuy,
+                quantity = qty,
+                price = BigDecimal.valueOf(price.toLong(), 2),
+                fee = BigDecimal.valueOf(fee.toLong(), 2),
+            )
+        }
 
     private val operationSequencesArb = Arb.list(operationSpecArb, 3..12)
 

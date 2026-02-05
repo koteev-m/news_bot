@@ -1,5 +1,7 @@
 package repo.mapper
 
+import model.PositionDto
+import repo.tables.PositionsTable
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -7,22 +9,21 @@ import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import repo.tables.PositionsTable
-import model.PositionDto
 
 class PositionMapperTest {
     @Test
     fun `maps result row to position dto`() {
         val portfolioId = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val updatedAt = Instant.parse("2024-06-01T10:00:00Z")
-        val row = testResultRow(
-            PositionsTable.portfolioId to portfolioId,
-            PositionsTable.instrumentId to 55L,
-            PositionsTable.qty to BigDecimal("15.5"),
-            PositionsTable.avgPrice to BigDecimal("123.45"),
-            PositionsTable.avgPriceCcy to "USD",
-            PositionsTable.updatedAt to OffsetDateTime.ofInstant(updatedAt, ZoneOffset.UTC),
-        )
+        val row =
+            testResultRow(
+                PositionsTable.portfolioId to portfolioId,
+                PositionsTable.instrumentId to 55L,
+                PositionsTable.qty to BigDecimal("15.5"),
+                PositionsTable.avgPrice to BigDecimal("123.45"),
+                PositionsTable.avgPriceCcy to "USD",
+                PositionsTable.updatedAt to OffsetDateTime.ofInstant(updatedAt, ZoneOffset.UTC),
+            )
 
         val dto = row.toPositionDto()
 
@@ -36,14 +37,15 @@ class PositionMapperTest {
 
     @Test
     fun `maps position dto to insert values`() {
-        val dto = PositionDto(
-            portfolioId = UUID.fromString("10000000-0000-0000-0000-000000000000"),
-            instrumentId = 5L,
-            qty = BigDecimal("1.0"),
-            avgPrice = null,
-            avgPriceCcy = null,
-            updatedAt = Instant.parse("2024-06-01T10:00:00Z"),
-        )
+        val dto =
+            PositionDto(
+                portfolioId = UUID.fromString("10000000-0000-0000-0000-000000000000"),
+                instrumentId = 5L,
+                qty = BigDecimal("1.0"),
+                avgPrice = null,
+                avgPriceCcy = null,
+                updatedAt = Instant.parse("2024-06-01T10:00:00Z"),
+            )
 
         val insertValues = dto.toInsertValues()
 

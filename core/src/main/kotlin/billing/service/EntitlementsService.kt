@@ -13,8 +13,8 @@ data class Entitlement(
 class EntitlementsService(
     private val billingService: BillingService,
 ) {
-    suspend fun getEntitlement(userId: Long): Result<Entitlement> {
-        return billingService.getMySubscription(userId).map { subscription ->
+    suspend fun getEntitlement(userId: Long): Result<Entitlement> =
+        billingService.getMySubscription(userId).map { subscription ->
             if (subscription == null) {
                 Entitlement(Tier.FREE, SubStatus.EXPIRED, null)
             } else {
@@ -26,5 +26,4 @@ class EntitlementsService(
                 }
             }
         }
-    }
 }

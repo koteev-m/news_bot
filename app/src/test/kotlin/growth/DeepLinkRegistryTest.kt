@@ -18,12 +18,13 @@ class DeepLinkRegistryTest :
 
         test("rejects mixed start and startapp") {
             val payload = "Abcdef12"
-            registry.parse(
-                parametersOf(
-                    "start" to listOf(payload),
-                    "startapp" to listOf(payload),
-                ),
-            ).shouldBeNull()
+            registry
+                .parse(
+                    parametersOf(
+                        "start" to listOf(payload),
+                        "startapp" to listOf(payload),
+                    ),
+                ).shouldBeNull()
         }
 
         test("enforces length limits") {

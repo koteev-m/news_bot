@@ -7,7 +7,7 @@ data class StarBalance(
     val userId: Long,
     val available: Long,
     val pending: Long,
-    val updatedAtEpochSeconds: Long
+    val updatedAtEpochSeconds: Long,
 )
 
 interface StarBalancePort {
@@ -43,6 +43,7 @@ interface BotStarBalancePort {
 
 interface StarSubscriptionRepository {
     suspend fun save(subscription: StarSubscription)
+
     suspend fun findActiveByUser(userId: Long): StarSubscription?
 }
 
@@ -51,27 +52,33 @@ data class StarSubscription(
     val userId: Long,
     val planCode: String,
     val startedAtEpochSeconds: Long,
-    val autoRenew: Boolean
+    val autoRenew: Boolean,
 )
 
 class InMemoryStarBalancePort : StarBalancePort {
     private val balances = mutableMapOf<Long, StarBalance>()
 
-    override suspend fun getMyStarBalance(userId: Long): StarBalance {
-        return balances[userId] ?: StarBalance(userId, available = 0, pending = 0, updatedAtEpochSeconds = now())
-    }
+    override suspend fun getMyStarBalance(userId: Long): StarBalance =
+        balances[userId] ?: StarBalance(userId, available = 0, pending = 0, updatedAtEpochSeconds = now())
 
     fun update(balance: StarBalance) {
         balances[balance.userId] = balance.copy(updatedAtEpochSeconds = now())
     }
 
-    private fun now(): Long = System.currentTimeMillis() / 1000
+    private fun now(): Long = System.currentTimeMillis() / MILLIS_IN_SECOND
+
+    companion object {
+        private const val MILLIS_IN_SECOND = 1000L
+    }
 }
 
 class ZeroStarBalancePort : StarBalancePort {
-    override suspend fun getMyStarBalance(userId: Long): StarBalance {
-        return StarBalance(userId, available = 0, pending = 0, updatedAtEpochSeconds = now())
-    }
+    override suspend fun getMyStarBalance(userId: Long): StarBalance =
+        StarBalance(userId, available = 0, pending = 0, updatedAtEpochSeconds = now())
 
-    private fun now(): Long = System.currentTimeMillis() / 1000
+    private fun now(): Long = System.currentTimeMillis() / MILLIS_IN_SECOND
+
+    companion object {
+        private const val MILLIS_IN_SECOND = 1000L
+    }
 }

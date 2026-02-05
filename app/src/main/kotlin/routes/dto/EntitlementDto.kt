@@ -10,8 +10,9 @@ data class EntitlementDto(
     val expiresAt: String?,
 )
 
-fun Entitlement.toDto(): EntitlementDto = EntitlementDto(
-    tier = tier.name,
-    status = status.name,
-    expiresAt = expiresAt?.toString(),
-)
+fun Entitlement.toDto(): EntitlementDto =
+    EntitlementDto(
+        tier = tier.name,
+        status = status.name,
+        expiresAt = expiresAt?.toString(),
+    )

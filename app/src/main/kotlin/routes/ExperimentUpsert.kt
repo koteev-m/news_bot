@@ -2,22 +2,29 @@ package routes
 
 import ab.Experiment
 import ab.ExperimentsPort
+import common.runCatchingNonFatal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
-import io.ktor.server.routing.route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.route
 import kotlinx.serialization.Serializable
 import security.userIdOrNull
-import common.runCatchingNonFatal
 
 @Serializable
-data class ExperimentUpsert(val key: String, val enabled: Boolean, val traffic: Map<String, Int>)
+data class ExperimentUpsert(
+    val key: String,
+    val enabled: Boolean,
+    val traffic: Map<String, Int>,
+)
 
-fun Route.adminExperimentsRoutes(port: ExperimentsPort, adminUserIds: Set<Long>) {
+fun Route.adminExperimentsRoutes(
+    port: ExperimentsPort,
+    adminUserIds: Set<Long>,
+) {
     route("/api/admin/experiments") {
         post("/upsert") {
             val userId = call.userIdOrNull?.toLongOrNull()
@@ -29,13 +36,19 @@ fun Route.adminExperimentsRoutes(port: ExperimentsPort, adminUserIds: Set<Long>)
                 call.respond(HttpStatusCode.Forbidden, mapOf("error" to "forbidden"))
                 return@post
             }
-            val request = runCatchingNonFatal { call.receive<ExperimentUpsert>() }
-                .getOrElse { exception ->
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to (exception.message ?: "invalid payload")))
-                    return@post
-                }
+            val request =
+                runCatchingNonFatal { call.receive<ExperimentUpsert>() }
+                    .getOrElse { exception ->
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf(
+                                "error" to (exception.message ?: "invalid payload"),
+                            ),
+                        )
+                        return@post
+                    }
             val totalTraffic = request.traffic.values.sum()
-            if (totalTraffic != 100) {
+            if (totalTraffic != EXPECTED_TRAFFIC_SUM) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "traffic sum must be 100"))
                 return@post
             }
@@ -51,3 +64,5 @@ fun Route.adminExperimentsRoutes(port: ExperimentsPort, adminUserIds: Set<Long>)
         }
     }
 }
+
+private const val EXPECTED_TRAFFIC_SUM = 100

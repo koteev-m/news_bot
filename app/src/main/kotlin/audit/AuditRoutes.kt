@@ -1,18 +1,18 @@
 package audit
 
+import common.runCatchingNonFatal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
-import java.time.LocalDate
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import repo.AuditLedgerRepository
-import common.runCatchingNonFatal
+import java.time.LocalDate
 
 fun Route.auditRoutes(repository: AuditLedgerRepository) {
     route("/api/audit") {
@@ -42,27 +42,29 @@ fun Route.auditRoutes(repository: AuditLedgerRepository) {
     }
 }
 
-private fun audit.LedgerRecord.toJson(): JsonObject = buildJsonObject {
-    put("seqId", seqId)
-    put("occurredAt", occurredAt.toString())
-    put("actorType", actorType.name.lowercase())
-    actorId?.let { put("actorId", it) }
-    tenantId?.let { put("tenantId", it) }
-    put("action", action)
-    put("resource", resource)
-    put("prevHash", prevHash)
-    put("hash", hash)
-    putJsonObject("meta") {
-        meta.forEach { (key, value) ->
-            put(key, value)
+private fun audit.LedgerRecord.toJson(): JsonObject =
+    buildJsonObject {
+        put("seqId", seqId)
+        put("occurredAt", occurredAt.toString())
+        put("actorType", actorType.name.lowercase())
+        actorId?.let { put("actorId", it) }
+        tenantId?.let { put("tenantId", it) }
+        put("action", action)
+        put("resource", resource)
+        put("prevHash", prevHash)
+        put("hash", hash)
+        putJsonObject("meta") {
+            meta.forEach { (key, value) ->
+                put(key, value)
+            }
         }
     }
-}
 
-private fun audit.AuditCheckpoint.toJson(): JsonObject = buildJsonObject {
-    put("day", day.toString())
-    put("lastSeqId", lastSeqId)
-    put("rootHash", rootHash)
-    put("signature", signature)
-    put("createdAt", createdAt.toString())
-}
+private fun audit.AuditCheckpoint.toJson(): JsonObject =
+    buildJsonObject {
+        put("day", day.toString())
+        put("lastSeqId", lastSeqId)
+        put("rootHash", rootHash)
+        put("signature", signature)
+        put("createdAt", createdAt.toString())
+    }

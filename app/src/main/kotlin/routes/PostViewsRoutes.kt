@@ -11,7 +11,11 @@ import io.ktor.server.routing.get
 import mtproto.MtprotoViewsClientError
 import views.PostViewsService
 
-fun Route.postViewsRoutes(service: PostViewsService?, enabled: Boolean, internalToken: String?) {
+fun Route.postViewsRoutes(
+    service: PostViewsService?,
+    enabled: Boolean,
+    internalToken: String?,
+) {
     suspend fun ApplicationCall.ensureInternalAccess(): Boolean {
         if (internalToken.isNullOrBlank()) {
             respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to "internal token not configured"))
@@ -32,8 +36,14 @@ fun Route.postViewsRoutes(service: PostViewsService?, enabled: Boolean, internal
             return@get
         }
 
-        val channel = call.request.queryParameters["channel"]?.trim().orEmpty()
-        val idsRaw = call.request.queryParameters["ids"]?.trim().orEmpty()
+        val channel =
+            call.request.queryParameters["channel"]
+                ?.trim()
+                .orEmpty()
+        val idsRaw =
+            call.request.queryParameters["ids"]
+                ?.trim()
+                .orEmpty()
         if (channel.isBlank()) {
             call.respond(HttpStatusCode.BadRequest, mapOf("error" to "channel is required"))
             return@get
@@ -43,36 +53,42 @@ fun Route.postViewsRoutes(service: PostViewsService?, enabled: Boolean, internal
             return@get
         }
 
-        val ids = idsRaw.split(',')
-            .mapNotNull { it.trim().toIntOrNull() }
-            .filter { it > 0 }
-            .distinct()
-            .take(1000)
+        val ids =
+            idsRaw
+                .split(',')
+                .mapNotNull { it.trim().toIntOrNull() }
+                .filter { it > 0 }
+                .distinct()
+                .take(MAX_IDS)
 
         if (ids.isEmpty()) {
             call.respond(HttpStatusCode.BadRequest, mapOf("error" to "ids are required"))
             return@get
         }
 
-        val views = try {
-            service.sync(channel, ids)
-        } catch (ex: Throwable) {
-            rethrowIfFatal(ex)
-            val (status, message) = ex.toHttpError()
-            call.respond(status, mapOf("error" to message))
-            return@get
-        }
+        val views =
+            try {
+                service.sync(channel, ids)
+            } catch (ex: Throwable) {
+                rethrowIfFatal(ex)
+                val (status, message) = ex.toHttpError()
+                call.respond(status, mapOf("error" to message))
+                return@get
+            }
 
         val response = views.mapKeys { it.key.toString() }
         call.respond(HttpStatusCode.OK, response)
     }
 }
 
-private fun Throwable.toHttpError(): Pair<HttpStatusCode, String> = when (this) {
-    is MtprotoViewsClientError.ValidationError -> HttpStatusCode.BadRequest to (message ?: "validation error")
-    is MtprotoViewsClientError.TimeoutError -> HttpStatusCode.GatewayTimeout to (message ?: "timeout")
-    is MtprotoViewsClientError.HttpStatusError -> HttpStatusCode.BadGateway to (message ?: "gateway error")
-    is MtprotoViewsClientError.DeserializationError -> HttpStatusCode.BadGateway to (message ?: "decode error")
-    is MtprotoViewsClientError.NetworkError -> HttpStatusCode.BadGateway to (message ?: "network error")
-    else -> HttpStatusCode.BadGateway to (message ?: "mtproto error")
-}
+private fun Throwable.toHttpError(): Pair<HttpStatusCode, String> =
+    when (this) {
+        is MtprotoViewsClientError.ValidationError -> HttpStatusCode.BadRequest to (message ?: "validation error")
+        is MtprotoViewsClientError.TimeoutError -> HttpStatusCode.GatewayTimeout to (message ?: "timeout")
+        is MtprotoViewsClientError.HttpStatusError -> HttpStatusCode.BadGateway to (message ?: "gateway error")
+        is MtprotoViewsClientError.DeserializationError -> HttpStatusCode.BadGateway to (message ?: "decode error")
+        is MtprotoViewsClientError.NetworkError -> HttpStatusCode.BadGateway to (message ?: "network error")
+        else -> HttpStatusCode.BadGateway to (message ?: "mtproto error")
+    }
+
+private const val MAX_IDS = 1000

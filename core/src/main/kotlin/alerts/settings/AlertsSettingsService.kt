@@ -1,6 +1,5 @@
 package alerts.settings
 
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -10,24 +9,39 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.concurrent.ConcurrentHashMap
 
 interface AlertsSettingsRepository {
-    suspend fun upsert(userId: Long, json: String)
+    suspend fun upsert(
+        userId: Long,
+        json: String,
+    )
+
     suspend fun find(userId: Long): String?
 }
 
 interface AlertsSettingsService {
     val updatesFlow: StateFlow<Long>
+
     suspend fun defaults(): AlertsConfig
+
     suspend fun effectiveFor(userId: Long): AlertsConfig
-    suspend fun upsert(userId: Long, patch: AlertsOverridePatch)
+
+    suspend fun upsert(
+        userId: Long,
+        patch: AlertsOverridePatch,
+    )
 }
 
 class AlertsSettingsServiceImpl(
     private val defaults: AlertsConfig,
     private val repository: AlertsSettingsRepository,
     scope: CoroutineScope,
-    private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
+    private val json: Json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = false
+        },
 ) : AlertsSettingsService {
     @Suppress("unused")
     private val applicationScope: CoroutineScope = scope
@@ -44,7 +58,10 @@ class AlertsSettingsServiceImpl(
         return patch?.let { defaults.merge(it) } ?: defaults
     }
 
-    override suspend fun upsert(userId: Long, patch: AlertsOverridePatch) {
+    override suspend fun upsert(
+        userId: Long,
+        patch: AlertsOverridePatch,
+    ) {
         val current = loadPatch(userId)
         val merged = mergePatches(current, patch).normalized()
         val serialized = json.encodeToString(merged)
@@ -60,11 +77,12 @@ class AlertsSettingsServiceImpl(
     private suspend fun loadPatch(userId: Long): AlertsOverridePatch? {
         cache[userId]?.let { return it }
         val stored = repository.find(userId) ?: return null
-        val decoded = try {
-            json.decodeFromString<AlertsOverridePatch>(stored)
-        } catch (exception: SerializationException) {
-            throw IllegalStateException("Failed to decode alerts override for user $userId", exception)
-        }
+        val decoded =
+            try {
+                json.decodeFromString<AlertsOverridePatch>(stored)
+            } catch (exception: SerializationException) {
+                throw IllegalStateException("Failed to decode alerts override for user $userId", exception)
+            }
         val normalized = decoded.normalized()
         if (!normalized.isEmpty()) {
             cache[userId] = normalized
@@ -74,7 +92,7 @@ class AlertsSettingsServiceImpl(
 
     private fun mergePatches(
         existing: AlertsOverridePatch?,
-        incoming: AlertsOverridePatch
+        incoming: AlertsOverridePatch,
     ): AlertsOverridePatch {
         if (existing == null) {
             return incoming
@@ -85,13 +103,13 @@ class AlertsSettingsServiceImpl(
             quietHours = mergeQuiet(existing.quietHours, incoming.quietHours),
             hysteresis = mergeHysteresis(existing.hysteresis, incoming.hysteresis),
             dynamic = mergeDynamic(existing.dynamic, incoming.dynamic),
-            thresholds = mergeThresholds(existing.thresholds, incoming.thresholds)
+            thresholds = mergeThresholds(existing.thresholds, incoming.thresholds),
         )
     }
 
     private fun mergeQuiet(
         base: QuietHoursPatch?,
-        incoming: QuietHoursPatch?
+        incoming: QuietHoursPatch?,
     ): QuietHoursPatch? {
         if (base == null && incoming == null) {
             return null
@@ -103,7 +121,7 @@ class AlertsSettingsServiceImpl(
 
     private fun mergeHysteresis(
         base: HysteresisPatch?,
-        incoming: HysteresisPatch?
+        incoming: HysteresisPatch?,
     ): HysteresisPatch? {
         if (base == null && incoming == null) {
             return null
@@ -115,7 +133,7 @@ class AlertsSettingsServiceImpl(
 
     private fun mergeDynamic(
         base: DynamicPatch?,
-        incoming: DynamicPatch?
+        incoming: DynamicPatch?,
     ): DynamicPatch? {
         if (base == null && incoming == null) {
             return null
@@ -132,7 +150,7 @@ class AlertsSettingsServiceImpl(
 
     private fun mergeThresholds(
         base: Map<String, ThresholdsPatch>?,
-        incoming: Map<String, ThresholdsPatch>?
+        incoming: Map<String, ThresholdsPatch>?,
     ): Map<String, ThresholdsPatch>? {
         if ((base == null || base.isEmpty()) && (incoming == null || incoming.isEmpty())) {
             return null
@@ -143,11 +161,12 @@ class AlertsSettingsServiceImpl(
         }
         incoming?.forEach { (key, patch) ->
             val existing = result[key]
-            val merged = ThresholdsPatch(
-                pctFast = patch.pctFast ?: existing?.pctFast,
-                pctDay = patch.pctDay ?: existing?.pctDay,
-                volMultFast = patch.volMultFast ?: existing?.volMultFast
-            )
+            val merged =
+                ThresholdsPatch(
+                    pctFast = patch.pctFast ?: existing?.pctFast,
+                    pctDay = patch.pctDay ?: existing?.pctDay,
+                    volMultFast = patch.volMultFast ?: existing?.volMultFast,
+                )
             if (merged.pctFast == null && merged.pctDay == null && merged.volMultFast == null) {
                 result.remove(key)
             } else {
@@ -161,20 +180,21 @@ class AlertsSettingsServiceImpl(
         val quiet = quietHours?.takeIf { it.start != null || it.end != null }
         val hyst = hysteresis?.takeIf { it.enterPct != null || it.exitPct != null }
         val dyn = dynamic?.takeIf { it.enabled != null || it.min != null || it.max != null }
-        val thresholdsNormalized = thresholds
-            ?.mapNotNull { (key, patch) ->
-                val normalized = ThresholdsPatch(
-                    pctFast = patch.pctFast,
-                    pctDay = patch.pctDay,
-                    volMultFast = patch.volMultFast
-                )
-                if (normalized.pctFast == null && normalized.pctDay == null && normalized.volMultFast == null) {
-                    null
-                } else {
-                    key to normalized
-                }
-            }
-            ?.toMap()
+        val thresholdsNormalized =
+            thresholds
+                ?.mapNotNull { (key, patch) ->
+                    val normalized =
+                        ThresholdsPatch(
+                            pctFast = patch.pctFast,
+                            pctDay = patch.pctDay,
+                            volMultFast = patch.volMultFast,
+                        )
+                    if (normalized.pctFast == null && normalized.pctDay == null && normalized.volMultFast == null) {
+                        null
+                    } else {
+                        key to normalized
+                    }
+                }?.toMap()
 
         return AlertsOverridePatch(
             cooldownMinutes = cooldownMinutes,
@@ -182,16 +202,15 @@ class AlertsSettingsServiceImpl(
             quietHours = quiet,
             hysteresis = hyst,
             dynamic = dyn,
-            thresholds = thresholdsNormalized
+            thresholds = thresholdsNormalized,
         )
     }
 
-    private fun AlertsOverridePatch.isEmpty(): Boolean {
-        return cooldownMinutes == null &&
+    private fun AlertsOverridePatch.isEmpty(): Boolean =
+        cooldownMinutes == null &&
             budgetPerDay == null &&
             quietHours == null &&
             hysteresis == null &&
             dynamic == null &&
             thresholds.isNullOrEmpty()
-    }
 }

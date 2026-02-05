@@ -7,11 +7,14 @@ import kotlin.time.Duration
 
 class InMemoryDeepLinkStore(
     private val clock: Clock = Clock.systemUTC(),
-    private val maxAttempts: Int = 5
+    private val maxAttempts: Int = 5,
 ) : DeepLinkStore {
     private val entries = ConcurrentHashMap<String, Entry>()
 
-    override fun put(payload: DeepLinkPayload, ttl: Duration): String {
+    override fun put(
+        payload: DeepLinkPayload,
+        ttl: Duration,
+    ): String {
         require(ttl.isPositive()) { "ttl must be positive" }
         val expiresAt = clock.instant().plusSeconds(ttl.inWholeSeconds.coerceAtLeast(1))
         cleanupExpired(clock.instant())
@@ -47,6 +50,6 @@ class InMemoryDeepLinkStore(
 
     private data class Entry(
         val payload: DeepLinkPayload,
-        val expiresAt: Instant
+        val expiresAt: Instant,
     )
 }

@@ -1,5 +1,7 @@
 package http
 
+import common.rethrowIfFatal
+import common.runCatchingNonFatal
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.HttpClientEngineConfig
@@ -18,6 +20,10 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ThreadContextElement
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import java.io.IOException
 import java.time.Clock
 import java.time.Duration
@@ -28,17 +34,13 @@ import java.time.format.DateTimeParseException
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.ThreadContextElement
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerializationException
-import common.runCatchingNonFatal
-import common.rethrowIfFatal
 
 object HttpClients {
     private val currentService: ThreadLocal<String?> = ThreadLocal()
 
-    private class ServiceContextElement(private val service: String?) : ThreadContextElement<String?> {
+    private class ServiceContextElement(
+        private val service: String?,
+    ) : ThreadContextElement<String?> {
         override val key: CoroutineContext.Key<ServiceContextElement> get() = Key
 
         override fun updateThreadContext(context: CoroutineContext): String? {
@@ -47,7 +49,10 @@ object HttpClients {
             return previous
         }
 
-        override fun restoreThreadContext(context: CoroutineContext, oldState: String?) {
+        override fun restoreThreadContext(
+            context: CoroutineContext,
+            oldState: String?,
+        ) {
             currentService.set(oldState)
         }
 
@@ -61,11 +66,12 @@ object HttpClients {
         pool: HttpPoolConfig,
         metrics: IntegrationsMetrics,
         clock: Clock = Clock.systemUTC(),
-        engineFactory: HttpClientEngineFactory<*> = CIO
+        engineFactory: HttpClientEngineFactory<*> = CIO,
     ): HttpClient {
-        val client = HttpClient(engineFactory) {
-            configure(cfg, pool, metrics, clock)
-        }
+        val client =
+            HttpClient(engineFactory) {
+                configure(cfg, pool, metrics, clock)
+            }
         registerRetryMonitor(client, metrics)
         return client
     }
@@ -76,12 +82,13 @@ object HttpClients {
         metrics: IntegrationsMetrics,
         clock: Clock = Clock.systemUTC(),
         engineFactory: HttpClientEngineFactory<T>,
-        engineConfig: T.() -> Unit
+        engineConfig: T.() -> Unit,
     ): HttpClient {
-        val client = HttpClient(engineFactory) {
-            configure(cfg, pool, metrics, clock)
-            engine(engineConfig)
-        }
+        val client =
+            HttpClient(engineFactory) {
+                configure(cfg, pool, metrics, clock)
+                engine(engineConfig)
+            }
         registerRetryMonitor(client, metrics)
         return client
     }
@@ -90,7 +97,7 @@ object HttpClients {
         cfg: IntegrationsHttpConfig,
         pool: HttpPoolConfig,
         metrics: IntegrationsMetrics,
-        clock: Clock
+        clock: Clock,
     ) {
         metricsRef = metrics
         val retryCfg = cfg.retry
@@ -99,18 +106,20 @@ object HttpClients {
             when (this) {
                 is CIOEngineConfig -> {
                     val perRoute = pool.maxConnectionsPerRoute.coerceAtLeast(1)
-                    val totalConnections = (perRoute.toLong() * 4L)
-                        .coerceAtMost(Int.MAX_VALUE.toLong())
-                        .coerceAtLeast(4L)
-                        .toInt()
+                    val totalConnections =
+                        (perRoute.toLong() * 4L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .coerceAtLeast(4L)
+                            .toInt()
                     maxConnectionsCount = totalConnections
                     val keepAliveSeconds = pool.keepAliveSeconds
-                    val keepAliveMillis = if (keepAliveSeconds <= 0L) {
-                        0L
-                    } else {
-                        val safeSeconds = keepAliveSeconds.coerceAtMost(Long.MAX_VALUE / 1000L)
-                        safeSeconds * 1000L
-                    }
+                    val keepAliveMillis =
+                        if (keepAliveSeconds <= 0L) {
+                            0L
+                        } else {
+                            val safeSeconds = keepAliveSeconds.coerceAtMost(Long.MAX_VALUE / 1000L)
+                            safeSeconds * 1000L
+                        }
                     this.endpoint.maxConnectionsPerRoute = perRoute
                     this.endpoint.keepAliveTime = keepAliveMillis
                     this.endpoint.pipelineMaxSize = 20
@@ -137,7 +146,7 @@ object HttpClients {
                     ignoreUnknownKeys = true
                     explicitNulls = false
                     encodeDefaults = false
-                }
+                },
             )
         }
 
@@ -159,7 +168,10 @@ object HttpClients {
         install(TracePropagation)
     }
 
-    internal fun registerRetryMonitor(client: HttpClient, metrics: IntegrationsMetrics) {
+    internal fun registerRetryMonitor(
+        client: HttpClient,
+        metrics: IntegrationsMetrics,
+    ) {
         client.monitor.subscribe(HttpRequestRetryEvent) { event ->
             if (event.retryCount <= 0) return@subscribe
             val service = currentService.get() ?: "unknown"
@@ -167,7 +179,10 @@ object HttpClients {
         }
     }
 
-    suspend fun <T> measure(service: String, block: suspend () -> T): T {
+    suspend fun <T> measure(
+        service: String,
+        block: suspend () -> T,
+    ): T {
         val metrics = metricsRef ?: error("HttpClients metrics are not initialized")
         val sample = metrics.timerSample()
         return withContext(ServiceContextElement(service)) {
@@ -188,7 +203,7 @@ object HttpClients {
         attempt: Int,
         retryCfg: RetryCfg,
         metrics: IntegrationsMetrics,
-        clock: Clock
+        clock: Clock,
     ): Long {
         val service = currentService.get()
         if (retryCfg.respectRetryAfter) {
@@ -203,16 +218,20 @@ object HttpClients {
         val multiplier = 1L shl attempt.coerceAtMost(16)
         val baseDelay = retryCfg.baseBackoffMs * multiplier
         val jitterRange = retryCfg.jitterMs
-        val jitter = if (jitterRange > 0) {
-            ThreadLocalRandom.current().nextLong(-jitterRange, jitterRange + 1)
-        } else {
-            0L
-        }
+        val jitter =
+            if (jitterRange > 0) {
+                ThreadLocalRandom.current().nextLong(-jitterRange, jitterRange + 1)
+            } else {
+                0L
+            }
         val computed = baseDelay + jitter
         return if (computed < 0L) Long.MAX_VALUE else computed.coerceAtLeast(0L)
     }
 
-    private fun parseRetryAfterMillis(headerValue: String, now: Instant): Long? {
+    private fun parseRetryAfterMillis(
+        headerValue: String,
+        now: Instant,
+    ): Long? {
         headerValue.toLongOrNull()?.let { seconds ->
             if (seconds < 0) return 0L
             return TimeUnit.SECONDS.toMillis(seconds)
@@ -227,7 +246,10 @@ object HttpClients {
     }
 }
 
-sealed class HttpClientError(message: String, cause: Throwable? = null) : RuntimeException(message, cause) {
+sealed class HttpClientError(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
     abstract val category: String
     open val metricsTag: String get() = category
 
@@ -240,20 +262,22 @@ sealed class HttpClientError(message: String, cause: Throwable? = null) : Runtim
             status: HttpStatusCode,
             requestUrl: String,
             rawBody: String?,
-            origin: Throwable? = null
-        ): HttpStatusError = HttpStatusError(
-            status = status,
-            requestUrl = requestUrl,
-            bodySnippet = sanitizeSnippet(rawBody),
-            origin = origin
-        )
+            origin: Throwable? = null,
+        ): HttpStatusError =
+            HttpStatusError(
+                status = status,
+                requestUrl = requestUrl,
+                bodySnippet = sanitizeSnippet(rawBody),
+                origin = origin,
+            )
 
         private fun sanitizeSnippet(rawBody: String?): String? {
-            val normalized = rawBody
-                ?.take(MAX_RAW_SNIPPET_INPUT)
-                ?.replace(SNIPPET_NORMALIZE_REGEX, " ")
-                ?.trim()
-                .orEmpty()
+            val normalized =
+                rawBody
+                    ?.take(MAX_RAW_SNIPPET_INPUT)
+                    ?.replace(SNIPPET_NORMALIZE_REGEX, " ")
+                    ?.trim()
+                    .orEmpty()
             if (normalized.isEmpty()) return null
             if (normalized.length <= MAX_ERROR_SNIPPET) return normalized
             val limit = (MAX_ERROR_SNIPPET - 1).coerceAtLeast(0)
@@ -266,33 +290,43 @@ sealed class HttpClientError(message: String, cause: Throwable? = null) : Runtim
         val status: HttpStatusCode,
         val requestUrl: String,
         val bodySnippet: String? = null,
-        val origin: Throwable? = null
+        val origin: Throwable? = null,
     ) : HttpClientError(httpStatusMessage(status, requestUrl, bodySnippet), origin) {
         override val category: String = "http"
         override val metricsTag: String get() = status.value.toString()
     }
 
-    data class TimeoutError(val requestUrl: String?, val origin: Throwable) :
-        HttpClientError("Request timed out for ${requestUrl ?: "unknown"}", origin) {
+    data class TimeoutError(
+        val requestUrl: String?,
+        val origin: Throwable,
+    ) : HttpClientError("Request timed out for ${requestUrl ?: "unknown"}", origin) {
         override val category: String = "timeout"
     }
 
-    data class NetworkError(val requestUrl: String?, val origin: Throwable) :
-        HttpClientError("Network error for ${requestUrl ?: "unknown"}", origin) {
+    data class NetworkError(
+        val requestUrl: String?,
+        val origin: Throwable,
+    ) : HttpClientError("Network error for ${requestUrl ?: "unknown"}", origin) {
         override val category: String = "network"
     }
 
-    data class DeserializationError(val details: String, val origin: Throwable? = null) :
-        HttpClientError("Failed to deserialize response: $details", origin) {
+    data class DeserializationError(
+        val details: String,
+        val origin: Throwable? = null,
+    ) : HttpClientError("Failed to deserialize response: $details", origin) {
         override val category: String = "deserialization"
     }
 
-    data class UnexpectedError(val requestUrl: String?, val origin: Throwable) :
-        HttpClientError("Unexpected error for ${requestUrl ?: "unknown"}", origin) {
+    data class UnexpectedError(
+        val requestUrl: String?,
+        val origin: Throwable,
+    ) : HttpClientError("Unexpected error for ${requestUrl ?: "unknown"}", origin) {
         override val category: String = "unexpected"
     }
 
-    data class ValidationError(val details: String) : HttpClientError(details) {
+    data class ValidationError(
+        val details: String,
+    ) : HttpClientError(details) {
         override val category: String = "validation"
     }
 }
@@ -304,12 +338,16 @@ internal fun Throwable.toHttpClientError(): HttpClientError {
         is HttpClientError -> this
         is HttpRequestTimeoutException -> HttpClientError.TimeoutError(null, this)
         is io.ktor.client.plugins.ResponseException -> {
-            val requestUrl = runCatchingNonFatal { response.call.request.url.toString() }.getOrNull() ?: "unknown"
+            val requestUrl =
+                runCatchingNonFatal {
+                    response.call.request.url
+                        .toString()
+                }.getOrNull() ?: "unknown"
             HttpClientError.httpStatusError(
                 status = response.status,
                 requestUrl = requestUrl,
                 rawBody = null,
-                origin = this
+                origin = this,
             )
         }
         is SerializationException -> HttpClientError.DeserializationError(message ?: "serialization error", this)
@@ -322,10 +360,14 @@ typealias HttpResult<T> = Result<T>
 
 data class HttpPoolConfig(
     val maxConnectionsPerRoute: Int,
-    val keepAliveSeconds: Long
+    val keepAliveSeconds: Long,
 )
 
-private fun httpStatusMessage(status: HttpStatusCode, requestUrl: String, bodySnippet: String?): String {
+private fun httpStatusMessage(
+    status: HttpStatusCode,
+    requestUrl: String,
+    bodySnippet: String?,
+): String {
     val base = "HTTP ${status.value} for $requestUrl"
     return if (bodySnippet.isNullOrBlank()) base else "$base, body: $bodySnippet"
 }

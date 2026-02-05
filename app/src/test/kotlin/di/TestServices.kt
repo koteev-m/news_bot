@@ -2,19 +2,14 @@ package di
 
 import io.ktor.server.application.Application
 import io.ktor.util.AttributeKey
-import java.math.BigDecimal
-import java.time.Clock
-import java.time.Instant
-import java.time.LocalDate
-import java.util.UUID
 import model.FxRate
 import portfolio.errors.DomainResult
-import portfolio.model.DateRange
-import portfolio.model.Money
-import portfolio.model.ValuationMethod
 import portfolio.metrics.FxConversionResult
 import portfolio.metrics.FxConverter
 import portfolio.metrics.PortfolioMetricsService
+import portfolio.model.DateRange
+import portfolio.model.Money
+import portfolio.model.ValuationMethod
 import portfolio.service.CoingeckoPriceProvider
 import portfolio.service.FxRateRepository
 import portfolio.service.FxRateService
@@ -23,8 +18,13 @@ import portfolio.service.PricingService
 import portfolio.service.ReportService
 import portfolio.service.ValuationService
 import routes.PortfolioValuationReportServices
-import routes.quotes.Services as QuoteServices
+import java.math.BigDecimal
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.util.UUID
 import routes.Services as ValuationReportRouteServices
+import routes.quotes.Services as QuoteServices
 
 fun Application.installTestServices(overrides: Services.() -> Unit = {}) {
     val module = installPortfolioModule()
@@ -36,11 +36,12 @@ fun Application.installTestServices(overrides: Services.() -> Unit = {}) {
     val reportService = stubReportService(baseCurrency)
     val metricsService = PortfolioMetricsService(StubMetricsStorage(), StubFxConverter())
 
-    val services = Services(
-        pricingService = pricingService,
-        valuationService = valuationService,
-        reportService = reportService,
-    ).apply(overrides)
+    val services =
+        Services(
+            pricingService = pricingService,
+            valuationService = valuationService,
+            reportService = reportService,
+        ).apply(overrides)
 
     attributes.put(Services.Key, services)
     attributes.put(QuoteServices.Key, services.pricingService)
@@ -109,7 +110,10 @@ private fun stubReportService(baseCurrency: String): ReportService {
 }
 
 private class StubFxRateRepository : FxRateRepository {
-    override suspend fun findOnOrBefore(ccy: String, timestamp: Instant): FxRate? =
+    override suspend fun findOnOrBefore(
+        ccy: String,
+        timestamp: Instant,
+    ): FxRate? =
         FxRate(
             ccy = ccy.uppercase(),
             ts = Instant.EPOCH,
@@ -118,42 +122,44 @@ private class StubFxRateRepository : FxRateRepository {
         )
 }
 
-private class StubPriceProvider(private val value: Money) : MoexPriceProvider, CoingeckoPriceProvider {
-    override suspend fun closePrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
-        DomainResult.success(value)
+private class StubPriceProvider(
+    private val value: Money,
+) : MoexPriceProvider,
+    CoingeckoPriceProvider {
+    override suspend fun closePrice(
+        instrumentId: Long,
+        on: LocalDate,
+    ): DomainResult<Money?> = DomainResult.success(value)
 
-    override suspend fun lastPrice(instrumentId: Long, on: LocalDate): DomainResult<Money?> =
-        DomainResult.success(value)
+    override suspend fun lastPrice(
+        instrumentId: Long,
+        on: LocalDate,
+    ): DomainResult<Money?> = DomainResult.success(value)
 }
 
 private class StubValuationStorage : ValuationService.Storage {
     override suspend fun listPositions(
-        portfolioId: UUID
-    ): DomainResult<List<ValuationService.Storage.PositionSnapshot>> =
-        DomainResult.success(emptyList())
+        portfolioId: UUID,
+    ): DomainResult<List<ValuationService.Storage.PositionSnapshot>> = DomainResult.success(emptyList())
 
     override suspend fun latestValuationBefore(
         portfolioId: UUID,
         date: LocalDate,
-    ): DomainResult<ValuationService.Storage.ValuationRecord?> =
-        DomainResult.success(null)
+    ): DomainResult<ValuationService.Storage.ValuationRecord?> = DomainResult.success(null)
 
     override suspend fun upsertValuation(
         record: ValuationService.Storage.ValuationRecord,
-    ): DomainResult<ValuationService.Storage.ValuationRecord> =
-        DomainResult.success(record)
+    ): DomainResult<ValuationService.Storage.ValuationRecord> = DomainResult.success(record)
 }
 
 private class StubMetricsStorage : PortfolioMetricsService.Storage {
     override suspend fun listValuations(
-        portfolioId: UUID
-    ): DomainResult<List<PortfolioMetricsService.Storage.ValuationRecord>> =
-        DomainResult.success(emptyList())
+        portfolioId: UUID,
+    ): DomainResult<List<PortfolioMetricsService.Storage.ValuationRecord>> = DomainResult.success(emptyList())
 
     override suspend fun listTrades(
-        portfolioId: UUID
-    ): DomainResult<List<PortfolioMetricsService.Storage.TradeRecord>> =
-        DomainResult.success(emptyList())
+        portfolioId: UUID,
+    ): DomainResult<List<PortfolioMetricsService.Storage.TradeRecord>> = DomainResult.success(emptyList())
 }
 
 private class StubFxConverter : FxConverter {
@@ -172,24 +178,20 @@ private class StubReportStorage : ReportService.Storage {
     override suspend fun listValuations(
         portfolioId: UUID,
         range: DateRange,
-    ): DomainResult<List<ReportService.Storage.ValuationRecord>> =
-        DomainResult.success(emptyList())
+    ): DomainResult<List<ReportService.Storage.ValuationRecord>> = DomainResult.success(emptyList())
 
     override suspend fun latestValuationBefore(
         portfolioId: UUID,
         date: LocalDate,
-    ): DomainResult<ReportService.Storage.ValuationRecord?> =
-        DomainResult.success(null)
+    ): DomainResult<ReportService.Storage.ValuationRecord?> = DomainResult.success(null)
 
     override suspend fun listRealizedPnl(
         portfolioId: UUID,
         range: DateRange,
-    ): DomainResult<List<ReportService.Storage.RealizedTrade>> =
-        DomainResult.success(emptyList())
+    ): DomainResult<List<ReportService.Storage.RealizedTrade>> = DomainResult.success(emptyList())
 
     override suspend fun listHoldings(
         portfolioId: UUID,
         asOf: LocalDate,
-    ): DomainResult<List<ReportService.Storage.Holding>> =
-        DomainResult.success(emptyList())
+    ): DomainResult<List<ReportService.Storage.Holding>> = DomainResult.success(emptyList())
 }

@@ -1,43 +1,83 @@
 package growth
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
+import common.runCatchingNonFatal
 import kotlinx.serialization.json.JsonObject
 import tenancy.TenantContext
-import common.runCatchingNonFatal
 
 interface SegmentProvider {
-    suspend fun fetchUserIds(segment: Segment, tenantId: Long): List<Long>
+    suspend fun fetchUserIds(
+        segment: Segment,
+        tenantId: Long,
+    ): List<Long>
 }
 
 interface DeliveryRepo {
-    suspend fun frequencyCountToday(userId: Long, tenantId: Long, channel: String): Int
-    suspend fun isSuppressed(userId: Long, tenantId: Long, channel: String): Boolean
-    suspend fun enqueue(campaignId: Long?, journeyId: Long?, userId: Long, tenantId: Long, channel: String, payload: JsonObject?): Long
+    suspend fun frequencyCountToday(
+        userId: Long,
+        tenantId: Long,
+        channel: String,
+    ): Int
+
+    suspend fun isSuppressed(
+        userId: Long,
+        tenantId: Long,
+        channel: String,
+    ): Boolean
+
+    suspend fun enqueue(
+        campaignId: Long?,
+        journeyId: Long?,
+        userId: Long,
+        tenantId: Long,
+        channel: String,
+        payload: JsonObject?,
+    ): Long
+
     suspend fun markSent(deliveryId: Long)
-    suspend fun markFailed(deliveryId: Long, reason: String)
+
+    suspend fun markFailed(
+        deliveryId: Long,
+        reason: String,
+    )
 }
 
 interface Messenger {
-    suspend fun sendTelegram(userId: Long, text: String, locale: String): Boolean
+    suspend fun sendTelegram(
+        userId: Long,
+        text: String,
+        locale: String,
+    ): Boolean
     // email/webhook можно добавить при необходимости
 }
 
-class Caps(val perDay: Int, val quietFromHour: Int, val quietToHour: Int)
+class Caps(
+    val perDay: Int,
+    val quietFromHour: Int,
+    val quietToHour: Int,
+)
 
 class GrowthEngine(
     private val deliveryRepo: DeliveryRepo,
     private val segmentProvider: SegmentProvider,
-    private val messenger: Messenger
+    private val messenger: Messenger,
 ) {
-
-    suspend fun runCampaign(ctx: TenantContext, campaign: Campaign, template: Template, segment: Segment) {
+    suspend fun runCampaign(
+        ctx: TenantContext,
+        campaign: Campaign,
+        template: Template,
+        segment: Segment,
+    ) {
         val users = segmentProvider.fetchUserIds(segment, ctx.tenant.tenantId)
-        val cap = Caps(campaign.capDay, campaign.quietFrom.substringBefore(":").toInt(), campaign.quietTo.substringBefore(":").toInt())
-        val nowHour = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).hour
+        val cap =
+            Caps(
+                campaign.capDay,
+                campaign.quietFrom.substringBefore(":").toInt(),
+                campaign.quietTo.substringBefore(":").toInt(),
+            )
+        val nowHour =
+            java.time.OffsetDateTime
+                .now(java.time.ZoneOffset.UTC)
+                .hour
         if (isQuiet(nowHour, cap)) return
 
         for (u in users) {
@@ -53,12 +93,17 @@ class GrowthEngine(
         }
     }
 
-    private fun isQuiet(hour: Int, cap: Caps): Boolean {
+    private fun isQuiet(
+        hour: Int,
+        cap: Caps,
+    ): Boolean {
         val from = cap.quietFromHour
         val to = cap.quietToHour
         return if (from < to) (hour >= from && hour < to) else (hour >= from || hour < to)
     }
 
-    private fun render(tpl: String, ctx: Map<String, String>) =
-        ctx.entries.fold(tpl) { acc, (k, v) -> acc.replace("{{"+k+"}}", v) }
+    private fun render(
+        tpl: String,
+        ctx: Map<String, String>,
+    ) = ctx.entries.fold(tpl) { acc, (k, v) -> acc.replace("{{" + k + "}}", v) }
 }

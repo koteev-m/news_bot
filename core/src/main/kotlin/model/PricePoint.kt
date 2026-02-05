@@ -1,9 +1,9 @@
 package model
 
-import java.math.BigDecimal
-import java.time.Instant
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
+import java.math.BigDecimal
+import java.time.Instant
 
 @Serializable
 data class PricePoint(
@@ -11,5 +11,5 @@ data class PricePoint(
     @Contextual val ts: Instant,
     @Contextual val price: BigDecimal,
     val ccy: String,
-    val source: String
+    val source: String,
 )

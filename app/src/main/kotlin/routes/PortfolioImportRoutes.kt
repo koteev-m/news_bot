@@ -1,5 +1,6 @@
 package routes
 
+import common.runCatchingNonFatal
 import db.DatabaseFactory.dbQuery
 import di.portfolioModule
 import integrations.integrationsModule
@@ -26,9 +27,25 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import io.ktor.util.AttributeKey
 import io.ktor.utils.io.cancel
+import io.ktor.utils.io.core.readBytes
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import io.ktor.utils.io.readRemaining
-import io.ktor.utils.io.core.readBytes
+import kotlinx.coroutines.CancellationException
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.select
+import org.slf4j.Logger
+import portfolio.errors.DomainResult
+import portfolio.service.CsvImportService
+import repo.InstrumentRepository
+import repo.TradeRepository
+import repo.tables.TradesTable
+import routes.dto.ImportByUrlRequest
+import routes.dto.ImportFailedItem
+import routes.dto.ImportReportResponse
+import security.RateLimitConfig
+import security.RateLimiter
+import security.userIdOrNull
 import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
 import java.io.Reader
@@ -42,29 +59,13 @@ import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
-import kotlinx.coroutines.CancellationException
-import portfolio.errors.DomainResult
-import portfolio.service.CsvImportService
-import repo.InstrumentRepository
-import repo.TradeRepository
-import repo.tables.TradesTable
-import routes.dto.ImportByUrlRequest
-import routes.dto.ImportFailedItem
-import routes.dto.ImportReportResponse
-import security.RateLimitConfig
-import security.RateLimiter
-import security.userIdOrNull
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.select
-import org.slf4j.Logger
-import common.runCatchingNonFatal
 
 private const val MAX_LINES = 100_000
 private const val MAX_LINE_LENGTH = 64_000
 private const val SNIFF_PREVIEW_LIMIT = 2_048
 private const val CSV_ACCEPT_HEADER = "text/csv, text/plain; q=0.8, */*; q=0.1"
 
+@Suppress("ThrowsCount", "LoopWithTooManyJumpStatements")
 fun Route.portfolioImportRoutes() {
     post("/api/portfolio/{id}/trades/import/csv") {
         val subject = call.userIdOrNull
@@ -81,17 +82,19 @@ fun Route.portfolioImportRoutes() {
 
         val deps = call.importDeps()
         val uploadSettings = deps.uploadSettings
-        val multipart = try {
-            call.receiveMultipart()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (err: Error) {
-            throw err
-        } catch (cause: Throwable) {
-            call.application.environment.log.error("csv_multipart_error", cause)
-            call.respondInternal()
-            return@post
-        }
+        val multipart =
+            try {
+                call.receiveMultipart()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
+            } catch (cause: Throwable) {
+                call.application.environment.log
+                    .error("csv_multipart_error", cause)
+                call.respondInternal()
+                return@post
+            }
 
         var processed = false
         while (true) {
@@ -119,12 +122,13 @@ fun Route.portfolioImportRoutes() {
 
                     val importResult: DomainResult<CsvImportService.ImportReport>
                     try {
-                        importResult = part.provider().toInputStream().use { stream ->
-                            val reader = stream.toUtf8Reader()
-                            LineLimitingReader(reader, MAX_LINES, MAX_LINE_LENGTH).use { limitingReader ->
-                                deps.importCsv(portfolioId, limitingReader)
+                        importResult =
+                            part.provider().toInputStream().use { stream ->
+                                val reader = stream.toUtf8Reader()
+                                LineLimitingReader(reader, MAX_LINES, MAX_LINE_LENGTH).use { limitingReader ->
+                                    deps.importCsv(portfolioId, limitingReader)
+                                }
                             }
-                        }
                     } catch (limit: LineLimitExceededException) {
                         call.respondPayloadTooLarge(uploadSettings.csvMaxBytes)
                         part.dispose()
@@ -141,7 +145,8 @@ fun Route.portfolioImportRoutes() {
                         throw err
                     } catch (cause: Throwable) {
                         part.dispose()
-                        call.application.environment.log.error("csv_import_failed", cause)
+                        call.application.environment.log
+                            .error("csv_import_failed", cause)
                         call.respondInternal()
                         return@post
                     }
@@ -190,16 +195,17 @@ fun Route.portfolioImportRoutes() {
             return@post
         }
 
-        val request = try {
-            call.receive<ImportByUrlRequest>()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (err: Error) {
-            throw err
-        } catch (_: Throwable) {
-            call.respondBadRequest(listOf("invalid json"))
-            return@post
-        }
+        val request =
+            try {
+                call.receive<ImportByUrlRequest>()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
+            } catch (_: Throwable) {
+                call.respondBadRequest(listOf("invalid json"))
+                return@post
+            }
 
         val rawUrl = request.url.trim()
         if (rawUrl.isEmpty()) {
@@ -214,24 +220,27 @@ fun Route.portfolioImportRoutes() {
 
         val deps = call.importDeps()
         val uploadSettings = deps.uploadSettings
-        val remoteCsv = try {
-            deps.downloadCsv(rawUrl, uploadSettings.csvMaxBytes)
-        } catch (tooLarge: RemoteCsvTooLargeException) {
-            call.respondPayloadTooLarge(tooLarge.limit)
-            return@post
-        } catch (download: RemoteCsvDownloadException) {
-            call.application.environment.log.warn("csv_download_failed: {}", download.code)
-            call.respondInternal()
-            return@post
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (err: Error) {
-            throw err
-        } catch (cause: Throwable) {
-            call.application.environment.log.error("csv_download_error", cause)
-            call.respondInternal()
-            return@post
-        }
+        val remoteCsv =
+            try {
+                deps.downloadCsv(rawUrl, uploadSettings.csvMaxBytes)
+            } catch (tooLarge: RemoteCsvTooLargeException) {
+                call.respondPayloadTooLarge(tooLarge.limit)
+                return@post
+            } catch (download: RemoteCsvDownloadException) {
+                call.application.environment.log
+                    .warn("csv_download_failed: {}", download.code)
+                call.respondInternal()
+                return@post
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
+            } catch (cause: Throwable) {
+                call.application.environment.log
+                    .error("csv_download_error", cause)
+                call.respondInternal()
+                return@post
+            }
 
         val contentType = remoteCsv.contentType
         val isProbablyCsv = looksLikeCsv(remoteCsv.bytes)
@@ -263,7 +272,8 @@ fun Route.portfolioImportRoutes() {
         } catch (err: Error) {
             throw err
         } catch (cause: Throwable) {
-            call.application.environment.log.error("csv_import_failed", cause)
+            call.application.environment.log
+                .error("csv_import_failed", cause)
             call.respondInternal()
             return@post
         }
@@ -275,22 +285,25 @@ fun Route.portfolioImportRoutes() {
 private suspend fun ApplicationCall.respondImportResult(result: DomainResult<CsvImportService.ImportReport>) {
     result.fold(
         onSuccess = { report ->
-            val response = ImportReportResponse(
-                inserted = report.inserted,
-                skippedDuplicates = report.skippedDuplicates,
-                failed = report.failed.map { failure ->
-                    ImportFailedItem(line = failure.lineNumber, error = failure.message)
-                },
-            )
+            val response =
+                ImportReportResponse(
+                    inserted = report.inserted,
+                    skippedDuplicates = report.skippedDuplicates,
+                    failed =
+                    report.failed.map { failure ->
+                        ImportFailedItem(line = failure.lineNumber, error = failure.message)
+                    },
+                )
             respond(response)
         },
         onFailure = { error -> handleDomainError(error) },
     )
 }
 
-private fun String?.toPortfolioIdOrNull(): UUID? = this?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
-    runCatchingNonFatal { UUID.fromString(value) }.getOrNull()
-}
+private fun String?.toPortfolioIdOrNull(): UUID? =
+    this?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
+        runCatchingNonFatal { UUID.fromString(value) }.getOrNull()
+    }
 
 internal val PortfolioImportDepsKey = AttributeKey<PortfolioImportDeps>("PortfolioImportDeps")
 
@@ -303,7 +316,9 @@ internal data class PortfolioImportDeps(
     val downloadCsv: suspend (String, Long) -> RemoteCsv,
 )
 
-internal class ImportByUrlRateLimiterHolder(private val clock: Clock) {
+internal class ImportByUrlRateLimiterHolder(
+    private val clock: Clock,
+) {
     private val limiters = ConcurrentHashMap<RateLimitConfig, RateLimiter>()
 
     fun limiter(config: RateLimitConfig): RateLimiter = limiters.computeIfAbsent(config) { RateLimiter(it, clock) }
@@ -321,13 +336,14 @@ internal data class RemoteCsv(
 
 private fun Application.importByUrlRateLimiter(config: RateLimitConfig): RateLimiter {
     val attributes = attributes
-    val holder = if (attributes.contains(ImportByUrlLimiterHolderKey)) {
-        attributes[ImportByUrlLimiterHolderKey]
-    } else {
-        val created = ImportByUrlRateLimiterHolder(Clock.systemUTC())
-        attributes.put(ImportByUrlLimiterHolderKey, created)
-        created
-    }
+    val holder =
+        if (attributes.contains(ImportByUrlLimiterHolderKey)) {
+            attributes[ImportByUrlLimiterHolderKey]
+        } else {
+            val created = ImportByUrlRateLimiterHolder(Clock.systemUTC())
+            attributes.put(ImportByUrlLimiterHolderKey, created)
+            created
+        }
     return holder.limiter(config)
 }
 
@@ -343,13 +359,15 @@ private fun ApplicationCall.rateLimitSubject(userId: String?): String {
     if (userId != null) {
         return userId
     }
-    val forwarded = request.headers[HttpHeaders.XForwardedFor]
-        ?.split(',')
-        ?.map { it.trim() }
-        ?.firstOrNull { it.isNotEmpty() }
-    val remote = forwarded
-        ?: request.headers["X-Real-IP"]?.trim()?.takeIf { it.isNotEmpty() }
-        ?: request.headers[HttpHeaders.Host]?.substringBefore(':')
+    val forwarded =
+        request.headers[HttpHeaders.XForwardedFor]
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.firstOrNull { it.isNotEmpty() }
+    val remote =
+        forwarded
+            ?: request.headers["X-Real-IP"]?.trim()?.takeIf { it.isNotEmpty() }
+            ?: request.headers[HttpHeaders.Host]?.substringBefore(':')
     return remote?.takeIf { it.isNotBlank() } ?: "anonymous"
 }
 
@@ -378,17 +396,19 @@ private fun ApplicationCall.importDeps(): PortfolioImportDeps {
     val portfolioService = module.services.portfolioService
     val valuationMethod = module.settings.portfolio.defaultValuationMethod
     val settings = UploadSettings.fromConfig(application.environment.config)
-    val importService = CsvImportService(
-        instrumentResolver = DatabaseInstrumentResolver(instrumentRepository),
-        tradeLookup = DatabaseTradeLookup(tradeRepository),
-        portfolioService = portfolioService,
-    )
+    val importService =
+        CsvImportService(
+            instrumentResolver = DatabaseInstrumentResolver(instrumentRepository),
+            tradeLookup = DatabaseTradeLookup(tradeRepository),
+            portfolioService = portfolioService,
+        )
     val downloader = HttpCsvFetcher(integrations.httpClient, application.environment.log)
-    val deps = PortfolioImportDeps(
-        importCsv = { portfolioId, reader -> importService.import(portfolioId, reader, valuationMethod) },
-        uploadSettings = settings,
-        downloadCsv = { url, limit -> downloader.fetch(url, limit) },
-    )
+    val deps =
+        PortfolioImportDeps(
+            importCsv = { portfolioId, reader -> importService.import(portfolioId, reader, valuationMethod) },
+            uploadSettings = settings,
+            downloadCsv = { url, limit -> downloader.fetch(url, limit) },
+        )
     attributes.put(PortfolioImportDepsKey, deps)
     return deps
 }
@@ -401,11 +421,12 @@ internal data class UploadSettings(
 
     companion object {
         private const val DEFAULT_MAX_BYTES = 1_048_576L
-        private val DEFAULT_ALLOWED = setOf(
-            ContentType.Text.CSV,
-            ContentType.Application.OctetStream,
-            ContentType.parse("application/vnd.ms-excel"),
-        )
+        private val DEFAULT_ALLOWED =
+            setOf(
+                ContentType.Text.CSV,
+                ContentType.Application.OctetStream,
+                ContentType.parse("application/vnd.ms-excel"),
+            )
 
         fun fromConfig(config: ApplicationConfig): UploadSettings {
             val uploadConfig = config.configOrNull("upload")
@@ -430,9 +451,11 @@ private fun ApplicationConfig.contentTypeSet(name: String): Set<ContentType>? {
 }
 
 private fun java.io.InputStream.toUtf8Reader(): Reader {
-    val decoder = Charsets.UTF_8.newDecoder()
-        .onMalformedInput(CodingErrorAction.REPORT)
-        .onUnmappableCharacter(CodingErrorAction.REPORT)
+    val decoder =
+        Charsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
     return InputStreamReader(this, decoder)
 }
 
@@ -446,7 +469,11 @@ private class LineLimitingReader(
     private var lastWasCarriageReturn = false
     private var sawAnyCharacter = false
 
-    override fun read(cbuf: CharArray, off: Int, len: Int): Int {
+    override fun read(
+        cbuf: CharArray,
+        off: Int,
+        len: Int,
+    ): Int {
         val read = delegate.read(cbuf, off, len)
         if (read <= 0) {
             return read
@@ -480,12 +507,13 @@ private class LineLimitingReader(
     }
 
     override fun close() {
-        val effectiveLines = when {
-            !sawAnyCharacter && lineCount == 0 -> 0
-            currentLineLength > 0 -> lineCount + 1
-            lastWasCarriageReturn -> lineCount
-            else -> lineCount
-        }
+        val effectiveLines =
+            when {
+                !sawAnyCharacter && lineCount == 0 -> 0
+                currentLineLength > 0 -> lineCount + 1
+                lastWasCarriageReturn -> lineCount
+                else -> lineCount
+            }
         if (effectiveLines > maxLines) {
             throw LineLimitExceededException()
         }
@@ -502,9 +530,14 @@ private class LineLimitingReader(
 
 private class LineLimitExceededException : RuntimeException()
 
-internal class RemoteCsvTooLargeException(val limit: Long) : RuntimeException()
+internal class RemoteCsvTooLargeException(
+    val limit: Long,
+) : RuntimeException()
 
-internal class RemoteCsvDownloadException(val code: String, cause: Throwable? = null) : RuntimeException(code, cause)
+internal class RemoteCsvDownloadException(
+    val code: String,
+    cause: Throwable? = null,
+) : RuntimeException(code, cause)
 
 private fun looksLikeCsv(bytes: ByteArray): Boolean {
     val preview = decodePreview(bytes) ?: return false
@@ -517,9 +550,11 @@ private fun decodePreview(bytes: ByteArray): String? {
     if (bytes.isEmpty()) return null
     val size = min(bytes.size, SNIFF_PREVIEW_LIMIT)
     val buffer = ByteBuffer.wrap(bytes, 0, size)
-    val decoder = Charsets.UTF_8.newDecoder()
-        .onMalformedInput(CodingErrorAction.REPORT)
-        .onUnmappableCharacter(CodingErrorAction.REPORT)
+    val decoder =
+        Charsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
     return runCatchingNonFatal { decoder.decode(buffer).toString() }.getOrNull()
 }
 
@@ -527,26 +562,31 @@ private class HttpCsvFetcher(
     private val client: HttpClient,
     private val logger: Logger,
 ) {
-    suspend fun fetch(url: String, limit: Long): RemoteCsv {
-        val response = try {
-            client.get(url) {
-                header(HttpHeaders.Accept, CSV_ACCEPT_HEADER)
+    @Suppress("ThrowsCount")
+    suspend fun fetch(
+        url: String,
+        limit: Long,
+    ): RemoteCsv {
+        val response =
+            try {
+                client.get(url) {
+                    header(HttpHeaders.Accept, CSV_ACCEPT_HEADER)
+                }
+            } catch (timeout: HttpRequestTimeoutException) {
+                throw RemoteCsvDownloadException("timeout", timeout)
+            } catch (redirect: RedirectResponseException) {
+                throw RemoteCsvDownloadException("http_${redirect.response.status.value}", redirect)
+            } catch (clientError: ClientRequestException) {
+                throw RemoteCsvDownloadException("http_${clientError.response.status.value}", clientError)
+            } catch (serverError: ServerResponseException) {
+                throw RemoteCsvDownloadException("http_${serverError.response.status.value}", serverError)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (err: Error) {
+                throw err
+            } catch (cause: Throwable) {
+                throw RemoteCsvDownloadException("network", cause)
             }
-        } catch (timeout: HttpRequestTimeoutException) {
-            throw RemoteCsvDownloadException("timeout", timeout)
-        } catch (redirect: RedirectResponseException) {
-            throw RemoteCsvDownloadException("http_${redirect.response.status.value}", redirect)
-        } catch (clientError: ClientRequestException) {
-            throw RemoteCsvDownloadException("http_${clientError.response.status.value}", clientError)
-        } catch (serverError: ServerResponseException) {
-            throw RemoteCsvDownloadException("http_${serverError.response.status.value}", serverError)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (err: Error) {
-            throw err
-        } catch (cause: Throwable) {
-            throw RemoteCsvDownloadException("network", cause)
-        }
 
         val channel = response.bodyAsChannel()
         try {
@@ -572,7 +612,10 @@ private class HttpCsvFetcher(
         }
     }
 
-    private suspend fun readBytesLimited(channel: io.ktor.utils.io.ByteReadChannel, limit: Long): ByteArray {
+    private suspend fun readBytesLimited(
+        channel: io.ktor.utils.io.ByteReadChannel,
+        limit: Long,
+    ): ByteArray {
         val packet = channel.readRemaining(limit + 1)
         val bytes = packet.readBytes()
         if (bytes.size > limit) {
@@ -590,18 +633,20 @@ private class DatabaseInstrumentResolver(
         exchange: String,
         board: String?,
         symbol: String,
-    ): DomainResult<CsvImportService.InstrumentRef?> = runCatchingNonFatal {
-        repository.findBySymbol(exchange, board, symbol)?.let { CsvImportService.InstrumentRef(it.instrumentId) }
-    }
+    ): DomainResult<CsvImportService.InstrumentRef?> =
+        runCatchingNonFatal {
+            repository.findBySymbol(exchange, board, symbol)?.let { CsvImportService.InstrumentRef(it.instrumentId) }
+        }
 
     override suspend fun findByAlias(
         alias: String,
         source: String,
-    ): DomainResult<CsvImportService.InstrumentRef?> = runCatchingNonFatal {
-        repository.findAlias(alias, source)?.let { aliasEntity ->
-            repository.findById(aliasEntity.instrumentId)?.let { CsvImportService.InstrumentRef(it.instrumentId) }
+    ): DomainResult<CsvImportService.InstrumentRef?> =
+        runCatchingNonFatal {
+            repository.findAlias(alias, source)?.let { aliasEntity ->
+                repository.findById(aliasEntity.instrumentId)?.let { CsvImportService.InstrumentRef(it.instrumentId) }
+            }
         }
-    }
 }
 
 private class DatabaseTradeLookup(
@@ -610,25 +655,26 @@ private class DatabaseTradeLookup(
     override suspend fun existsByExternalId(
         portfolioId: UUID,
         externalId: String,
-    ): DomainResult<Boolean> = runCatchingNonFatal {
-        repository.findByExternalId(externalId)?.portfolioId == portfolioId
-    }
-
-    override suspend fun existsBySoftKey(key: CsvImportService.SoftTradeKey): DomainResult<Boolean> = runCatchingNonFatal {
-        dbQuery {
-            TradesTable
-                .select {
-                    (TradesTable.portfolioId eq key.portfolioId) and
-                        (TradesTable.instrumentId eq key.instrumentId) and
-                        (TradesTable.datetime eq key.executedAt.toUtcTimestamp()) and
-                        (TradesTable.side eq key.side.name) and
-                        (TradesTable.quantity eq key.quantity) and
-                        (TradesTable.price eq key.price)
-                }
-                .limit(1)
-                .any()
+    ): DomainResult<Boolean> =
+        runCatchingNonFatal {
+            repository.findByExternalId(externalId)?.portfolioId == portfolioId
         }
-    }
+
+    override suspend fun existsBySoftKey(key: CsvImportService.SoftTradeKey): DomainResult<Boolean> =
+        runCatchingNonFatal {
+            dbQuery {
+                TradesTable
+                    .select {
+                        (TradesTable.portfolioId eq key.portfolioId) and
+                            (TradesTable.instrumentId eq key.instrumentId) and
+                            (TradesTable.datetime eq key.executedAt.toUtcTimestamp()) and
+                            (TradesTable.side eq key.side.name) and
+                            (TradesTable.quantity eq key.quantity) and
+                            (TradesTable.price eq key.price)
+                    }.limit(1)
+                    .any()
+            }
+        }
 }
 
 private fun Instant.toUtcTimestamp(): OffsetDateTime = OffsetDateTime.ofInstant(this, ZoneOffset.UTC)

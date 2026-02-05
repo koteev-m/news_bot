@@ -1,5 +1,6 @@
 package demo
 
+import common.runCatchingNonFatal
 import db.DatabaseFactory
 import db.tables.PortfoliosTable
 import db.tables.TradesTable
@@ -10,17 +11,16 @@ import io.ktor.server.application.call
 import io.ktor.server.application.log
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
-import io.ktor.server.routing.route
 import io.ktor.server.routing.application
 import io.ktor.server.routing.post
-import java.nio.file.Files
-import java.nio.file.Paths
+import io.ktor.server.routing.route
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.select
-import common.runCatchingNonFatal
+import java.nio.file.Files
+import java.nio.file.Paths
 
 private const val DEMO_USER_TG_ID = 10001L
 private const val DEMO_PORTFOLIO_NAME = "Demo RUB"
@@ -45,8 +45,8 @@ fun Route.demoRoutes() {
                     HttpStatusCode.Forbidden,
                     mapOf(
                         "ok" to false,
-                        "hint" to "Set DEMO_RESET_ENABLE=true to allow demo reset"
-                    )
+                        "hint" to "Set DEMO_RESET_ENABLE=true to allow demo reset",
+                    ),
                 )
                 return@post
             }
@@ -58,8 +58,8 @@ fun Route.demoRoutes() {
                     HttpStatusCode.InternalServerError,
                     mapOf(
                         "ok" to false,
-                        "hint" to "Reset failed: ${result.exceptionOrNull()?.message ?: "unexpected error"}"
-                    )
+                        "hint" to "Reset failed: ${result.exceptionOrNull()?.message ?: "unexpected error"}",
+                    ),
                 )
                 return@post
             }
@@ -74,7 +74,9 @@ private fun currentProfile(app: Application): String {
     if (!envValue.isNullOrBlank()) {
         return envValue
     }
-    return app.environment.config.propertyOrNull("ktor.environment")?.getString() ?: "dev"
+    return app.environment.config
+        .propertyOrNull("ktor.environment")
+        ?.getString() ?: "dev"
 }
 
 private suspend fun runSeedScriptOrCheck(app: Application): Pair<HttpStatusCode, Map<String, Any>> {
@@ -83,73 +85,80 @@ private suspend fun runSeedScriptOrCheck(app: Application): Pair<HttpStatusCode,
 
     if (!Files.isRegularFile(scriptPath)) {
         val seeded = hasDemoData()
-        return HttpStatusCode.OK to mapOf(
-            "ok" to seeded,
-            "hint" to "Seed script missing. Run tools/demo/seed.sh manually."
-        )
+        return HttpStatusCode.OK to
+            mapOf(
+                "ok" to seeded,
+                "hint" to "Seed script missing. Run tools/demo/seed.sh manually.",
+            )
     }
 
     if (!Files.isExecutable(scriptPath)) {
         val seeded = hasDemoData()
-        return HttpStatusCode.OK to mapOf(
-            "ok" to seeded,
-            "hint" to "Make tools/demo/seed.sh executable and rerun"
-        )
+        return HttpStatusCode.OK to
+            mapOf(
+                "ok" to seeded,
+                "hint" to "Make tools/demo/seed.sh executable and rerun",
+            )
     }
 
-    val execution = runCatchingNonFatal {
-        withContext(Dispatchers.IO) {
-            val process = ProcessBuilder(scriptPath.toAbsolutePath().toString())
-                .directory(projectRoot.toFile())
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            val exit = process.waitFor()
-            exit to output.trim()
+    val execution =
+        runCatchingNonFatal {
+            withContext(Dispatchers.IO) {
+                val process =
+                    ProcessBuilder(scriptPath.toAbsolutePath().toString())
+                        .directory(projectRoot.toFile())
+                        .redirectErrorStream(true)
+                        .start()
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                val exit = process.waitFor()
+                exit to output.trim()
+            }
         }
-    }
 
     if (execution.isFailure) {
         app.log.warn("demo seed script failed to start", execution.exceptionOrNull())
         val seeded = hasDemoData()
         val reason = execution.exceptionOrNull()?.message ?: "spawn error"
-        return HttpStatusCode.OK to mapOf(
-            "ok" to seeded,
-            "hint" to "Could not execute seed.sh: $reason"
-        )
+        return HttpStatusCode.OK to
+            mapOf(
+                "ok" to seeded,
+                "hint" to "Could not execute seed.sh: $reason",
+            )
     }
 
     val (exitCode, output) = execution.getOrThrow()
     if (exitCode == 0) {
-        return HttpStatusCode.OK to mapOf(
-            "ok" to true,
-            "hint" to "seed.sh executed successfully"
-        )
+        return HttpStatusCode.OK to
+            mapOf(
+                "ok" to true,
+                "hint" to "seed.sh executed successfully",
+            )
     }
 
     app.log.warn("demo seed script exited with code {}", exitCode)
     if (output.isNotEmpty()) {
         app.log.warn(output)
     }
-    return HttpStatusCode.InternalServerError to mapOf(
-        "ok" to false,
-        "hint" to "seed.sh failed with exit $exitCode"
-    )
+    return HttpStatusCode.InternalServerError to
+        mapOf(
+            "ok" to false,
+            "hint" to "seed.sh failed with exit $exitCode",
+        )
 }
 
-private suspend fun hasDemoData(): Boolean = DatabaseFactory.dbQuery {
-    TradesTable
-        .join(PortfoliosTable, JoinType.INNER, additionalConstraint = {
-            TradesTable.portfolioId eq PortfoliosTable.portfolioId
-        })
-        .join(UsersTable, JoinType.INNER, additionalConstraint = { PortfoliosTable.userId eq UsersTable.userId })
-        .select {
-            (UsersTable.tgUserId eq DEMO_USER_TG_ID) and (PortfoliosTable.name eq DEMO_PORTFOLIO_NAME)
-        }
-        .limit(1)
-        .toList()
-        .isNotEmpty()
-}
+private suspend fun hasDemoData(): Boolean =
+    DatabaseFactory.dbQuery {
+        TradesTable
+            .join(PortfoliosTable, JoinType.INNER, additionalConstraint = {
+                TradesTable.portfolioId eq PortfoliosTable.portfolioId
+            })
+            .join(UsersTable, JoinType.INNER, additionalConstraint = { PortfoliosTable.userId eq UsersTable.userId })
+            .select {
+                (UsersTable.tgUserId eq DEMO_USER_TG_ID) and (PortfoliosTable.name eq DEMO_PORTFOLIO_NAME)
+            }.limit(1)
+            .toList()
+            .isNotEmpty()
+    }
 
 private fun isResetAllowed(): Boolean {
     val raw = System.getenv("DEMO_RESET_ENABLE") ?: return false
@@ -174,7 +183,7 @@ private suspend fun truncateDemoData() {
                 portfolios,
                 users
             RESTART IDENTITY CASCADE
-            """.trimIndent()
+            """.trimIndent(),
         )
     }
 }

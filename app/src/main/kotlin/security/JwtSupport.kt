@@ -31,15 +31,29 @@ object JwtSupport {
         val audience = securityConfig.property(AUDIENCE_PROPERTY).getString().trim()
         val realm = securityConfig.property(REALM_PROPERTY).getString().trim()
 
-        val primarySecret = securityConfig.propertyOrNull(SECRET_PRIMARY_PROPERTY)?.getString()?.trim()
-            ?.takeIf { it.isNotEmpty() }
-        val legacySecret = securityConfig.propertyOrNull(SECRET_PROPERTY)?.getString()?.trim()
-            ?.takeIf { it.isNotEmpty() }
-        val secret = primarySecret ?: legacySecret
-            ?: throw IllegalArgumentException("security.$SECRET_PRIMARY_PROPERTY must be set")
+        val primarySecret =
+            securityConfig
+                .propertyOrNull(SECRET_PRIMARY_PROPERTY)
+                ?.getString()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val legacySecret =
+            securityConfig
+                .propertyOrNull(SECRET_PROPERTY)
+                ?.getString()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val secret =
+            primarySecret ?: legacySecret
+                ?: throw IllegalArgumentException("security.$SECRET_PRIMARY_PROPERTY must be set")
 
-        val accessTtlMinutes = securityConfig.property(ACCESS_TTL_PROPERTY).getString().trim().toIntOrNull()
-            ?: throw IllegalArgumentException("security.$ACCESS_TTL_PROPERTY must be a positive integer")
+        val accessTtlMinutes =
+            securityConfig
+                .property(ACCESS_TTL_PROPERTY)
+                .getString()
+                .trim()
+                .toIntOrNull()
+                ?: throw IllegalArgumentException("security.$ACCESS_TTL_PROPERTY must be a positive integer")
 
         require(issuer.isNotEmpty()) { "security.$ISSUER_PROPERTY must not be blank" }
         require(audience.isNotEmpty()) { "security.$AUDIENCE_PROPERTY must not be blank" }
@@ -63,12 +77,14 @@ object JwtSupport {
     ): String {
         val expiresAt = now.plus(config.accessTtlMinutes.toLong(), ChronoUnit.MINUTES)
         val algorithm = Algorithm.HMAC256(config.secret)
-        val builder = JWT.create()
-            .withIssuer(config.issuer)
-            .withAudience(config.audience)
-            .withSubject(subject)
-            .withIssuedAt(Date.from(now))
-            .withExpiresAt(Date.from(expiresAt))
+        val builder =
+            JWT
+                .create()
+                .withIssuer(config.issuer)
+                .withAudience(config.audience)
+                .withSubject(subject)
+                .withIssuedAt(Date.from(now))
+                .withExpiresAt(Date.from(expiresAt))
 
         claims.forEach { (key, value) ->
             if (key.isNotBlank()) {
@@ -80,7 +96,8 @@ object JwtSupport {
     }
 
     fun verify(config: JwtConfig): JWTVerifier =
-        JWT.require(Algorithm.HMAC256(config.secret))
+        JWT
+            .require(Algorithm.HMAC256(config.secret))
             .withIssuer(config.issuer)
             .withAudience(config.audience)
             .build()

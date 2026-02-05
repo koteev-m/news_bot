@@ -7,6 +7,7 @@ import io.ktor.server.application.call
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.response.header
+import io.ktor.util.pipeline.PipelineContext
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator
@@ -28,29 +29,30 @@ import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 import io.opentelemetry.sdk.trace.samplers.Sampler
-import java.time.Duration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
-import io.ktor.util.pipeline.PipelineContext
+import java.time.Duration
 
 object Tracing {
     data class Cfg(
         val enabled: Boolean,
         val serviceName: String,
         val otlpEndpoint: String,
-        val samplerRatio: Double
+        val samplerRatio: Double,
     )
 
-    private val propagator: TextMapPropagator = TextMapPropagator.composite(
-        W3CTraceContextPropagator.getInstance(),
-        W3CBaggagePropagator.getInstance()
-    )
+    private val propagator: TextMapPropagator =
+        TextMapPropagator.composite(
+            W3CTraceContextPropagator.getInstance(),
+            W3CBaggagePropagator.getInstance(),
+        )
 
     fun readConfig(app: Application): Cfg {
         val cfg = app.environment.config
         val enabled = cfg.propertyOrNull("tracing.enabled")?.getString()?.toBooleanStrictOrNull() ?: false
         val name = cfg.propertyOrNull("tracing.serviceName")?.getString()?.ifBlank { null } ?: "newsbot-app"
-        val endpoint = cfg.propertyOrNull("tracing.otlp.endpoint")?.getString()?.ifBlank { null } ?: "http://localhost:4317"
+        val endpoint =
+            cfg.propertyOrNull("tracing.otlp.endpoint")?.getString()?.ifBlank { null } ?: "http://localhost:4317"
         val ratio = cfg.propertyOrNull("tracing.sampler.ratio")?.getString()?.toDoubleOrNull() ?: 0.1
         return Cfg(enabled, name, endpoint, ratio.coerceIn(0.0, 1.0))
     }
@@ -58,37 +60,48 @@ object Tracing {
     fun initOpenTelemetry(cfg: Cfg): OpenTelemetry {
         val propagators = ContextPropagators.create(propagator)
         if (!cfg.enabled) {
-            val tracerProvider = SdkTracerProvider.builder()
-                .setSampler(Sampler.alwaysOff())
-                .build()
-            val sdk = OpenTelemetrySdk.builder()
-                .setTracerProvider(tracerProvider)
-                .setPropagators(propagators)
-                .build()
+            val tracerProvider =
+                SdkTracerProvider
+                    .builder()
+                    .setSampler(Sampler.alwaysOff())
+                    .build()
+            val sdk =
+                OpenTelemetrySdk
+                    .builder()
+                    .setTracerProvider(tracerProvider)
+                    .setPropagators(propagators)
+                    .build()
             GlobalOpenTelemetry.resetForTest()
             GlobalOpenTelemetry.set(sdk)
             return sdk
         }
 
-        val resource = Resource.getDefault().merge(
-            Resource.create(Attributes.of(serviceNameKey, cfg.serviceName))
-        )
+        val resource =
+            Resource.getDefault().merge(
+                Resource.create(Attributes.of(serviceNameKey, cfg.serviceName)),
+            )
 
-        val exporter = OtlpGrpcSpanExporter.builder()
-            .setEndpoint(cfg.otlpEndpoint)
-            .setTimeout(Duration.ofSeconds(5))
-            .build()
+        val exporter =
+            OtlpGrpcSpanExporter
+                .builder()
+                .setEndpoint(cfg.otlpEndpoint)
+                .setTimeout(Duration.ofSeconds(5))
+                .build()
 
-        val tracerProvider = SdkTracerProvider.builder()
-            .setResource(resource)
-            .setSampler(Sampler.traceIdRatioBased(cfg.samplerRatio))
-            .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
-            .build()
+        val tracerProvider =
+            SdkTracerProvider
+                .builder()
+                .setResource(resource)
+                .setSampler(Sampler.traceIdRatioBased(cfg.samplerRatio))
+                .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
+                .build()
 
-        val sdk = OpenTelemetrySdk.builder()
-            .setTracerProvider(tracerProvider)
-            .setPropagators(propagators)
-            .build()
+        val sdk =
+            OpenTelemetrySdk
+                .builder()
+                .setTracerProvider(tracerProvider)
+                .setPropagators(propagators)
+                .build()
 
         GlobalOpenTelemetry.resetForTest()
         GlobalOpenTelemetry.set(sdk)
@@ -106,25 +119,31 @@ private val httpResponseStatusKey: AttributeKey<Long> = AttributeKey.longKey("ht
 private object ApplicationCallGetter : TextMapGetter<PipelineCall> {
     override fun keys(carrier: PipelineCall?): Iterable<String> = carrier?.request?.headers?.names() ?: emptyList()
 
-    override fun get(carrier: PipelineCall?, key: String): String? = carrier?.request?.headers?.get(key)
+    override fun get(
+        carrier: PipelineCall?,
+        key: String,
+    ): String? = carrier?.request?.headers?.get(key)
 }
 
 suspend fun PipelineContext<Unit, PipelineCall>.withServerSpan(
-    block: suspend PipelineContext<Unit, PipelineCall>.(Span) -> Unit = { proceed() }
+    block: suspend PipelineContext<Unit, PipelineCall>.(Span) -> Unit = { proceed() },
 ) {
     val tracer = Tracing.tracer()
     val request = call.request
-    val parent = GlobalOpenTelemetry.getPropagators().textMapPropagator.extract(
-        Context.current(),
-        call,
-        ApplicationCallGetter
-    )
-    val span = tracer.spanBuilder("HTTP ${request.httpMethod.value}")
-        .setSpanKind(SpanKind.SERVER)
-        .setParent(parent)
-        .setAttribute(httpRequestMethodKey, request.httpMethod.value)
-        .setAttribute(urlPathKey, request.path())
-        .startSpan()
+    val parent =
+        GlobalOpenTelemetry.getPropagators().textMapPropagator.extract(
+            Context.current(),
+            call,
+            ApplicationCallGetter,
+        )
+    val span =
+        tracer
+            .spanBuilder("HTTP ${request.httpMethod.value}")
+            .setSpanKind(SpanKind.SERVER)
+            .setParent(parent)
+            .setAttribute(httpRequestMethodKey, request.httpMethod.value)
+            .setAttribute(urlPathKey, request.path())
+            .startSpan()
     val scope: Scope = span.makeCurrent()
     val traceId = span.spanContext.traceId
     if (span.spanContext.isValid) {

@@ -1,24 +1,31 @@
 package cache
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
 
 class TtlCache<K : Any, V : Any>(
-    private val clock: Clock = Clock.systemUTC()
+    private val clock: Clock = Clock.systemUTC(),
 ) {
-    private data class Entry<V>(val value: V, val expiresAt: Instant) {
+    private data class Entry<V>(
+        val value: V,
+        val expiresAt: Instant,
+    ) {
         fun isExpired(now: Instant): Boolean = now.isAfter(expiresAt)
     }
 
     private val store = ConcurrentHashMap<K, Entry<V>>()
     private val inFlight = ConcurrentHashMap<K, CompletableDeferred<V>>()
 
-    suspend fun getOrPut(key: K, ttl: Duration, loader: suspend () -> V): V {
+    suspend fun getOrPut(
+        key: K,
+        ttl: Duration,
+        loader: suspend () -> V,
+    ): V {
         val now = clock.instant()
         store[key]?.let { entry ->
             if (!entry.isExpired(now)) {

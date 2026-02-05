@@ -7,12 +7,15 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 import kotlin.math.min
 
-data class RateLimitConfig(val capacity: Int, val refillPerMinute: Int)
+data class RateLimitConfig(
+    val capacity: Int,
+    val refillPerMinute: Int,
+)
 
 private class TokenBucket(
     private val capacity: Int,
     private val refillPerMinute: Int,
-    private val clock: Clock
+    private val clock: Clock,
 ) {
     private var tokens: Double = capacity.toDouble()
     private var lastRefill: Instant = Instant.now(clock)
@@ -43,14 +46,15 @@ private class TokenBucket(
 
 class RateLimiter(
     private val cfg: RateLimitConfig,
-    private val clock: Clock
+    private val clock: Clock,
 ) {
     private val buckets = ConcurrentHashMap<String, TokenBucket>()
 
     fun tryAcquire(subject: String): Pair<Boolean, Long?> {
-        val bucket = buckets.computeIfAbsent(subject) {
-            TokenBucket(cfg.capacity, cfg.refillPerMinute, clock)
-        }
+        val bucket =
+            buckets.computeIfAbsent(subject) {
+                TokenBucket(cfg.capacity, cfg.refillPerMinute, clock)
+            }
         return bucket.tryConsume()
     }
 }

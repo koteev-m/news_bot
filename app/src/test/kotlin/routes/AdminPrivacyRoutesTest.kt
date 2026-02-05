@@ -2,6 +2,7 @@ package routes
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import errors.installErrorPages
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -19,84 +20,93 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import errors.installErrorPages
 import privacy.ErasureReport
 import privacy.PrivacyService
 import privacy.RetentionReport
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class AdminPrivacyRoutesTest {
     @Test
-    fun `erase requires authentication`() = testApplication {
-        val service = FakePrivacyService()
-        configure(service)
-        val response = client.post("/api/admin/privacy/erase") {
-            contentType(ContentType.Application.Json)
-            setBody("""{"userId":1,"dryRun":true}""")
+    fun `erase requires authentication`() =
+        testApplication {
+            val service = FakePrivacyService()
+            configure(service)
+            val response =
+                client.post("/api/admin/privacy/erase") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"userId":1,"dryRun":true}""")
+                }
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
         }
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
 
     @Test
-    fun `non admin cannot access routes`() = testApplication {
-        val service = FakePrivacyService()
-        configure(service)
-        val response = client.post("/api/admin/privacy/erase") {
-            header(HttpHeaders.Authorization, bearerFor("123"))
-            contentType(ContentType.Application.Json)
-            setBody("""{"userId":1,"dryRun":false}""")
+    fun `non admin cannot access routes`() =
+        testApplication {
+            val service = FakePrivacyService()
+            configure(service)
+            val response =
+                client.post("/api/admin/privacy/erase") {
+                    header(HttpHeaders.Authorization, bearerFor("123"))
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"userId":1,"dryRun":false}""")
+                }
+            assertEquals(HttpStatusCode.Forbidden, response.status)
         }
-        assertEquals(HttpStatusCode.Forbidden, response.status)
-    }
 
     @Test
-    fun `dry run erase returns report without mutations`() = testApplication {
-        val service = FakePrivacyService()
-        configure(service)
-        val response = client.post("/api/admin/privacy/erase") {
-            header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
-            contentType(ContentType.Application.Json)
-            setBody("""{"userId":5,"dryRun":true}""")
+    fun `dry run erase returns report without mutations`() =
+        testApplication {
+            val service = FakePrivacyService()
+            configure(service)
+            val response =
+                client.post("/api/admin/privacy/erase") {
+                    header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"userId":5,"dryRun":true}""")
+                }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val report = Json.decodeFromString<ErasureReport>(response.bodyAsText())
+            assertEquals(5, report.userId)
+            assertTrue(report.dryRun)
+            assertEquals(true, service.lastErasure?.second)
         }
-        assertEquals(HttpStatusCode.OK, response.status)
-        val report = Json.decodeFromString<ErasureReport>(response.bodyAsText())
-        assertEquals(5, report.userId)
-        assertTrue(report.dryRun)
-        assertEquals(true, service.lastErasure?.second)
-    }
 
     @Test
-    fun `erase executes with mutations when dryRun false`() = testApplication {
-        val service = FakePrivacyService()
-        configure(service)
-        val response = client.post("/api/admin/privacy/erase") {
-            header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
-            contentType(ContentType.Application.Json)
-            setBody("""{"userId":7,"dryRun":false}""")
+    fun `erase executes with mutations when dryRun false`() =
+        testApplication {
+            val service = FakePrivacyService()
+            configure(service)
+            val response =
+                client.post("/api/admin/privacy/erase") {
+                    header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"userId":7,"dryRun":false}""")
+                }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val report = Json.decodeFromString<ErasureReport>(response.bodyAsText())
+            assertEquals(7, report.userId)
+            assertEquals(false, report.dryRun)
+            assertEquals(false, service.lastErasure?.second)
         }
-        assertEquals(HttpStatusCode.OK, response.status)
-        val report = Json.decodeFromString<ErasureReport>(response.bodyAsText())
-        assertEquals(7, report.userId)
-        assertEquals(false, report.dryRun)
-        assertEquals(false, service.lastErasure?.second)
-    }
 
     @Test
-    fun `retention run returns deleted summary`() = testApplication {
-        val service = FakePrivacyService()
-        configure(service)
-        val response = client.post("/api/admin/privacy/retention/run") {
-            header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
+    fun `retention run returns deleted summary`() =
+        testApplication {
+            val service = FakePrivacyService()
+            configure(service)
+            val response =
+                client.post("/api/admin/privacy/retention/run") {
+                    header(HttpHeaders.Authorization, bearerFor(ADMIN_ID.toString()))
+                }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val report = Json.decodeFromString<RetentionReport>(response.bodyAsText())
+            assertTrue(report.deletedByTable.containsKey("events"))
+            assertTrue(service.retentionInvoked)
         }
-        assertEquals(HttpStatusCode.OK, response.status)
-        val report = Json.decodeFromString<RetentionReport>(response.bodyAsText())
-        assertTrue(report.deletedByTable.containsKey("events"))
-        assertTrue(service.retentionInvoked)
-    }
 
     private fun ApplicationTestBuilder.configure(service: PrivacyService) {
         application {
@@ -107,7 +117,7 @@ class AdminPrivacyRoutesTest {
                     verifier(
                         com.auth0.jwt.JWT
                             .require(Algorithm.HMAC256("test-secret"))
-                            .build()
+                            .build(),
                     )
                     validate { credentials ->
                         credentials.payload.subject?.let { JWTPrincipal(credentials.payload) }
@@ -139,13 +149,16 @@ private class FakePrivacyService : PrivacyService {
     override suspend fun enqueueErasure(userId: Long) {
     }
 
-    override suspend fun runErasure(userId: Long, dryRun: Boolean): ErasureReport {
+    override suspend fun runErasure(
+        userId: Long,
+        dryRun: Boolean,
+    ): ErasureReport {
         lastErasure = userId to dryRun
         return ErasureReport(
             userId,
             deleted = mapOf("events" to 1L),
             anonymized = mapOf("bot_starts" to 1L),
-            dryRun = dryRun
+            dryRun = dryRun,
         )
     }
 

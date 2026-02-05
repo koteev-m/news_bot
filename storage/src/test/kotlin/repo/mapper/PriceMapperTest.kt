@@ -1,25 +1,26 @@
 package repo.mapper
 
+import model.PricePoint
+import repo.tables.PricesTable
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import model.PricePoint
-import repo.tables.PricesTable
 
 class PriceMapperTest {
     @Test
     fun `maps result row to price point`() {
         val ts = Instant.parse("2024-07-01T12:30:00Z")
-        val row = testResultRow(
-            PricesTable.instrumentId to 5L,
-            PricesTable.ts to OffsetDateTime.ofInstant(ts, ZoneOffset.UTC),
-            PricesTable.price to BigDecimal("321.45"),
-            PricesTable.ccy to "USD",
-            PricesTable.sourceCol to "provider",
-        )
+        val row =
+            testResultRow(
+                PricesTable.instrumentId to 5L,
+                PricesTable.ts to OffsetDateTime.ofInstant(ts, ZoneOffset.UTC),
+                PricesTable.price to BigDecimal("321.45"),
+                PricesTable.ccy to "USD",
+                PricesTable.sourceCol to "provider",
+            )
 
         val point = row.toPricePoint()
 

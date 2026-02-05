@@ -9,17 +9,24 @@ class AlertsRepositoryMemory : AlertsRepository {
     private val dailyCounts = ConcurrentHashMap<Pair<Long, LocalDate>, AtomicInteger>()
     private val lastDateByUser = ConcurrentHashMap<Long, LocalDate>()
 
-    override fun getState(userId: Long): FsmState = states[userId] ?: FsmState.IDLE
+    override fun getState(userId: Long): FsmState = states[userId] ?: FsmState.Idle
 
-    override fun setState(userId: Long, state: FsmState) {
+    override fun setState(
+        userId: Long,
+        state: FsmState,
+    ) {
         states[userId] = state
     }
 
-    override fun getDailyPushCount(userId: Long, date: LocalDate): Int {
-        return dailyCounts[userId to date]?.get() ?: 0
-    }
+    override fun getDailyPushCount(
+        userId: Long,
+        date: LocalDate,
+    ): Int = dailyCounts[userId to date]?.get() ?: 0
 
-    override fun incDailyPushCount(userId: Long, date: LocalDate) {
+    override fun incDailyPushCount(
+        userId: Long,
+        date: LocalDate,
+    ) {
         val previousDate = lastDateByUser.put(userId, date)
         if (previousDate != null && previousDate != date) {
             dailyCounts.remove(userId to previousDate)

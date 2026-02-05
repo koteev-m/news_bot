@@ -1,10 +1,10 @@
 package model
 
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
-import kotlinx.serialization.Contextual
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class PositionDto(
@@ -13,5 +13,5 @@ data class PositionDto(
     @Contextual val qty: BigDecimal,
     @Contextual val avgPrice: BigDecimal?,
     val avgPriceCcy: String?,
-    @Contextual val updatedAt: Instant
+    @Contextual val updatedAt: Instant,
 )

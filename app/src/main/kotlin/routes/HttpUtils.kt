@@ -20,51 +20,55 @@ fun ApplicationCall.respondUnsupportedMediaType(): Nothing = throw AppException.
 
 fun ApplicationCall.respondPayloadTooLarge(limit: Long): Nothing = throw AppException.PayloadTooLarge(limit)
 
-fun ApplicationCall.respondTooManyRequests(retryAfterSeconds: Long): Nothing = throw AppException.RateLimited(
-    retryAfterSeconds
-)
+fun ApplicationCall.respondTooManyRequests(retryAfterSeconds: Long): Nothing =
+    throw AppException.RateLimited(
+        retryAfterSeconds,
+    )
 
 fun ApplicationCall.respondServiceUnavailable(): Nothing = throw AppException.ImportByUrlDisabled()
 
 fun ApplicationCall.respondInternal(): Nothing = throw AppException.Internal()
 
 fun ApplicationCall.handleDomainError(cause: Throwable): Nothing {
-    val exception = when (cause) {
-        is IllegalArgumentException -> AppException.BadRequest(listOfNotNull(cause.message))
-        is PortfolioException -> mapPortfolioException(cause)
-        else -> when {
-            cause.matchesName(ALREADY_EXISTS_NAMES) || cause.isUniqueViolation() ->
-                AppException.Unprocessable()
-            cause.matchesName(NOT_FOUND_NAMES) -> AppException.NotFound()
-            else -> {
-                application.environment.log.error("Unhandled error", cause)
-                AppException.Internal(cause = cause)
-            }
+    val exception =
+        when (cause) {
+            is IllegalArgumentException -> AppException.BadRequest(listOfNotNull(cause.message))
+            is PortfolioException -> mapPortfolioException(cause)
+            else ->
+                when {
+                    cause.matchesName(ALREADY_EXISTS_NAMES) || cause.isUniqueViolation() ->
+                        AppException.Unprocessable()
+                    cause.matchesName(NOT_FOUND_NAMES) -> AppException.NotFound()
+                    else -> {
+                        application.environment.log.error("Unhandled error", cause)
+                        AppException.Internal(cause = cause)
+                    }
+                }
         }
-    }
     throw exception
 }
 
-private fun ApplicationCall.mapPortfolioException(exception: PortfolioException): AppException {
-    return when (val error = exception.error) {
+private fun ApplicationCall.mapPortfolioException(exception: PortfolioException): AppException =
+    when (val error = exception.error) {
         is PortfolioError.Validation -> AppException.Unprocessable(listOf(error.message), exception)
         is PortfolioError.NotFound -> AppException.NotFound(listOf(error.message))
-        is PortfolioError.FxRateNotFound -> AppException.Custom(
-            code = errors.ErrorCode.FX_RATE_UNAVAILABLE,
-            details = listOf(error.message),
-            cause = exception,
-        )
-        is PortfolioError.FxRateUnavailable -> AppException.Custom(
-            code = errors.ErrorCode.FX_RATE_UNAVAILABLE,
-            details = listOf(error.message),
-            cause = exception,
-        )
+        is PortfolioError.FxRateNotFound ->
+            AppException.Custom(
+                code = errors.ErrorCode.FX_RATE_UNAVAILABLE,
+                details = listOf(error.message),
+                cause = exception,
+            )
+        is PortfolioError.FxRateUnavailable ->
+            AppException.Custom(
+                code = errors.ErrorCode.FX_RATE_UNAVAILABLE,
+                details = listOf(error.message),
+                cause = exception,
+            )
         is PortfolioError.External -> {
             application.environment.log.error("Portfolio service error", exception)
             AppException.Internal(cause = exception)
         }
     }
-}
 
 private fun Throwable.matchesName(names: Set<String>): Boolean {
     var current: Throwable? = this
@@ -78,11 +82,12 @@ private fun Throwable.matchesName(names: Set<String>): Boolean {
     return false
 }
 
-private fun Throwable.isUniqueViolation(): Boolean = when (this) {
-    is ExposedSQLException -> sqlState == UNIQUE_VIOLATION || (cause?.isUniqueViolation() == true)
-    is SQLException -> sqlState == UNIQUE_VIOLATION || (cause?.isUniqueViolation() == true)
-    else -> cause?.takeIf { it !== this }?.isUniqueViolation() == true
-}
+private fun Throwable.isUniqueViolation(): Boolean =
+    when (this) {
+        is ExposedSQLException -> sqlState == UNIQUE_VIOLATION || (cause?.isUniqueViolation() == true)
+        is SQLException -> sqlState == UNIQUE_VIOLATION || (cause?.isUniqueViolation() == true)
+        else -> cause?.takeIf { it !== this }?.isUniqueViolation() == true
+    }
 
 private val ALREADY_EXISTS_NAMES = setOf("AlreadyExists", "AlreadyExistsException")
 private val NOT_FOUND_NAMES = setOf("NotFound", "NotFoundException")

@@ -1,5 +1,7 @@
 package data.moex
 
+import common.rethrowIfFatal
+import common.runCatchingNonFatal
 import http.CircuitBreaker
 import http.HttpClientError
 import http.HttpClients
@@ -15,14 +17,6 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
-import java.time.Clock
-import java.time.Duration
-import java.time.LocalDate
-import java.time.format.DateTimeParseException
-import java.util.Locale
-import java.util.concurrent.ThreadLocalRandom
-import kotlin.math.max
-import kotlin.math.min
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -31,10 +25,16 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import netflow2.Netflow2PullWindow
-import netflow2.normalizeTicker
 import netflow2.Netflow2Row
-import common.runCatchingNonFatal
-import common.rethrowIfFatal
+import netflow2.normalizeTicker
+import java.time.Clock
+import java.time.Duration
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
+import java.util.Locale
+import java.util.concurrent.ThreadLocalRandom
+import kotlin.math.max
+import kotlin.math.min
 
 class Netflow2Client(
     private val client: HttpClient,
@@ -43,48 +43,54 @@ class Netflow2Client(
     private val retryCfg: RetryCfg,
     private val config: Netflow2ClientConfig = Netflow2ClientConfig(),
     private val clock: Clock = Clock.systemUTC(),
-    private val json: Json = Json { ignoreUnknownKeys = true }
+    private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     init {
         metrics.requestTimer(SERVICE, "success")
         metrics.requestTimer(SERVICE, "error")
     }
 
-    suspend fun fetchWindow(ticker: String, window: Netflow2PullWindow): HttpResult<List<Netflow2Row>> {
-        val normalizedTicker = try {
-            normalizeTicker(ticker)
-        } catch (t: Throwable) {
-            rethrowIfFatal(t)
-            return Result.failure(Netflow2ClientError.ValidationError(t.message ?: "invalid ticker", t))
-        }
+    suspend fun fetchWindow(
+        ticker: String,
+        window: Netflow2PullWindow,
+    ): HttpResult<List<Netflow2Row>> {
+        val normalizedTicker =
+            try {
+                normalizeTicker(ticker)
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                return Result.failure(Netflow2ClientError.ValidationError(t.message ?: "invalid ticker", t))
+            }
 
-        val (from, tillInclusive) = try {
-            window.toMoexQueryParams()
-        } catch (t: Throwable) {
-            rethrowIfFatal(t)
-            return Result.failure(
-                Netflow2ClientError.ValidationError(
-                    t.message ?: "invalid window for Netflow2",
-                    t
+        val (from, tillInclusive) =
+            try {
+                window.toMoexQueryParams()
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                return Result.failure(
+                    Netflow2ClientError.ValidationError(
+                        t.message ?: "invalid window for Netflow2",
+                        t,
+                    ),
                 )
-            )
-        }
+            }
 
         val endpoint = buildEndpoint(normalizedTicker)
         return runResilient(endpoint) {
-            val response = try {
-                client.get(endpoint) {
-                    parameter("from", from)
-                    parameter("till", tillInclusive)
+            val response =
+                try {
+                    client.get(endpoint) {
+                        parameter("from", from)
+                        parameter("till", tillInclusive)
+                    }
+                } catch (t: Throwable) {
+                    rethrowIfFatal(t)
+                    if (t is ResponseException) {
+                        val payload = readBodyOrNull(t.response)
+                        throw HttpClientError.httpStatusError(t.response.status, endpoint, payload, origin = t)
+                    }
+                    throw t
                 }
-            } catch (t: Throwable) {
-                rethrowIfFatal(t)
-                if (t is ResponseException) {
-                    val payload = readBodyOrNull(t.response)
-                    throw HttpClientError.httpStatusError(t.response.status, endpoint, payload, origin = t)
-                }
-                throw t
-            }
 
             val payload = response.bodyAsText()
             ensureSuccess(response, endpoint, payload)
@@ -96,27 +102,37 @@ class Netflow2Client(
         }
     }
 
-    fun windowsSequence(fromInclusive: LocalDate, tillExclusive: LocalDate): Sequence<Netflow2PullWindow> =
-        Netflow2PullWindow.split(fromInclusive, tillExclusive).asSequence()
+    fun windowsSequence(
+        fromInclusive: LocalDate,
+        tillExclusive: LocalDate,
+    ): Sequence<Netflow2PullWindow> = Netflow2PullWindow.split(fromInclusive, tillExclusive).asSequence()
 
     fun windowsSequence(range: ClosedRange<LocalDate>): Sequence<Netflow2PullWindow> =
         windowsSequence(range.start, range.endInclusive.plusDays(1))
 
     private fun buildEndpoint(ticker: String): String {
         val base = config.baseUrl.trim().removeSuffix("/")
-        val extension = when (config.format) {
-            Netflow2Format.CSV -> "csv"
-            Netflow2Format.JSON -> "json"
-        }
+        val extension =
+            when (config.format) {
+                Netflow2Format.CSV -> "csv"
+                Netflow2Format.JSON -> "json"
+            }
         return "$base$NETFLOW_PATH$ticker.$extension"
     }
 
-    private fun ensureSuccess(response: HttpResponse, url: String, snippet: String? = null) {
+    private fun ensureSuccess(
+        response: HttpResponse,
+        url: String,
+        snippet: String? = null,
+    ) {
         if (response.status.isSuccess()) return
         throw HttpClientError.httpStatusError(response.status, url, snippet)
     }
 
-    private fun parseCsv(payload: String, expectedTicker: String): List<Netflow2Row> {
+    private fun parseCsv(
+        payload: String,
+        expectedTicker: String,
+    ): List<Netflow2Row> {
         val lines = payload.lineSequence().filter { it.isNotBlank() }.toList()
         if (lines.isEmpty()) return emptyList()
 
@@ -125,16 +141,19 @@ class Netflow2Client(
             throw Netflow2ClientError.UpstreamError("Netflow2 CSV header is missing (DATE/TRADEDATE + SECID/TICKER)")
         }
 
-        val header = lines[headerIndex]
-            .split(';', ignoreCase = false, limit = Int.MAX_VALUE)
-            .map { cleanCsvToken(it).uppercase(Locale.ROOT) }
+        val header =
+            lines[headerIndex]
+                .split(';', ignoreCase = false, limit = Int.MAX_VALUE)
+                .map { cleanCsvToken(it).uppercase(Locale.ROOT) }
         val index = header.withIndex().associate { it.value to it.index }
-        val dateIdx = index["DATE"] ?: index["TRADEDATE"] ?: throw Netflow2ClientError.UpstreamError(
-            "DATE/TRADEDATE column is missing in Netflow2 CSV"
-        )
-        val tickerIdx = index["SECID"] ?: index["TICKER"] ?: throw Netflow2ClientError.UpstreamError(
-            "SECID/TICKER column is missing in Netflow2 CSV"
-        )
+        val dateIdx =
+            index["DATE"] ?: index["TRADEDATE"] ?: throw Netflow2ClientError.UpstreamError(
+                "DATE/TRADEDATE column is missing in Netflow2 CSV",
+            )
+        val tickerIdx =
+            index["SECID"] ?: index["TICKER"] ?: throw Netflow2ClientError.UpstreamError(
+                "SECID/TICKER column is missing in Netflow2 CSV",
+            )
 
         val dataLines = lines.drop(headerIndex + 1)
         if (dataLines.isEmpty()) return emptyList()
@@ -143,10 +162,20 @@ class Netflow2Client(
             if (line.isBlank()) return@mapNotNull null
             val columns: List<String?> = line.split(';', ignoreCase = false, limit = Int.MAX_VALUE)
             try {
-                val ticker = columns.getOrNull(tickerIdx)?.let(::cleanCsvToken)?.ifBlank { null }?.let(::normalizeTicker)
-                    ?: expectedTicker
-                val date = columns.getOrNull(dateIdx)?.let(::cleanCsvToken)?.takeIf { it.isNotBlank() }?.let(LocalDate::parse)
-                    ?: throw Netflow2ClientError.UpstreamError("Missing date column in Netflow2 CSV line: $line")
+                val ticker =
+                    columns
+                        .getOrNull(tickerIdx)
+                        ?.let(::cleanCsvToken)
+                        ?.ifBlank { null }
+                        ?.let(::normalizeTicker)
+                        ?: expectedTicker
+                val date =
+                    columns
+                        .getOrNull(dateIdx)
+                        ?.let(::cleanCsvToken)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(LocalDate::parse)
+                        ?: throw Netflow2ClientError.UpstreamError("Missing date column in Netflow2 CSV line: $line")
 
                 Netflow2Row(
                     date = date,
@@ -158,53 +187,68 @@ class Netflow2Client(
                     pv70 = columns.longAt(index["PV70"]),
                     pv100 = columns.longAt(index["PV100"]),
                     vol = columns.longAt(index["VOL"]),
-                    oi = columns.longAt(index["OI"])
+                    oi = columns.longAt(index["OI"]),
                 )
             } catch (t: Throwable) {
                 rethrowIfFatal(t)
                 throw Netflow2ClientError.UpstreamError(
                     "Failed to parse Netflow2 CSV line: $line",
-                    t
+                    t,
                 )
             }
         }
     }
 
-    private fun parseJson(payload: String, expectedTicker: String): List<Netflow2Row> {
-        val root = try {
-            json.parseToJsonElement(payload)
-        } catch (t: Throwable) {
-            rethrowIfFatal(t)
-            throw Netflow2ClientError.UpstreamError("Unable to parse Netflow2 JSON payload", t)
-        }
+    private fun parseJson(
+        payload: String,
+        expectedTicker: String,
+    ): List<Netflow2Row> {
+        val root =
+            try {
+                json.parseToJsonElement(payload)
+            } catch (t: Throwable) {
+                rethrowIfFatal(t)
+                throw Netflow2ClientError.UpstreamError("Unable to parse Netflow2 JSON payload", t)
+            }
 
         val dataset = extractDataset(root) ?: return emptyList()
 
-        val columns = dataset["columns"] as? JsonArray
-            ?: throw Netflow2ClientError.UpstreamError("Netflow2 JSON payload has no columns section")
+        val columns =
+            dataset["columns"] as? JsonArray
+                ?: throw Netflow2ClientError.UpstreamError("Netflow2 JSON payload has no columns section")
         val rows = dataset["data"] as? JsonArray ?: return emptyList()
 
-        val index = columns.withIndex().associate { it.value.jsonPrimitive.content.uppercase(Locale.ROOT) to it.index }
-        val dateIdx = index["DATE"] ?: index["TRADEDATE"] ?: throw Netflow2ClientError.UpstreamError(
-            "DATE/TRADEDATE column is missing in Netflow2 JSON"
-        )
-        val tickerIdx = index["SECID"] ?: index["TICKER"] ?: throw Netflow2ClientError.UpstreamError(
-            "SECID/TICKER column is missing in Netflow2 JSON"
-        )
+        val index =
+            columns.withIndex().associate {
+                it.value.jsonPrimitive.content
+                    .uppercase(Locale.ROOT) to it.index
+            }
+        val dateIdx =
+            index["DATE"] ?: index["TRADEDATE"] ?: throw Netflow2ClientError.UpstreamError(
+                "DATE/TRADEDATE column is missing in Netflow2 JSON",
+            )
+        val tickerIdx =
+            index["SECID"] ?: index["TICKER"] ?: throw Netflow2ClientError.UpstreamError(
+                "SECID/TICKER column is missing in Netflow2 JSON",
+            )
 
         return rows.mapNotNull { rowElement ->
-            val row = (rowElement as? JsonArray)?.map { it.jsonPrimitive.contentOrNull?.trim() } ?: return@mapNotNull null
+            val row =
+                (rowElement as? JsonArray)?.map { it.jsonPrimitive.contentOrNull?.trim() } ?: return@mapNotNull null
             try {
-                val ticker = row.getOrNull(tickerIdx)?.takeIf { !it.isNullOrBlank() }?.let(::normalizeTicker)
-                    ?: expectedTicker
-                val dateRaw = row.getOrNull(dateIdx)?.takeIf { !it.isNullOrBlank() }
-                    ?: throw Netflow2ClientError.UpstreamError("Missing date column in Netflow2 JSON row: $row")
-                val date = try {
-                    LocalDate.parse(dateRaw)
-                } catch (t: Throwable) {
-                    rethrowIfFatal(t)
-                    throw Netflow2ClientError.UpstreamError("Invalid date '$dateRaw' in Netflow2 JSON", t)
-                }
+                val ticker =
+                    row.getOrNull(tickerIdx)?.takeIf { !it.isNullOrBlank() }?.let(::normalizeTicker)
+                        ?: expectedTicker
+                val dateRaw =
+                    row.getOrNull(dateIdx)?.takeIf { !it.isNullOrBlank() }
+                        ?: throw Netflow2ClientError.UpstreamError("Missing date column in Netflow2 JSON row: $row")
+                val date =
+                    try {
+                        LocalDate.parse(dateRaw)
+                    } catch (t: Throwable) {
+                        rethrowIfFatal(t)
+                        throw Netflow2ClientError.UpstreamError("Invalid date '$dateRaw' in Netflow2 JSON", t)
+                    }
 
                 Netflow2Row(
                     date = date,
@@ -216,7 +260,7 @@ class Netflow2Client(
                     pv70 = row.longAt(index["PV70"]),
                     pv100 = row.longAt(index["PV100"]),
                     vol = row.longAt(index["VOL"]),
-                    oi = row.longAt(index["OI"])
+                    oi = row.longAt(index["OI"]),
                 )
             } catch (t: Throwable) {
                 rethrowIfFatal(t)
@@ -249,14 +293,18 @@ class Netflow2Client(
 
     private fun String.isHeaderLine(): Boolean {
         if (!contains(';')) return false
-        val tokens = split(';', ignoreCase = false, limit = Int.MAX_VALUE)
-            .map { cleanCsvToken(it).uppercase(Locale.ROOT) }
+        val tokens =
+            split(';', ignoreCase = false, limit = Int.MAX_VALUE)
+                .map { cleanCsvToken(it).uppercase(Locale.ROOT) }
         val hasDate = tokens.any { it == "DATE" || it == "TRADEDATE" }
         val hasTicker = tokens.any { it == "SECID" || it == "TICKER" }
         return hasDate && hasTicker
     }
 
-    private suspend fun <T> runResilient(url: String, block: suspend () -> T): HttpResult<T> {
+    private suspend fun <T> runResilient(
+        url: String,
+        block: suspend () -> T,
+    ): HttpResult<T> {
         val deadline = clock.instant().plus(config.requestTimeout)
         var attempt = 0
         var lastError: Throwable? = null
@@ -286,28 +334,33 @@ class Netflow2Client(
         return Result.failure(wrapError(url, lastError))
     }
 
-    private fun shouldRetry(error: Throwable): Boolean = when (error) {
-        is Netflow2ClientError.ValidationError, is Netflow2ClientError.NotFound -> false
-        is Netflow2ClientError.UpstreamError -> false
-        is HttpClientError.ValidationError -> false
-        is HttpClientError.DeserializationError -> false
-        is HttpClientError.HttpStatusError -> {
-            val code = error.status.value
-            code == 429 || code >= 500 || retryCfg.retryOn.contains(code)
-        }
-        is HttpClientError.TimeoutError, is HttpClientError.NetworkError -> true
-        else -> when (val mapped = error.toHttpClientError()) {
-            is HttpClientError.TimeoutError, is HttpClientError.NetworkError -> true
+    private fun shouldRetry(error: Throwable): Boolean =
+        when (error) {
+            is Netflow2ClientError.ValidationError, is Netflow2ClientError.NotFound -> false
+            is Netflow2ClientError.UpstreamError -> false
+            is HttpClientError.ValidationError -> false
+            is HttpClientError.DeserializationError -> false
             is HttpClientError.HttpStatusError -> {
-                val code = mapped.status.value
+                val code = error.status.value
                 code == 429 || code >= 500 || retryCfg.retryOn.contains(code)
             }
-            is HttpClientError.ValidationError, is HttpClientError.DeserializationError -> false
-            else -> false
+            is HttpClientError.TimeoutError, is HttpClientError.NetworkError -> true
+            else ->
+                when (val mapped = error.toHttpClientError()) {
+                    is HttpClientError.TimeoutError, is HttpClientError.NetworkError -> true
+                    is HttpClientError.HttpStatusError -> {
+                        val code = mapped.status.value
+                        code == 429 || code >= 500 || retryCfg.retryOn.contains(code)
+                    }
+                    is HttpClientError.ValidationError, is HttpClientError.DeserializationError -> false
+                    else -> false
+                }
         }
-    }
 
-    private fun wrapError(url: String, cause: Throwable?): Netflow2ClientError {
+    private fun wrapError(
+        url: String,
+        cause: Throwable?,
+    ): Netflow2ClientError {
         val root = cause ?: return Netflow2ClientError.UpstreamError("Netflow2 request failed for $url")
         return when (root) {
             is Netflow2ClientError -> root
@@ -323,30 +376,36 @@ class Netflow2Client(
     private fun wrapHttpClientError(
         url: String,
         error: HttpClientError,
-        origin: Throwable? = error
-    ): Netflow2ClientError = when (error) {
-        is HttpClientError.HttpStatusError -> {
-            val sec = extractSecFromUrl(error.requestUrl) ?: extractSecFromUrl(url)
-            when {
-                error.status == HttpStatusCode.NotFound && sec != null ->
-                    Netflow2ClientError.NotFound(sec, error)
-                error.status == HttpStatusCode.BadRequest && sec != null ->
-                    Netflow2ClientError.ValidationError("invalid sec: $sec", error)
-                else -> Netflow2ClientError.UpstreamError(
-                    error.message ?: "HTTP error for $url",
-                    error
-                )
+        origin: Throwable? = error,
+    ): Netflow2ClientError =
+        when (error) {
+            is HttpClientError.HttpStatusError -> {
+                val sec = extractSecFromUrl(error.requestUrl) ?: extractSecFromUrl(url)
+                when {
+                    error.status == HttpStatusCode.NotFound && sec != null ->
+                        Netflow2ClientError.NotFound(sec, error)
+                    error.status == HttpStatusCode.BadRequest && sec != null ->
+                        Netflow2ClientError.ValidationError("invalid sec: $sec", error)
+                    else ->
+                        Netflow2ClientError.UpstreamError(
+                            error.message ?: "HTTP error for $url",
+                            error,
+                        )
+                }
             }
+            is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, error)
+            is HttpClientError.ValidationError ->
+                Netflow2ClientError.ValidationError(
+                    requestFailedDetails(url, error.message),
+                    origin,
+                )
+            else -> Netflow2ClientError.UpstreamError(requestFailedDetails(url, error.message), origin)
         }
-        is HttpClientError.TimeoutError -> Netflow2ClientError.TimeoutError(url, error)
-        is HttpClientError.ValidationError -> Netflow2ClientError.ValidationError(
-            requestFailedDetails(url, error.message),
-            origin
-        )
-        else -> Netflow2ClientError.UpstreamError(requestFailedDetails(url, error.message), origin)
-    }
 
-    private fun requestFailedDetails(url: String, message: String?): String {
+    private fun requestFailedDetails(
+        url: String,
+        message: String?,
+    ): String {
         val suffix = message?.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()
         return "Netflow2 request failed for $url$suffix"
     }
@@ -360,42 +419,50 @@ class Netflow2Client(
 
     private fun computeBackoff(attempt: Int): Long {
         val multiplier = 1L shl min(attempt - 1, 16)
-        val jitter = if (retryCfg.jitterMs > 0) {
-            ThreadLocalRandom.current().nextLong(-retryCfg.jitterMs, retryCfg.jitterMs + 1)
-        } else {
-            0L
-        }
+        val jitter =
+            if (retryCfg.jitterMs > 0) {
+                ThreadLocalRandom.current().nextLong(-retryCfg.jitterMs, retryCfg.jitterMs + 1)
+            } else {
+                0L
+            }
         val delayed = retryCfg.baseBackoffMs * multiplier + jitter
         return delayed.coerceAtLeast(0L)
     }
 
-    private fun List<String?>.longAt(index: Int?): Long? = index?.let { idx ->
-        getOrNull(idx)?.takeIf { !it.isNullOrBlank() }?.let(::cleanCsvToken)?.takeIf { it.isNotEmpty() }?.toLongOrNull()
-    }
+    private fun List<String?>.longAt(index: Int?): Long? =
+        index?.let { idx ->
+            getOrNull(idx)
+                ?.takeIf { !it.isNullOrBlank() }
+                ?.let(::cleanCsvToken)
+                ?.takeIf { it.isNotEmpty() }
+                ?.toLongOrNull()
+        }
 
     private fun cleanCsvToken(raw: String): String = raw.replace("\uFEFF", "").trim()
 
-    private suspend fun readBodyOrNull(response: HttpResponse): String? = try {
-        response.bodyAsText()
-    } catch (t: Throwable) {
-        rethrowIfFatal(t)
-        null
-    }
+    private suspend fun readBodyOrNull(response: HttpResponse): String? =
+        try {
+            response.bodyAsText()
+        } catch (t: Throwable) {
+            rethrowIfFatal(t)
+            null
+        }
 
     companion object {
         private const val SERVICE = "netflow2"
         private const val NETFLOW_PATH = "/iss/analyticalproducts/netflow2/securities/"
-        private val NETFLOW_SEC_REGEX = Regex(
-            "${Regex.escape(NETFLOW_PATH)}([^/?#]+)\\.(csv|json)",
-            RegexOption.IGNORE_CASE
-        )
+        private val NETFLOW_SEC_REGEX =
+            Regex(
+                "${Regex.escape(NETFLOW_PATH)}([^/?#]+)\\.(csv|json)",
+                RegexOption.IGNORE_CASE,
+            )
     }
 }
 
 data class Netflow2ClientConfig(
     val baseUrl: String = DEFAULT_BASE_URL,
     val format: Netflow2Format = Netflow2Format.CSV,
-    val requestTimeout: Duration = Duration.ofSeconds(30)
+    val requestTimeout: Duration = Duration.ofSeconds(30),
 ) {
     companion object {
         private const val DEFAULT_BASE_URL = "https://iss.moex.com"
@@ -404,16 +471,27 @@ data class Netflow2ClientConfig(
 
 enum class Netflow2Format { CSV, JSON }
 
-sealed class Netflow2ClientError(message: String, cause: Throwable? = null) : RuntimeException(message, cause) {
-    data class ValidationError(val details: String, val origin: Throwable? = null) :
-        Netflow2ClientError(details, origin)
+sealed class Netflow2ClientError(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
+    data class ValidationError(
+        val details: String,
+        val origin: Throwable? = null,
+    ) : Netflow2ClientError(details, origin)
 
-    data class NotFound(val sec: String, val origin: Throwable? = null) :
-        Netflow2ClientError("sec not found: $sec", origin)
+    data class NotFound(
+        val sec: String,
+        val origin: Throwable? = null,
+    ) : Netflow2ClientError("sec not found: $sec", origin)
 
-    data class UpstreamError(val details: String, val origin: Throwable? = null) :
-        Netflow2ClientError(details, origin)
+    data class UpstreamError(
+        val details: String,
+        val origin: Throwable? = null,
+    ) : Netflow2ClientError(details, origin)
 
-    data class TimeoutError(val url: String, val origin: Throwable? = null) :
-        Netflow2ClientError("Netflow2 request timed out for $url", origin)
+    data class TimeoutError(
+        val url: String,
+        val origin: Throwable? = null,
+    ) : Netflow2ClientError("Netflow2 request timed out for $url", origin)
 }

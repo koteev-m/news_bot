@@ -20,7 +20,12 @@ fun Application.installTenancyLayer() {
     install(TenantPlugin) {
         repository = tenancyRepo
         userIdProvider = { call -> call.request.header("X-User-Id")?.toLongOrNull() }
-        scopesProvider = { call -> call.request.header("X-Scopes")?.split(" ")?.toSet() ?: emptySet() }
+        scopesProvider = { call ->
+            call.request
+                .header("X-Scopes")
+                ?.split(" ")
+                ?.toSet() ?: emptySet()
+        }
     }
     val rbac = DefaultRbacService()
     val quotas = QuotaService(tenancyRepo)
